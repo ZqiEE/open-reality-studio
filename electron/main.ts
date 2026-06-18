@@ -104,12 +104,13 @@ async function startNextServer(port: number) {
 
   const nextCli = path.join(appRoot, 'node_modules', 'next', 'dist', 'bin', 'next');
   const args = prod ? [nextCli, 'start', '-p', String(port)] : [nextCli, 'dev', '-p', String(port)];
+  const nextDistDir = prod ? '.next-build' : `.next-desktop-${port}`;
   const logStream = fs.createWriteStream(serverLog, { flags: 'a' });
   logStream.write(`\n[${new Date().toISOString()}] Starting node ${args.join(' ')}\n`);
 
   const child = spawn(process.execPath, args, {
     cwd: appRoot,
-    env: { ...process.env, BROWSER: 'none', ORS_NEXT_DIST_DIR: `.next-desktop-${port}` },
+    env: { ...process.env, BROWSER: 'none', ORS_NEXT_DIST_DIR: nextDistDir },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true
   });
