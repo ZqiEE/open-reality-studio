@@ -22,7 +22,7 @@ Everything else is still scaffolded or **Coming Soon**.
 
 Same protocol for simulation and future real devices.
 
-Demo video: Coming soon
+Robot Arm demo video: https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4
 
 ## What This Alpha Does
 
