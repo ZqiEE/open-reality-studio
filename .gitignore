@@ -2,6 +2,7 @@
 .next-build/
 .next-desktop-*/
 dist-electron/
+release/
 node_modules/
 .asset-sources/
 .tmp/

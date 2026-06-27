@@ -128,10 +128,30 @@ Future Real Device execution must require:
 
 ## Windows Packaging
 
+Current desktop Alpha supports a unified launcher:
+
+```bash
+npm run desktop:start
+```
+
+The launcher prefers the production shell when `.next-build` exists and otherwise falls back to the development shell.
+
+Explicit desktop development mode:
+
+```bash
+npm run desktop:dev
+```
+
 Current desktop Alpha supports Electron source build with:
 
 ```bash
 npm run desktop:build
+```
+
+Non-interactive production smoke check:
+
+```bash
+npm run desktop:smoke
 ```
 
 Packaging entry point:
@@ -140,4 +160,18 @@ Packaging entry point:
 npm run desktop:pack
 ```
 
-The installer step requires `electron-builder`. If it is not installed locally, the script reports that the Electron build is ready and exits without changing Web development behavior.
+`desktop:pack` is the Windows installer path. It uses `electron-builder` with an `nsis` target and writes artifacts to `release/`.
+
+Installer artifact pattern:
+
+```text
+release/Open-Reality-Studio-<version>-Setup.exe
+```
+
+Current verified Public Alpha installer artifact:
+
+```text
+release/Open-Reality-Studio-0.1.1-Setup.exe
+```
+
+If `electron-builder` is missing, the command now fails explicitly instead of exiting successfully without producing an installer.

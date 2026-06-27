@@ -12,19 +12,34 @@ import { createAppMenu } from './menus/appMenu';
 const root = path.resolve(__dirname, '..');
 const sourceRoot = path.resolve(root, '..');
 const appRoot = fs.existsSync(path.join(root, 'package.json')) ? root : sourceRoot;
-const serverLog = path.join(appRoot, 'electron', 'desktop-server.log');
 const basePort = Number(process.env.ORS_DESKTOP_PORT || 3100);
 const isWindows = process.platform === 'win32';
+const isSmokeTest = process.argv.includes('--smoke-test');
 
 let nextProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
 
-const singleInstanceLock = app.requestSingleInstanceLock();
+function getServerLogPath() {
+  const baseDir = app.isReady() ? app.getPath('userData') : path.join(sourceRoot, '.tmp');
+  const logDir = path.join(baseDir, 'logs');
+  fs.mkdirSync(logDir, { recursive: true });
+  return path.join(logDir, 'desktop-server.log');
+}
+
+const singleInstanceLock = isSmokeTest ? true : app.requestSingleInstanceLock();
 if (!singleInstanceLock) app.quit();
+
+if (isSmokeTest) {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('headless');
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
+  app.commandLine.appendSwitch('in-process-gpu');
+}
 
 function appendLog(message: string) {
   try {
-    fs.appendFileSync(serverLog, `[${new Date().toISOString()}] ${message}\n`);
+    fs.appendFileSync(getServerLogPath(), `[${new Date().toISOString()}] ${message}\n`);
   } catch {
     // Startup logging must not block the desktop shell.
   }
@@ -105,7 +120,7 @@ async function startNextServer(port: number) {
   const nextCli = path.join(appRoot, 'node_modules', 'next', 'dist', 'bin', 'next');
   const args = prod ? [nextCli, 'start', '-p', String(port)] : [nextCli, 'dev', '-p', String(port)];
   const nextDistDir = prod ? '.next-build' : `.next-desktop-${port}`;
-  const logStream = fs.createWriteStream(serverLog, { flags: 'a' });
+  const logStream = fs.createWriteStream(getServerLogPath(), { flags: 'a' });
   logStream.write(`\n[${new Date().toISOString()}] Starting node ${args.join(' ')}\n`);
 
   const child = spawn(process.execPath, args, {
@@ -130,6 +145,18 @@ async function createWindow() {
   const port = await findAvailablePort(basePort);
   const url = `http://127.0.0.1:${port}`;
   const preloadPath = path.join(__dirname, 'preload.js');
+  const iconPath = path.join(appRoot, 'assets', 'branding', 'open-reality-studio.ico');
+
+  appendLog(`Starting Next server at ${url}`);
+  await startNextServer(port);
+  await waitForServer(url);
+
+  if (isSmokeTest) {
+    appendLog(`Desktop smoke test ready at ${url}`);
+    shutdownServer();
+    await app.quit();
+    return;
+  }
 
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -138,6 +165,7 @@ async function createWindow() {
     minHeight: 720,
     center: true,
     title: 'Open Reality Studio',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     backgroundColor: '#18191B',
     autoHideMenuBar: true,
     frame: true,
@@ -156,9 +184,6 @@ async function createWindow() {
   });
 
   await mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(loadingHtml())}`);
-  appendLog(`Starting Next server at ${url}`);
-  await startNextServer(port);
-  await waitForServer(url);
   await mainWindow.loadURL(url);
 }
 
