@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuditPanel } from '@/components/AuditPanel';
+import { AutonomyDecisionPanel } from '@/components/AutonomyDecisionPanel';
 import { AssetImportWizard } from '@/components/AssetImportWizard';
 import { LabConfigurator } from '@/components/LabConfigurator';
 import type { UiLanguage } from '@/components/LabConfigurator';
@@ -15,6 +16,7 @@ import { AutonomyCore } from '@/lib/autonomy-core/AutonomyCore';
 import { localizeDeviceType, localizeDisplayName, t } from '@/lib/i18n';
 import { buildManifestFromProfile } from '@/lib/open-reality-runtime/deviceManifests';
 import { compileOpenRealityRuntime } from '@/lib/open-reality-runtime/runtimeKernel';
+import type { OpenRealityRuntimeResult } from '@/lib/open-reality-runtime/types';
 import { buildWorldModelFromProfile } from '@/lib/open-reality-runtime/worldModel';
 import { PlaybackEngine } from '@/lib/action-runtime/PlaybackEngine';
 import type { PlaybackEvent } from '@/lib/action-runtime/PlaybackEngine';
@@ -1093,6 +1095,8 @@ export default function Home() {
     kind: 'ready',
     message: defaultReadyMessage('zh')
   });
+  const [runtimeDecision, setRuntimeDecision] = useState<OpenRealityRuntimeResult | null>(null);
+  const [runtimeDecisionContext, setRuntimeDecisionContext] = useState<{ prompt: string; targetDeviceLabel: string; targetDeviceType: DeviceType } | null>(null);
   const [showFirstRunGuide, setShowFirstRunGuide] = useState(false);
   const playbackTimersRef = useRef<number[]>([]);
   const liveRunTokenRef = useRef(0);
@@ -1150,6 +1154,11 @@ export default function Home() {
     () => quickStartPaths.find((path) => path.deviceType === effectiveSelectedProfile.deviceMeta.device_type && path.prompt === prompt.trim()) ?? null,
     [effectiveSelectedProfile.deviceMeta.device_type, prompt, quickStartPaths]
   );
+
+  const clearRuntimeDecision = useCallback(() => {
+    setRuntimeDecision(null);
+    setRuntimeDecisionContext(null);
+  }, []);
 
   useEffect(() => {
     if (running || replayPlaying) return;
@@ -1492,6 +1501,7 @@ export default function Home() {
   const handleLanguageChange = useCallback((nextLanguage: UiLanguage) => {
     consoleLogSessionRef.current += 1;
     setLanguage(nextLanguage);
+    clearRuntimeDecision();
     setOperatorNotice(null);
     setCommandStatus((current) => ({
       ...current,
@@ -1514,7 +1524,7 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(nextLanguage));
-  }, [selectedProfile.deviceMeta.device_type, selectedScenario]);
+  }, [clearRuntimeDecision, selectedProfile.deviceMeta.device_type, selectedScenario]);
 
   const syncWorkspaceSelectionForType = useCallback((nextType: DeviceType, preferredProfileId?: string) => {
     const exactMatch = preferredProfileId
@@ -1530,6 +1540,7 @@ export default function Home() {
     consoleLogSessionRef.current += 1;
     const nextProfile = getFirstProfileForType(nextType);
     const nextScenario = getScenarioForProfile(nextProfile.id, 'safe');
+    clearRuntimeDecision();
     setOperatorNotice(null);
     syncWorkspaceSelectionForType(nextType, nextProfile.id);
     setDeviceType(nextType);
@@ -1548,12 +1559,13 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(language));
-  }, [language, syncWorkspaceSelectionForType]);
+  }, [clearRuntimeDecision, language, syncWorkspaceSelectionForType]);
 
   const handleProfileChange = useCallback((profileId: string) => {
     consoleLogSessionRef.current += 1;
     const nextProfile = deviceProfiles.find((profile) => profile.id === profileId) ?? deviceProfiles[0];
     const nextScenario = getScenarioForProfile(nextProfile.id, 'safe');
+    clearRuntimeDecision();
     setOperatorNotice(null);
     syncWorkspaceSelectionForType(nextProfile.deviceMeta.device_type, nextProfile.id);
     setSelectedProfileId(nextProfile.id);
@@ -1572,11 +1584,12 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(language));
-  }, [language, syncWorkspaceSelectionForType]);
+  }, [clearRuntimeDecision, language, syncWorkspaceSelectionForType]);
 
   const handleScenarioChange = useCallback((nextScenarioId: string) => {
     consoleLogSessionRef.current += 1;
     const nextScenario = deviceScenarios.find((scenario) => scenario.id === nextScenarioId) ?? selectedScenario;
+    clearRuntimeDecision();
     setOperatorNotice(null);
     setScenarioId(nextScenario.id);
     setPrompt(
@@ -1592,12 +1605,13 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(language));
-  }, [language, selectedProfile.deviceMeta.device_type, selectedScenario]);
+  }, [clearRuntimeDecision, language, selectedProfile.deviceMeta.device_type, selectedScenario]);
 
   const handleQuickStart = useCallback((path: QuickStartPath) => {
     consoleLogSessionRef.current += 1;
     const nextProfile = getFirstProfileForType(path.deviceType);
     const nextScenario = getScenarioForProfile(nextProfile.id, 'safe');
+    clearRuntimeDecision();
     setOperatorNotice(null);
     window.localStorage.setItem(firstRunGuideStorageKey, '1');
     setShowFirstRunGuide(false);
@@ -1618,7 +1632,12 @@ export default function Home() {
     setLiveAdapterCommands([]);
     setReplayIndex(0);
     setConsoleLogs(startupLogs(language));
-  }, [language, syncWorkspaceSelectionForType]);
+  }, [clearRuntimeDecision, language, syncWorkspaceSelectionForType]);
+
+  const handlePromptChange = useCallback((nextPrompt: string) => {
+    clearRuntimeDecision();
+    setPrompt(nextPrompt);
+  }, [clearRuntimeDecision]);
 
   const runScenario = useCallback(async () => {
     if (liveRunActiveRef.current) {
@@ -1683,6 +1702,12 @@ export default function Home() {
     const runTargetLabel = targetWorkspaceAsset
       ? localizeDisplayName(language, targetWorkspaceAsset.manifest.display_name)
       : localizeDeviceType(language, runProfile.deviceMeta.device_type);
+    setRuntimeDecision(runtimeKernelResult);
+    setRuntimeDecisionContext({
+      prompt: runPrompt,
+      targetDeviceLabel: runTargetLabel,
+      targetDeviceType: runProfile.deviceMeta.device_type
+    });
     const baseRunLogs = startupLogs(language);
     setLabReport(null);
     setWorkspaceValidation(null);
@@ -2413,10 +2438,17 @@ export default function Home() {
             starterPrompts={currentRunStarterPrompts}
             quickStartPaths={quickStartPaths}
             activeQuickStart={activeQuickStart}
-            onPromptChange={setPrompt}
+            onPromptChange={handlePromptChange}
             onQuickStart={handleQuickStart}
             onRun={runScenario}
             onStop={stopRun}
+          />
+          <AutonomyDecisionPanel
+            language={language}
+            prompt={runtimeDecisionContext?.prompt ?? prompt.trim()}
+            targetDeviceLabel={runtimeDecisionContext?.targetDeviceLabel ?? currentRunTargetLabel}
+            targetDeviceType={runtimeDecisionContext?.targetDeviceType ?? effectiveSelectedProfile.deviceMeta.device_type}
+            decision={runtimeDecision}
           />
           <BottomConsole
             language={language}
