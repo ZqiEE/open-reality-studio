@@ -32,7 +32,9 @@ export function VirtualDeviceStage({
   workspaceDevices,
   selectedWorkspaceDeviceId,
   runTargetWorkspaceDeviceId,
+  expanded,
   running,
+  onExpandedChange,
   onDropDevice,
   onDropAsset,
   onSelectWorkspaceDevice,
@@ -47,7 +49,9 @@ export function VirtualDeviceStage({
   workspaceDevices: SemanticWorkspaceDevice[];
   selectedWorkspaceDeviceId: string | null;
   runTargetWorkspaceDeviceId?: string | null;
+  expanded?: boolean;
   running: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   onDropDevice: (deviceType: DeviceType) => void;
   onDropAsset?: (assetId: string) => void;
   onSelectWorkspaceDevice: (deviceId: string) => void;
@@ -133,7 +137,7 @@ export function VirtualDeviceStage({
           <span className="font-semibold text-[#E6EAF0]">{t(language, 'workspace_observe_here')}</span>
         </div>
         {!compactSingleDeviceView && (
-          <div className="pointer-events-none absolute right-3 top-3 min-w-[210px] max-w-[280px] rounded-[3px] border border-white/5 bg-black/32 px-2 py-1 text-[10px] leading-4 text-[#A7B0BA] backdrop-blur-md">
+          <div className="pointer-events-none absolute right-3 top-12 min-w-[210px] max-w-[280px] rounded-[3px] border border-white/5 bg-black/32 px-2 py-1 text-[10px] leading-4 text-[#A7B0BA] backdrop-blur-md">
             <div>
               <span className="font-semibold text-[#E6EAF0]">{t(language, 'active_workspace_device')}</span>: {displayName}
             </div>
@@ -146,6 +150,15 @@ export function VirtualDeviceStage({
             </div>
           </div>
         )}
+        <button
+          type="button"
+          onClick={() => onExpandedChange?.(!expanded)}
+          className="pointer-events-auto absolute right-3 top-3 rounded-[3px] border border-white/10 bg-black/45 px-2 py-1 text-[10px] font-semibold text-[#DDE6EF] backdrop-blur-md hover:bg-black/60"
+        >
+          {expanded
+            ? (language === 'zh' ? '还原工作区' : 'Restore workspace')
+            : (language === 'zh' ? '放大工作区' : 'Expand workspace')}
+        </button>
         <div className="pointer-events-none absolute bottom-3 left-3 max-w-[360px] rounded-[3px] border border-white/5 bg-black/35 px-2 py-1 font-mono text-[10px] leading-4 text-[#8A8F98] opacity-75 backdrop-blur-md">
           <span className="text-[#E6EAF0]">{t(language, 'device')}</span>: {displayName}
           <span className="mx-2 text-[#4B5563]">|</span>

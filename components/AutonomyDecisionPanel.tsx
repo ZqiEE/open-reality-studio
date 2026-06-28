@@ -159,8 +159,8 @@ export function AutonomyDecisionPanel({
   const t = text[language];
 
   return (
-    <section className="border-b border-border-panel bg-[#181A1D] px-3 py-2">
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <section className="flex-none border-b border-border-panel bg-[#181A1D] px-3 py-1.5">
+      <div className="mb-1.5 flex items-center justify-between gap-3">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t.title}</div>
           <div className="text-[10px] text-[#6B7280]">{t.latest}</div>
@@ -173,11 +173,11 @@ export function AutonomyDecisionPanel({
       </div>
 
       {!decision ? (
-        <div className="rounded-[3px] border border-dashed border-[#313338] bg-[#101114] px-3 py-3 text-[11px] leading-5 text-[#9AA3AF]">
+        <div className="rounded-[3px] border border-dashed border-[#313338] bg-[#101114] px-3 py-2 text-[11px] leading-5 text-[#9AA3AF]">
           {t.empty}
         </div>
       ) : (
-        <div className="rounded-[3px] border border-[#313338] bg-[#101114] px-3 py-2">
+        <div className="custom-scrollbar max-h-[118px] overflow-y-auto rounded-[3px] border border-[#313338] bg-[#101114] px-3 py-1.5">
           {kv(t.userPrompt, <span className="font-mono">{prompt || '-'}</span>)}
           {kv(t.targetDevice, (
             <div className="flex flex-wrap items-center gap-2">

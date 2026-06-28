@@ -1099,6 +1099,7 @@ export default function Home() {
   const [runtimeDecision, setRuntimeDecision] = useState<OpenRealityRuntimeResult | null>(null);
   const [runtimeDecisionContext, setRuntimeDecisionContext] = useState<{ prompt: string; targetDeviceLabel: string; targetDeviceType: DeviceType } | null>(null);
   const [showFirstRunGuide, setShowFirstRunGuide] = useState(false);
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
   const playbackTimersRef = useRef<number[]>([]);
   const liveRunTokenRef = useRef(0);
   const liveRunActiveRef = useRef(false);
@@ -1678,8 +1679,9 @@ export default function Home() {
       setSelectedWorkspaceDeviceId(autoDevice.id);
       showNotice('info', noticeMessage(language, `\u5de5\u4f5c\u533a\u4e3a\u7a7a\uff0c\u5df2\u81ea\u52a8\u6dfb\u52a0\uff1a${autoDevice.label}`, `Workspace was empty. Added: ${autoDevice.label}`));
     }
-    const targetWorkspaceDeviceId = autoDevice?.id ?? selectedWorkspaceDeviceId;
-    const targetWorkspaceAsset = autoDevice ? undefined : assetForId(availableAssets, selectedWorkspaceDevice?.assetId);
+    const targetWorkspaceDevice = autoDevice ?? selectedWorkspaceDevice;
+    const targetWorkspaceDeviceId = targetWorkspaceDevice?.id ?? selectedWorkspaceDeviceId;
+    const targetWorkspaceAsset = autoDevice ? undefined : assetForId(availableAssets, targetWorkspaceDevice?.assetId);
     const runProfile = autoDevice ? applyWorkspaceDeviceConfig(selectedProfile, autoDevice) : effectiveSelectedProfile;
     const assetScenario = targetWorkspaceAsset?.scenarios?.[selectedScenario.mode] as DeviceScenario | undefined;
     const runScenarioDefinition = assetScenario ?? (
@@ -1801,6 +1803,7 @@ export default function Home() {
       kind: 'running',
       message: `${t(language, 'command_running')} ${language === 'zh' ? `当前运行目标：${runTargetLabel}` : `Current run target: ${runTargetLabel}`}`
     });
+    setWorkspaceExpanded(true);
     setRunning(true);
     setReplayPlaying(true);
     try {
@@ -1822,7 +1825,7 @@ export default function Home() {
             profile: runProfile,
             autonomy_level: 'L3_supervised_agent',
             mode: 'simulation',
-            device_state: selectedWorkspaceDevice?.current_state
+            device_state: targetWorkspaceDevice?.current_state
           })
         : null;
       if (autonomyResult) {
@@ -1883,7 +1886,8 @@ export default function Home() {
         runScenarioDefinition,
         runPrompt,
         autonomyResult?.task_dsl ?? lowRiskTaskDsl ?? undefined,
-        runtimeKernelResult
+        runtimeKernelResult,
+        targetWorkspaceDevice?.current_state ?? null
       )) {
         if (liveRunTokenRef.current !== runToken) break;
 
@@ -1996,7 +2000,7 @@ export default function Home() {
         liveRunActiveRef.current = false;
       }
     }
-  }, [availableAssets, clearPlaybackTimers, effectiveSelectedProfile, language, prompt, replaySpeed, selectedProfile, selectedScenario, selectedWorkspaceDevice?.assetId, selectedWorkspaceDeviceId, showNotice, slowMode, workspaceDevices.length]);
+  }, [availableAssets, clearPlaybackTimers, effectiveSelectedProfile, language, prompt, replaySpeed, selectedProfile, selectedScenario, selectedWorkspaceDevice, selectedWorkspaceDeviceId, showNotice, slowMode, workspaceDevices.length]);
 
   const runFullValidation = useCallback(async () => {
     setValidationRunning(true);
@@ -2447,61 +2451,67 @@ export default function Home() {
             workspaceDevices={semanticWorkspaceDevices}
             selectedWorkspaceDeviceId={selectedWorkspaceDeviceId}
             runTargetWorkspaceDeviceId={currentRunTargetWorkspaceDeviceId}
+            expanded={workspaceExpanded}
             running={running}
+            onExpandedChange={setWorkspaceExpanded}
             onDropDevice={handleDropDevice}
             onDropAsset={handleAddAsset}
             onSelectWorkspaceDevice={handleWorkspaceSelect}
             onMoveWorkspaceDevice={(deviceId, position) => updateWorkspaceDevice(deviceId, { position })}
           />
-          <WorkspaceDeviceStrip
-            language={language}
-            devices={workspaceDevices}
-            selectedWorkspaceDeviceId={selectedWorkspaceDeviceId}
-            onSelectWorkspaceDevice={handleWorkspaceSelect}
-          />
-          <AICommandTerminal
-            language={language}
-            prompt={prompt}
-            running={running}
-            status={commandStatus}
-            runTargetLabel={currentRunTargetLabel}
-            runTargetRunnable={currentRunTargetRunnable}
-            runTargetDeviceType={effectiveSelectedProfile.deviceMeta.device_type}
-            starterPrompts={currentRunStarterPrompts}
-            quickStartPaths={quickStartPaths}
-            activeQuickStart={activeQuickStart}
-            onPromptChange={handlePromptChange}
-            onQuickStart={handleQuickStart}
-            onRun={runScenario}
-            onStop={stopRun}
-          />
-          <AutonomyDecisionPanel
-            language={language}
-            prompt={runtimeDecisionContext?.prompt ?? prompt.trim()}
-            targetDeviceLabel={runtimeDecisionContext?.targetDeviceLabel ?? currentRunTargetLabel}
-            targetDeviceType={runtimeDecisionContext?.targetDeviceType ?? effectiveSelectedProfile.deviceMeta.device_type}
-            decision={runtimeDecision}
-          />
-          <BottomConsole
-            language={language}
-            labReport={labReport}
-            selectedSnapshot={selectedSnapshot}
-            consoleLogs={consoleLogs}
-            liveAdapterCommands={liveAdapterCommands}
-            playbackEvents={playbackEvents}
-            replayIndex={replayIndex}
-            replayPlaying={replayPlaying}
-            replaySpeed={replaySpeed}
-            slowMode={slowMode}
-            replayTimeMs={replayTimeMs}
-            replayCommand={replayCommand}
-            onPlayPause={replayRun}
-            onStepPrev={() => seekReplay(replayIndex - 1)}
-            onStepNext={() => seekReplay(replayIndex + 1)}
-            onReplayStart={replayFromStart}
-            onSpeedChange={setReplaySpeed}
-            onSlowModeChange={setSlowMode}
-          />
+          {!workspaceExpanded && (
+            <>
+              <WorkspaceDeviceStrip
+                language={language}
+                devices={workspaceDevices}
+                selectedWorkspaceDeviceId={selectedWorkspaceDeviceId}
+                onSelectWorkspaceDevice={handleWorkspaceSelect}
+              />
+              <AICommandTerminal
+                language={language}
+                prompt={prompt}
+                running={running}
+                status={commandStatus}
+                runTargetLabel={currentRunTargetLabel}
+                runTargetRunnable={currentRunTargetRunnable}
+                runTargetDeviceType={effectiveSelectedProfile.deviceMeta.device_type}
+                starterPrompts={currentRunStarterPrompts}
+                quickStartPaths={quickStartPaths}
+                activeQuickStart={activeQuickStart}
+                onPromptChange={handlePromptChange}
+                onQuickStart={handleQuickStart}
+                onRun={runScenario}
+                onStop={stopRun}
+              />
+              <AutonomyDecisionPanel
+                language={language}
+                prompt={runtimeDecisionContext?.prompt ?? prompt.trim()}
+                targetDeviceLabel={runtimeDecisionContext?.targetDeviceLabel ?? currentRunTargetLabel}
+                targetDeviceType={runtimeDecisionContext?.targetDeviceType ?? effectiveSelectedProfile.deviceMeta.device_type}
+                decision={runtimeDecision}
+              />
+              <BottomConsole
+                language={language}
+                labReport={labReport}
+                selectedSnapshot={selectedSnapshot}
+                consoleLogs={consoleLogs}
+                liveAdapterCommands={liveAdapterCommands}
+                playbackEvents={playbackEvents}
+                replayIndex={replayIndex}
+                replayPlaying={replayPlaying}
+                replaySpeed={replaySpeed}
+                slowMode={slowMode}
+                replayTimeMs={replayTimeMs}
+                replayCommand={replayCommand}
+                onPlayPause={replayRun}
+                onStepPrev={() => seekReplay(replayIndex - 1)}
+                onStepNext={() => seekReplay(replayIndex + 1)}
+                onReplayStart={replayFromStart}
+                onSpeedChange={setReplaySpeed}
+                onSlowModeChange={setSlowMode}
+              />
+            </>
+          )}
         </div>
         <AuditPanel
           language={language}

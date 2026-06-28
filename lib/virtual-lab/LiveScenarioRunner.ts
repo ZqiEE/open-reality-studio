@@ -98,10 +98,12 @@ export class LiveScenarioRunner {
     scenario: DeviceScenario,
     promptOverride?: string,
     taskDslOverride?: TaskDSL,
-    runtimeResult?: OpenRealityRuntimeResult | null
+    runtimeResult?: OpenRealityRuntimeResult | null,
+    initialStateOverride?: Record<string, unknown> | null
   ): AsyncGenerator<LiveScenarioEvent> {
     const prompt = promptOverride?.trim() || scenario.prompt;
-    const instance = new VirtualDeviceInstance(`${profile.id}-${Date.now()}`, profile.deviceMeta, profile.geometry, scenario.initial_state);
+    const initialState = initialStateOverride ?? scenario.initial_state;
+    const instance = new VirtualDeviceInstance(`${profile.id}-${Date.now()}`, profile.deviceMeta, profile.geometry, initialState);
     const deviceStateBefore = instance.getState();
     const actionRuntime = new DeviceActionRuntime();
     const taskDsl = taskDslOverride ?? compilePromptToTaskDSL(prompt, profile.deviceMeta.device_type);
