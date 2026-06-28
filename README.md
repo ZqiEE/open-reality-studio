@@ -211,6 +211,7 @@ Future real-device work must remain behind:
 - [docs/EVALUATION_GUIDE.md](./docs/EVALUATION_GUIDE.md)
 - [docs/WINDOWS_TRIAL_GUIDE.md](./docs/WINDOWS_TRIAL_GUIDE.md)
 - [docs/DEVICE_SUPPORT.md](./docs/DEVICE_SUPPORT.md)
+- [docs/DEVICE_ONBOARDING.md](./docs/DEVICE_ONBOARDING.md)
 - [docs/OPEN_REALITY_PROTOCOL.md](./docs/OPEN_REALITY_PROTOCOL.md)
 - [docs/PROTOCOL.md](./docs/PROTOCOL.md)
 - [docs/ROADMAP.md](./docs/ROADMAP.md)
