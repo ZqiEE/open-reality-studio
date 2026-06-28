@@ -214,6 +214,8 @@ Future real-device work must remain behind:
 - [docs/DEVICE_ONBOARDING.md](./docs/DEVICE_ONBOARDING.md)
 - [docs/OPEN_REALITY_PROTOCOL.md](./docs/OPEN_REALITY_PROTOCOL.md)
 - [docs/PROTOCOL.md](./docs/PROTOCOL.md)
+- [docs/COMMERCIAL_POSITIONING.md](./docs/COMMERCIAL_POSITIONING.md)
+- [docs/CUSTOMER_VALIDATION.md](./docs/CUSTOMER_VALIDATION.md)
 - [docs/ROADMAP.md](./docs/ROADMAP.md)
 - [docs/DEMO_SCRIPT.md](./docs/DEMO_SCRIPT.md)
 - [docs/VIRTUAL_LAB.md](./docs/VIRTUAL_LAB.md)
