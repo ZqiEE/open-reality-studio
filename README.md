@@ -218,6 +218,7 @@ Future real-device work must remain behind:
 - [docs/CUSTOMER_VALIDATION.md](./docs/CUSTOMER_VALIDATION.md)
 - [docs/RELEASE_NOTES_V0.2_ALPHA.md](./docs/RELEASE_NOTES_V0.2_ALPHA.md)
 - [docs/RELEASE_READINESS_V0.2_ALPHA.md](./docs/RELEASE_READINESS_V0.2_ALPHA.md)
+- [docs/FIRST_LOW_RISK_REAL_DEVICE_PLAN.md](./docs/FIRST_LOW_RISK_REAL_DEVICE_PLAN.md)
 - [docs/ROADMAP.md](./docs/ROADMAP.md)
 - [docs/DEMO_SCRIPT.md](./docs/DEMO_SCRIPT.md)
 - [docs/VIRTUAL_LAB.md](./docs/VIRTUAL_LAB.md)
