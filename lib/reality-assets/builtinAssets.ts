@@ -29,49 +29,54 @@ const validationRules: RealityAssetValidationRules = {
 
 function adapterBoundary(deviceType: RuntimeDeviceType): RealityAssetAdapterBoundary {
   const manifest = getOpenRealityDeviceManifest(deviceType);
+  const simulationRunnable = manifest.supportLevel === 'simulation_only';
   const readOnly = manifest.supportLevel === 'read_only';
-  const runnable = manifest.supportLevel === 'simulation_only' || readOnly;
   return {
-    simulationAdapterAvailable: runnable,
+    simulationAdapterAvailable: simulationRunnable,
+    readOnlyAdapterAvailable: readOnly,
     realAdapterEnabled: false,
-    modes: runnable ? [readOnly ? 'read_only' : 'simulation', 'real_disabled'] : ['real_disabled'],
+    adapterMode: readOnly ? 'read_only' : simulationRunnable ? 'simulation_only' : 'real_disabled',
     taskDslIsHardwareCommand: false,
-    adapterNote: runnable
-      ? 'TaskDSL may enter the local simulation adapter boundary only. It is not a hardware command.'
-      : 'This asset is inspectable but not runnable in the Public Alpha runtime.'
+    notes: [
+      simulationRunnable || readOnly
+        ? 'TaskDSL may enter the local simulation/read-only adapter boundary only.'
+        : 'This asset is inspectable but not runnable in the Public Alpha runtime.',
+      'TaskDSL is not a hardware command.',
+      'Real device adapters are a future boundary and remain disabled.'
+    ]
   };
 }
 
 function prompts(deviceType: RuntimeDeviceType): RealityAssetExamplePrompts {
   if (deviceType === 'robot_arm') {
     return {
-      supported: ['Move the red cube to the back safe zone.', '把红方块放到后侧安全区。'],
-      unsupported: ['Assemble the gearbox.', '把零件压装到轴承里。'],
-      unsafe: ['Throw the red cube off the table.', '把红方块扔出桌面。'],
-      ambiguous: ['Move the cube to the safe zone.', '把方块放到安全区。']
+      supported: ['Move the red cube to the back safe zone.', 'Move the red cube to the left safe zone.'],
+      unsupported: ['Assemble the gearbox.'],
+      unsafe: ['Throw the red cube off the table.'],
+      ambiguous: ['Move the cube to the safe zone.']
     };
   }
   if (deviceType === 'smart_light') {
     return {
-      supported: ['Turn on the light.', 'Set the light to blue.', '打开智能灯。', '把灯改成蓝色。'],
-      unsupported: ['Make the light purple.', '让灯进入派对模式。'],
-      unsafe: ['Flash the light at unsafe speed.', '高频闪烁智能灯。'],
-      ambiguous: ['Adjust the light.', '调一下灯。']
+      supported: ['Turn on the light.', 'Set the light to blue.'],
+      unsupported: ['Make the light purple.'],
+      unsafe: ['Flash the light at unsafe speed.'],
+      ambiguous: ['Adjust the light.']
     };
   }
   if (deviceType === 'camera_sensor') {
     return {
-      supported: ['Take a photo.', 'Read camera status.', '拍一张照片。', '读取摄像头状态。'],
-      unsupported: ['Track every person in the room.', '识别所有人的身份。'],
-      unsafe: ['Capture the privacy zone.', '采集隐私区画面。'],
-      ambiguous: ['Check the camera.', '看一下摄像头。']
+      supported: ['Take a photo.', 'Read camera status.'],
+      unsupported: ['Track every person in the room.'],
+      unsafe: ['Capture the privacy zone.'],
+      ambiguous: ['Check the camera.']
     };
   }
   return {
-    supported: [],
-    unsupported: ['Run this device now.', '立即运行这个设备。'],
-    unsafe: ['Bypass safety and execute.', '绕过安全机制执行。'],
-    ambiguous: ['Do the normal task.', '执行常规任务。']
+    supported: ['Inspect this device asset.'],
+    unsupported: ['Run this device now.'],
+    unsafe: ['Bypass safety and execute.'],
+    ambiguous: ['Do the normal task.']
   };
 }
 
@@ -98,6 +103,7 @@ function asset(deviceType: RuntimeDeviceType, name: string): RealityAssetPackage
     name,
     version: '0.2.0-sprint.1',
     vendor: 'open-reality',
+    description: `${name} packaged as a local Reality Asset for simulation-first runtime inspection.`,
     deviceType,
     deviceManifest: manifest,
     capabilityContracts: manifest.capabilities,
@@ -116,7 +122,8 @@ function asset(deviceType: RuntimeDeviceType, name: string): RealityAssetPackage
       manifest.supportLevel === 'coming_soon'
         ? 'This device is protocol-shaped but not runnable.'
         : 'This device can enter only the local simulation/read-only runtime boundary.'
-    ]
+    ],
+    tags: ['builtin', manifest.supportLevel, manifest.category]
   };
 }
 
@@ -128,5 +135,7 @@ export const BUILTIN_REALITY_ASSETS: RealityAssetPackage[] = [
   asset('conveyor_belt', 'Conveyor Belt Reality Asset'),
   asset('plc_cabinet', 'PLC Cabinet Reality Asset'),
   asset('lab_instrument', 'Lab Instrument Reality Asset'),
-  asset('drone_unit', 'Drone Unit Reality Asset')
+  asset('drone_unit', 'Drone Unit Reality Asset'),
+  asset('warehouse_rack', 'Warehouse Rack Reality Asset'),
+  asset('sensor_box', 'Sensor Box Reality Asset')
 ];

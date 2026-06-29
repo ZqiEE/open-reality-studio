@@ -7,14 +7,15 @@ import type {
 } from '../open-reality-runtime/types';
 
 export type RealityAssetSupportLevel = SupportLevel;
-export type RealityAssetAdapterMode = 'simulation' | 'read_only' | 'real_disabled';
+export type RealityAssetAdapterMode = 'simulation_only' | 'read_only' | 'real_disabled';
 
 export interface RealityAssetAdapterBoundary {
   simulationAdapterAvailable: boolean;
-  realAdapterEnabled: false;
-  modes: RealityAssetAdapterMode[];
+  readOnlyAdapterAvailable: boolean;
+  realAdapterEnabled: boolean;
+  adapterMode: RealityAssetAdapterMode;
   taskDslIsHardwareCommand: false;
-  adapterNote: string;
+  notes: string[];
 }
 
 export interface RealityAssetExamplePrompts {
@@ -39,7 +40,8 @@ export interface RealityAssetPackage {
   name: string;
   version: string;
   vendor: string;
-  deviceType: RuntimeDeviceType;
+  description: string;
+  deviceType: RuntimeDeviceType | string;
   deviceManifest: DeviceManifest;
   capabilityContracts: CapabilityContract[];
   worldModelAssumptions: Pick<WorldModel, 'objects' | 'zones' | 'confidence'>;
@@ -48,6 +50,7 @@ export interface RealityAssetPackage {
   validationRules: RealityAssetValidationRules;
   supportLevel: RealityAssetSupportLevel;
   safetyNotes: string[];
+  tags: string[];
 }
 
 export interface RealityAssetValidationResult {

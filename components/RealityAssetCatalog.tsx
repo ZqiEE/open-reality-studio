@@ -1,7 +1,7 @@
 'use client';
 
 import type { Locale } from '@/lib/i18n';
-import type { RealityAssetPackage } from '@/lib/reality-assets';
+import { validateRealityAssetPackage, type RealityAssetPackage } from '@/lib/reality-assets';
 
 const copy = {
   en: {
@@ -11,18 +11,24 @@ const copy = {
     adapter: 'adapter',
     safety: 'safety',
     prompt: 'example',
+    validation: 'validation',
     realDisabled: 'real disabled',
-    noHardware: 'no hardware execution'
+    noHardware: 'no hardware execution',
+    valid: 'valid',
+    invalid: 'invalid'
   },
   zh: {
-    title: '现实资产目录',
-    subtitle: '设备生态包',
-    capabilities: '能力',
-    adapter: '适配器',
-    safety: '安全',
-    prompt: '示例',
-    realDisabled: '真实设备关闭',
-    noHardware: '不执行真实硬件'
+    title: 'Reality Asset Catalog',
+    subtitle: 'Device ecosystem packages',
+    capabilities: 'capabilities',
+    adapter: 'adapter',
+    safety: 'safety',
+    prompt: 'example',
+    validation: 'validation',
+    realDisabled: 'real disabled',
+    noHardware: 'no hardware execution',
+    valid: 'valid',
+    invalid: 'invalid'
   }
 };
 
@@ -33,26 +39,17 @@ const supportClassName: Record<RealityAssetPackage['supportLevel'], string> = {
   unsupported: 'border-[#4C1D1D] bg-[#25191B] text-[#FCA5A5]'
 };
 
-function supportLabel(locale: Locale, supportLevel: RealityAssetPackage['supportLevel']) {
-  if (locale === 'zh') {
-    if (supportLevel === 'simulation_only') return '仿真可运行';
-    if (supportLevel === 'read_only') return '只读';
-    if (supportLevel === 'coming_soon') return '暂未开放';
-    return '不支持';
-  }
+function supportLabel(supportLevel: RealityAssetPackage['supportLevel']) {
   if (supportLevel === 'simulation_only') return 'Simulation';
   if (supportLevel === 'read_only') return 'Read Only';
   if (supportLevel === 'coming_soon') return 'Coming Soon';
   return 'Unsupported';
 }
 
-function adapterMode(asset: RealityAssetPackage, locale: Locale) {
-  if (!asset.adapterBoundary.simulationAdapterAvailable) {
-    return locale === 'zh' ? '仅可检查' : 'inspect only';
-  }
-  return asset.supportLevel === 'read_only'
-    ? locale === 'zh' ? '只读仿真' : 'read-only simulation'
-    : locale === 'zh' ? '本地仿真' : 'local simulation';
+function adapterMode(asset: RealityAssetPackage) {
+  if (asset.adapterBoundary.adapterMode === 'read_only') return 'read-only';
+  if (asset.adapterBoundary.adapterMode === 'simulation_only') return 'simulation';
+  return 'inspect only';
 }
 
 export function RealityAssetCatalog({
@@ -80,6 +77,7 @@ export function RealityAssetCatalog({
         {assets.map((asset) => {
           const selected = asset.assetId === selectedAssetId;
           const prompt = asset.examplePrompts.supported[0] ?? asset.examplePrompts.unsupported[0] ?? '';
+          const validation = validateRealityAssetPackage(asset);
           return (
             <article
               key={asset.assetId}
@@ -91,16 +89,20 @@ export function RealityAssetCatalog({
                   <div className="mt-0.5 font-mono text-[10px] text-text-muted">{asset.deviceType}</div>
                 </div>
                 <span className={`shrink-0 rounded-[3px] border px-1.5 py-0.5 text-[9px] font-semibold ${supportClassName[asset.supportLevel]}`}>
-                  {supportLabel(language, asset.supportLevel)}
+                  {supportLabel(asset.supportLevel)}
                 </span>
               </div>
               <div className="mt-2 grid grid-cols-[72px_1fr] gap-x-2 gap-y-1 text-[10px]">
                 <span className="uppercase tracking-wide text-text-muted">{text.capabilities}</span>
                 <span className="font-mono text-text-primary">{asset.capabilityContracts.length}</span>
                 <span className="uppercase tracking-wide text-text-muted">{text.adapter}</span>
-                <span className="truncate font-mono text-text-primary">{adapterMode(asset, language)}</span>
+                <span className="truncate font-mono text-text-primary">{adapterMode(asset)}</span>
                 <span className="uppercase tracking-wide text-text-muted">{text.safety}</span>
                 <span className="truncate font-mono text-text-primary">{text.noHardware}</span>
+                <span className="uppercase tracking-wide text-text-muted">{text.validation}</span>
+                <span className={validation.valid ? 'font-mono text-[#34D399]' : 'font-mono text-[#FCA5A5]'}>
+                  {validation.valid ? text.valid : text.invalid}
+                </span>
                 <span className="uppercase tracking-wide text-text-muted">{text.prompt}</span>
                 <span className="truncate font-mono text-text-secondary" title={prompt}>{prompt || '-'}</span>
               </div>
