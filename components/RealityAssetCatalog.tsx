@@ -1,7 +1,15 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import type { Locale } from '@/lib/i18n';
-import { validateRealityAssetPackage, type RealityAssetPackage } from '@/lib/reality-assets';
+import {
+  getAllRealityAssets,
+  getImportedRealityAssets,
+  parseRealityAssetJson,
+  validateRealityAssetPackage,
+  type AssetImportResult,
+  type RealityAssetPackage
+} from '@/lib/reality-assets';
 
 const copy = {
   en: {
@@ -12,6 +20,9 @@ const copy = {
     safety: 'safety',
     prompt: 'example',
     validation: 'validation',
+    source: 'source',
+    importJson: 'Import JSON',
+    pasteJson: 'Paste Reality Asset JSON here',
     realDisabled: 'real disabled',
     noHardware: 'no hardware execution',
     valid: 'valid',
@@ -25,6 +36,9 @@ const copy = {
     safety: 'safety',
     prompt: 'example',
     validation: 'validation',
+    source: 'source',
+    importJson: 'Import JSON',
+    pasteJson: 'Paste Reality Asset JSON here',
     realDisabled: 'real disabled',
     noHardware: 'no hardware execution',
     valid: 'valid',
@@ -62,6 +76,27 @@ export function RealityAssetCatalog({
   selectedAssetId?: string | null;
 }) {
   const text = copy[language];
+  const [draft, setDraft] = useState('');
+  const [importResult, setImportResult] = useState<AssetImportResult | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const catalogAssets = useMemo(() => {
+    void refreshToken;
+    return getAllRealityAssets();
+  }, [assets, refreshToken]);
+  const importedIds = useMemo(() => {
+    void refreshToken;
+    return new Set(getImportedRealityAssets().map((asset) => asset.assetId));
+  }, [refreshToken]);
+
+  function importDraft() {
+    const result = parseRealityAssetJson(draft);
+    setImportResult(result);
+    if (result.status === 'imported') {
+      setDraft('');
+      setRefreshToken((value) => value + 1);
+    }
+  }
+
   return (
     <section className="border-t border-border-panel bg-[#17191D]">
       <div className="flex h-8 items-center justify-between border-b border-border-panel px-3">
@@ -73,11 +108,34 @@ export function RealityAssetCatalog({
           {text.realDisabled}
         </span>
       </div>
+      <div className="grid grid-cols-[1fr_auto] gap-2 border-b border-border-panel px-3 py-2">
+        <textarea
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder={text.pasteJson}
+          className="h-12 resize-none border border-border-panel bg-[#111214] px-2 py-1 font-mono text-[10px] text-text-primary outline-none focus:border-[#0284C7]"
+        />
+        <button
+          type="button"
+          onClick={importDraft}
+          disabled={!draft.trim()}
+          className="h-12 rounded-[3px] border border-[#075985] bg-[#0B2233] px-3 text-[11px] font-semibold text-[#38BDF8] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {text.importJson}
+        </button>
+        {importResult && (
+          <div className={`col-span-2 border px-2 py-1 text-[10px] ${importResult.status === 'imported' ? 'border-[#064E3B] bg-[#10251D] text-[#34D399]' : 'border-[#7F1D1D] bg-[#2B1116] text-[#FCA5A5]'}`}>
+            {importResult.status.toUpperCase()}: {importResult.userFacingMessage}
+            {importResult.errors.length > 0 && <span className="ml-2 font-mono">{importResult.errors[0]}</span>}
+          </div>
+        )}
+      </div>
       <div className="custom-scrollbar flex max-h-[132px] gap-2 overflow-x-auto px-3 py-2">
-        {assets.map((asset) => {
+        {catalogAssets.map((asset) => {
           const selected = asset.assetId === selectedAssetId;
           const prompt = asset.examplePrompts.supported[0] ?? asset.examplePrompts.unsupported[0] ?? '';
           const validation = validateRealityAssetPackage(asset);
+          const source = importedIds.has(asset.assetId) ? 'imported' : 'builtin';
           return (
             <article
               key={asset.assetId}
@@ -103,6 +161,8 @@ export function RealityAssetCatalog({
                 <span className={validation.valid ? 'font-mono text-[#34D399]' : 'font-mono text-[#FCA5A5]'}>
                   {validation.valid ? text.valid : text.invalid}
                 </span>
+                <span className="uppercase tracking-wide text-text-muted">{text.source}</span>
+                <span className="font-mono text-text-primary">{source}</span>
                 <span className="uppercase tracking-wide text-text-muted">{text.prompt}</span>
                 <span className="truncate font-mono text-text-secondary" title={prompt}>{prompt || '-'}</span>
               </div>

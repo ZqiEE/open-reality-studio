@@ -66,6 +66,8 @@ Devices are represented as inspectable Reality Asset Packages:
 
 Current built-in assets are simulation-only, read-only, or Coming Soon. Real device execution remains disabled.
 
+Local third-party Reality Asset JSON files can be validated and imported into the in-memory catalog, but they still cannot enable real device execution.
+
 Robot Arm demo video: https://github.com/ZqiEE/open-reality-studio/releases/download/v0.1-public-alpha/open-reality-robotarm-demo-release-cut-web.mp4
 
 ## What This Alpha Does

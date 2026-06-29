@@ -1,0 +1,320 @@
+﻿{
+    "assetId":  "unsafe_real_adapter",
+    "name":  "Unsafe Real Adapter Asset",
+    "version":  "0.1.0",
+    "vendor":  "fictional-third-party",
+    "description":  "A fictional third-party desktop fan asset package used to validate external Reality Asset onboarding.",
+    "deviceType":  "desktop_fan",
+    "deviceManifest":  {
+                           "deviceId":  "unsafe_real_adapter_device",
+                           "displayName":  "Unsafe Real Adapter",
+                           "category":  "actuator",
+                           "supportLevel":  "simulation_only",
+                           "capabilities":  [
+                                                {
+                                                    "id":  "turn_on",
+                                                    "name":  "turn_on",
+                                                    "category":  "actuation",
+                                                    "description":  "Turn the fan on.",
+                                                    "requiredInputs":  [
+
+                                                                       ],
+                                                    "optionalInputs":  [
+
+                                                                       ],
+                                                    "outputs":  [
+
+                                                                ],
+                                                    "preconditions":  [
+
+                                                                      ],
+                                                    "effects":  [
+
+                                                                ],
+                                                    "riskLevel":  "low",
+                                                    "executionPermission":  "simulation_only",
+                                                    "requiresWorldState":  true,
+                                                    "requiresSimulation":  true,
+                                                    "requiresHumanApproval":  false
+                                                },
+                                                {
+                                                    "id":  "turn_off",
+                                                    "name":  "turn_off",
+                                                    "category":  "actuation",
+                                                    "description":  "Turn the fan off.",
+                                                    "requiredInputs":  [
+
+                                                                       ],
+                                                    "optionalInputs":  [
+
+                                                                       ],
+                                                    "outputs":  [
+
+                                                                ],
+                                                    "preconditions":  [
+
+                                                                      ],
+                                                    "effects":  [
+
+                                                                ],
+                                                    "riskLevel":  "low",
+                                                    "executionPermission":  "simulation_only",
+                                                    "requiresWorldState":  true,
+                                                    "requiresSimulation":  true,
+                                                    "requiresHumanApproval":  false
+                                                },
+                                                {
+                                                    "id":  "set_speed",
+                                                    "name":  "set_speed",
+                                                    "category":  "actuation",
+                                                    "description":  "Set fan speed.",
+                                                    "requiredInputs":  [
+
+                                                                       ],
+                                                    "optionalInputs":  [
+                                                                           "speed"
+                                                                       ],
+                                                    "outputs":  [
+
+                                                                ],
+                                                    "preconditions":  [
+
+                                                                      ],
+                                                    "effects":  [
+
+                                                                ],
+                                                    "riskLevel":  "medium",
+                                                    "executionPermission":  "simulation_only",
+                                                    "requiresWorldState":  true,
+                                                    "requiresSimulation":  true,
+                                                    "requiresHumanApproval":  false
+                                                },
+                                                {
+                                                    "id":  "read_sensor",
+                                                    "name":  "read_sensor",
+                                                    "category":  "observation",
+                                                    "description":  "Read simulated fan state.",
+                                                    "requiredInputs":  [
+
+                                                                       ],
+                                                    "optionalInputs":  [
+
+                                                                       ],
+                                                    "outputs":  [
+                                                                    "state"
+                                                                ],
+                                                    "preconditions":  [
+
+                                                                      ],
+                                                    "effects":  [
+
+                                                                ],
+                                                    "riskLevel":  "low",
+                                                    "executionPermission":  "read_only",
+                                                    "requiresWorldState":  true,
+                                                    "requiresSimulation":  false,
+                                                    "requiresHumanApproval":  false
+                                                }
+                                            ],
+                           "workspace":  {
+                                             "allowedZones":  [
+                                                                  "current_area"
+                                                              ],
+                                             "forbiddenZones":  [
+                                                                    "restricted_zone"
+                                                                ]
+                                         },
+                           "constraints":  {
+                                               "maxSpeed":  "slow",
+                                               "maxForce":  "low",
+                                               "precisionLevel":  "low",
+                                               "requiresCollisionCheck":  false,
+                                               "requiresSimulation":  true,
+                                               "requiresHumanApproval":  false
+                                           },
+                           "riskProfile":  {
+                                               "baseRisk":  "low",
+                                               "hazardousCapabilities":  [
+                                                                             "emergency_stop"
+                                                                         ],
+                                               "blockedGoals":  [
+                                                                    "unsafe_speed",
+                                                                    "move_outside_workspace"
+                                                                ]
+                                           },
+                           "adapter":  {
+                                           "simulationAdapter":  "virtual_desktop_fan.simulation",
+                                           "realAdapterEnabled":  true
+                                       }
+                       },
+    "capabilityContracts":  [
+                                {
+                                    "id":  "turn_on",
+                                    "name":  "turn_on",
+                                    "category":  "actuation",
+                                    "description":  "Turn the fan on.",
+                                    "requiredInputs":  [
+
+                                                       ],
+                                    "optionalInputs":  [
+
+                                                       ],
+                                    "outputs":  [
+
+                                                ],
+                                    "preconditions":  [
+
+                                                      ],
+                                    "effects":  [
+
+                                                ],
+                                    "riskLevel":  "low",
+                                    "executionPermission":  "simulation_only",
+                                    "requiresWorldState":  true,
+                                    "requiresSimulation":  true,
+                                    "requiresHumanApproval":  false
+                                },
+                                {
+                                    "id":  "turn_off",
+                                    "name":  "turn_off",
+                                    "category":  "actuation",
+                                    "description":  "Turn the fan off.",
+                                    "requiredInputs":  [
+
+                                                       ],
+                                    "optionalInputs":  [
+
+                                                       ],
+                                    "outputs":  [
+
+                                                ],
+                                    "preconditions":  [
+
+                                                      ],
+                                    "effects":  [
+
+                                                ],
+                                    "riskLevel":  "low",
+                                    "executionPermission":  "simulation_only",
+                                    "requiresWorldState":  true,
+                                    "requiresSimulation":  true,
+                                    "requiresHumanApproval":  false
+                                },
+                                {
+                                    "id":  "set_speed",
+                                    "name":  "set_speed",
+                                    "category":  "actuation",
+                                    "description":  "Set fan speed.",
+                                    "requiredInputs":  [
+
+                                                       ],
+                                    "optionalInputs":  [
+                                                           "speed"
+                                                       ],
+                                    "outputs":  [
+
+                                                ],
+                                    "preconditions":  [
+
+                                                      ],
+                                    "effects":  [
+
+                                                ],
+                                    "riskLevel":  "medium",
+                                    "executionPermission":  "simulation_only",
+                                    "requiresWorldState":  true,
+                                    "requiresSimulation":  true,
+                                    "requiresHumanApproval":  false
+                                },
+                                {
+                                    "id":  "read_sensor",
+                                    "name":  "read_sensor",
+                                    "category":  "observation",
+                                    "description":  "Read simulated fan state.",
+                                    "requiredInputs":  [
+
+                                                       ],
+                                    "optionalInputs":  [
+
+                                                       ],
+                                    "outputs":  [
+                                                    "state"
+                                                ],
+                                    "preconditions":  [
+
+                                                      ],
+                                    "effects":  [
+
+                                                ],
+                                    "riskLevel":  "low",
+                                    "executionPermission":  "read_only",
+                                    "requiresWorldState":  true,
+                                    "requiresSimulation":  false,
+                                    "requiresHumanApproval":  false
+                                }
+                            ],
+    "worldModelAssumptions":  {
+                                  "objects":  [
+                                                  {
+                                                      "id":  "desktop_fan",
+                                                      "type":  "desktop_fan",
+                                                      "zone":  "current_area",
+                                                      "movable":  false
+                                                  }
+                                              ],
+                                  "zones":  [
+                                                {
+                                                    "id":  "current_area",
+                                                    "label":  "Current Area",
+                                                    "safe":  true
+                                                }
+                                            ],
+                                  "confidence":  "medium"
+                              },
+    "adapterBoundary":  {
+                            "simulationAdapterAvailable":  true,
+                            "readOnlyAdapterAvailable":  false,
+                            "realAdapterEnabled":  true,
+                            "adapterMode":  "simulation_only",
+                            "taskDslIsHardwareCommand":  false,
+                            "notes":  [
+                                          "Intentional unsafe fixture.",
+                                          "realAdapterEnabled true must be rejected."
+                                      ]
+                        },
+    "examplePrompts":  {
+                           "supported":  [
+                                             "turn on the fan",
+                                             "set fan speed to low"
+                                         ],
+                           "unsupported":  [
+                                               "make the fan fly"
+                                           ],
+                           "unsafe":  [
+                                          "spin the fan at unsafe speed"
+                                      ],
+                           "ambiguous":  [
+                                             "start"
+                                         ]
+                       },
+    "validationRules":  {
+                            "requiresDeviceManifest":  true,
+                            "requiresCapabilityContracts":  true,
+                            "requiresSupportLevel":  true,
+                            "realAdapterMustBeDisabled":  true,
+                            "comingSoonMustNotBeRunnable":  true,
+                            "unsupportedMustNotFallback":  true,
+                            "requiresExamplePrompt":  true
+                        },
+    "supportLevel":  "simulation_only",
+    "safetyNotes":  [
+                        "Intentional unsafe fixture.",
+                        "Must never be imported."
+                    ],
+    "tags":  [
+                 "example",
+                 "third-party",
+                 "simulation_only",
+                 "actuator"
+             ]
+}
