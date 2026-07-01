@@ -1066,7 +1066,7 @@ function FirstRunGuide({
 
 export default function Home() {
   const workspaceFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [language, setLanguage] = useState<UiLanguage>('zh');
+  const [language, setLanguage] = useState<UiLanguage>('en');
   const [deviceType, setDeviceType] = useState<DeviceType>('robot_arm');
   const profilesForType = useMemo(
     () => deviceProfiles.filter((profile) => profile.deviceMeta.device_type === deviceType),
