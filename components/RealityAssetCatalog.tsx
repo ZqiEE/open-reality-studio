@@ -26,23 +26,27 @@ const copy = {
     realDisabled: 'real disabled',
     noHardware: 'no hardware execution',
     valid: 'valid',
-    invalid: 'invalid'
+    invalid: 'invalid',
+    showAssets: 'Assets',
+    hideAssets: 'Hide'
   },
   zh: {
-    title: 'Reality Asset Catalog',
-    subtitle: 'Device ecosystem packages',
-    capabilities: 'capabilities',
-    adapter: 'adapter',
-    safety: 'safety',
-    prompt: 'example',
-    validation: 'validation',
-    source: 'source',
-    importJson: 'Import JSON',
-    pasteJson: 'Paste Reality Asset JSON here',
-    realDisabled: 'real disabled',
-    noHardware: 'no hardware execution',
-    valid: 'valid',
-    invalid: 'invalid'
+    title: '现实资产目录',
+    subtitle: '设备生态资产包',
+    capabilities: '能力',
+    adapter: '适配器',
+    safety: '安全',
+    prompt: '示例',
+    validation: '验证',
+    source: '来源',
+    importJson: '导入 JSON',
+    pasteJson: '在这里粘贴 Reality Asset JSON',
+    realDisabled: '真实设备未启用',
+    noHardware: '不执行真实硬件',
+    valid: '有效',
+    invalid: '无效',
+    showAssets: '资产',
+    hideAssets: '收起'
   }
 };
 
@@ -79,6 +83,7 @@ export function RealityAssetCatalog({
   const [draft, setDraft] = useState('');
   const [importResult, setImportResult] = useState<AssetImportResult | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const catalogAssets = useMemo(() => {
     void refreshToken;
     return getAllRealityAssets();
@@ -98,16 +103,27 @@ export function RealityAssetCatalog({
   }
 
   return (
-    <section className="border-t border-border-panel bg-[#17191D]">
+    <section className="border-t border-border-panel bg-[#12151E]">
       <div className="flex h-8 items-center justify-between border-b border-border-panel px-3">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-wide text-text-muted-strong">{text.title}</div>
           <div className="text-[10px] text-text-muted">{text.subtitle}</div>
         </div>
-        <span className="rounded-[3px] border border-[#3F3F46] px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-text-muted">
-          {text.realDisabled}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-[3px] border border-[#3F3F46] px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-text-muted">
+            {text.realDisabled}
+          </span>
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className="h-5 border border-border-panel bg-[#181B26] px-2 text-[10px] font-semibold text-text-secondary hover:bg-[#232736]"
+          >
+            {expanded ? text.hideAssets : text.showAssets}
+          </button>
+        </div>
       </div>
+      {expanded && (
+      <>
       <div className="grid grid-cols-[1fr_auto] gap-2 border-b border-border-panel px-3 py-2">
         <textarea
           value={draft}
@@ -170,6 +186,8 @@ export function RealityAssetCatalog({
           );
         })}
       </div>
+      </>
+      )}
     </section>
   );
 }

@@ -4,29 +4,29 @@
 
 @layer base {
   :root {
-    --color-background: #15171A;
-    --color-panel: #1E1F22;
-    --color-panel-border: #2A2D33;
-    --color-text-main: #E6EAF0;
-    --color-text-muted: #9AA3AF;
+    --color-background: #0F111A;
+    --color-panel: #181B26;
+    --color-panel-border: #2A2E3D;
+    --color-text-main: #E2E8F0;
+    --color-text-muted: #64748B;
     --color-console-blue: #0284C7;
     --color-pass-green: #10B981;
     --color-blocked-red: #E11D48;
     --color-code-dark: #111827;
     --color-code-light: #2B2D31;
-    --color-bg-app: #15171A;
-    --color-bg-panel: #1E1F22;
-    --color-bg-workspace: #232529;
-    --color-border-panel: #2A2D33;
-    --color-text-primary: #E6EAF0;
-    --color-text-secondary: #9AA3AF;
+    --color-bg-app: #0F111A;
+    --color-bg-panel: #181B26;
+    --color-bg-workspace: #0F111A;
+    --color-border-panel: #2A2E3D;
+    --color-text-primary: #E2E8F0;
+    --color-text-secondary: #64748B;
     --color-text-muted-strong: #6B7280;
     --color-grid-main: #3E4045;
     --color-grid-sub: #2B2D31;
     --color-axis-x: #E11D48;
     --color-axis-y: #059669;
     --color-axis-z: #0284C7;
-    --color-selected: #0284C7;
+    --color-selected: #3B82F6;
     --color-running: #F59E0B;
     --color-warning: #EAB308;
   }
@@ -85,14 +85,41 @@
   .industrial-workbench select,
   .industrial-workbench input,
   .industrial-workbench textarea {
-    background: #232529 !important;
+    background: #181B26 !important;
     border-color: var(--color-border-panel) !important;
     color: var(--color-text-primary) !important;
   }
 
   .industrial-workbench button:hover,
   .industrial-workbench select:hover {
-    background: #2B2D31 !important;
+    background: #232736 !important;
+  }
+
+  .ors-panel {
+    border: 1px solid var(--color-border-panel);
+    background: rgba(24, 27, 38, 0.94);
+    color: var(--color-text-primary);
+    backdrop-filter: blur(10px);
+  }
+
+  .ors-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-muted-strong);
+  }
+
+  .ors-badge {
+    display: inline-flex;
+    height: 20px;
+    align-items: center;
+    border: 1px solid var(--color-border-panel);
+    padding: 0 6px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   .industrial-workbench .bg-white,

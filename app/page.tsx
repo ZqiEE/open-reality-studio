@@ -588,21 +588,37 @@ function BottomConsole({
   onSpeedChange: (speed: number) => void;
   onSlowModeChange: (value: boolean) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const tabs = language === 'zh'
     ? [t(language, 'replay'), t(language, 'adapter_commands'), t(language, 'state_diff'), t(language, 'logs')]
     : [t(language, 'replay'), t(language, 'adapter_commands'), t(language, 'state_diff'), t(language, 'logs')];
   const commands = labReport?.adapter_commands ?? liveAdapterCommands;
   const logs = labReport?.execution_timeline ?? [];
+  const latestLog = logs.length > 0
+    ? logs[logs.length - 1]?.message
+    : consoleLogs[consoleLogs.length - 1] ?? t(language, 'waiting_run');
   return (
-    <div className="h-[144px] max-h-[15vh] border-t border-border-panel bg-[#15171A] text-text-primary">
-      <div className="flex h-6 items-end border-b border-border-panel bg-bg-panel px-2">
+    <div className={`${expanded ? 'h-[144px] max-h-[15vh]' : 'h-8'} border-t border-border-panel bg-[#0F111A] text-text-primary`}>
+      <div className="flex h-8 items-center border-b border-border-panel bg-bg-panel px-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="mr-2 flex h-5 w-6 items-center justify-center border border-border-panel bg-[#181B26] text-[10px] font-bold text-text-secondary hover:bg-[#232736]"
+          title={expanded ? 'Collapse console' : 'Expand console'}
+        >
+          {expanded ? 'v' : '^'}
+        </button>
         {tabs.map((tab, index) => (
-          <div key={tab} className={`flex h-full items-center border-b px-3 text-[11px] font-semibold ${index === 0 ? 'border-selected text-text-primary' : 'border-transparent text-text-secondary'}`}>
+          <div key={tab} className={`hidden h-full items-center border-b px-3 text-[11px] font-semibold sm:flex ${index === 0 ? 'border-selected text-text-primary' : 'border-transparent text-text-secondary'}`}>
             {tab}
           </div>
         ))}
+        <div className="ml-auto truncate font-mono text-[10px] text-text-secondary">
+          {replayPlaying ? t(language, 'status_playing_motion') : latestLog}
+        </div>
       </div>
-      <div className="grid h-[calc(100%-1.5rem)] grid-cols-[1.05fr_1fr_.8fr_1fr] overflow-hidden font-mono text-[11px]">
+      {expanded && (
+      <div className="grid h-[calc(100%-2rem)] grid-cols-[1.05fr_1fr_.8fr_1fr] overflow-hidden font-mono text-[11px]">
         <div className="custom-scrollbar overflow-auto border-r border-border-panel p-1.5">
           <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-text-secondary">{t(language, 'current_playback')}</div>
           <div className="mb-2 flex flex-wrap items-center gap-1">
@@ -678,6 +694,7 @@ function BottomConsole({
           ))}
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -765,7 +782,7 @@ function AICommandTerminal({
   };
 
   return (
-    <section className="flex flex-none flex-col gap-1.5 border-b border-[#23262B] border-t border-[#313338] bg-[#1E1F22] px-3 py-1.5">
+    <section className="ors-panel flex flex-none flex-col gap-1.5 px-3 py-2">
       <div className="flex items-center gap-2.5">
         <div className="w-20 shrink-0 text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{labels.label}</div>
         <textarea
@@ -846,7 +863,7 @@ function AICommandTerminal({
           </div>
         </div>
       )}
-      <div className="ml-20 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-4 text-[#8A94A0]">
+      <div className="ml-20 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-4 text-[#8A94A0] xl:flex">
         <span>{t(language, 'command_target_notice')}</span>
         <span className="text-[#4B5563]">|</span>
         <span>{t(language, 'command_safe_blocked_notice')}</span>
@@ -874,7 +891,7 @@ function AICommandTerminal({
         </div>
       </div>
       {activeQuickStart && (
-        <div className="ml-20 rounded-[3px] border border-border-panel bg-[#181A1D] px-3 py-1">
+        <div className="ml-20 hidden rounded-[3px] border border-border-panel bg-[#181A1D] px-3 py-1 2xl:block">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wide text-[#86868B]">{t(language, 'guided_evaluation')}</span>
             <span className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-2 py-0.5 text-[10px] font-semibold text-[#38BDF8]">
@@ -987,16 +1004,16 @@ function FirstRunGuide({
   const recommendedPath = quickStartPaths[0] ?? null;
   const secondaryPaths = quickStartPaths.slice(1);
   return (
-    <section className="border-b border-border-panel bg-[#16181B] px-3 py-1">
-      <div className="flex items-center gap-3">
+    <section className="ors-panel px-3 py-2">
+      <div className="flex items-center gap-2">
         <div className="min-w-0 flex flex-1 flex-wrap items-center gap-1.5">
           <span className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#7DD3FC]">
             {t(language, 'simulation_only')}
           </span>
           <span className="text-[11px] font-semibold text-text-primary">{t(language, 'welcome_title')}</span>
-          <span className="text-[10px] text-text-secondary">{t(language, 'welcome_step_1')}</span>
-          <span className="rounded-[3px] border border-border-panel bg-[#1E1F22] px-1.5 py-0.5 text-[9px] text-text-muted">{t(language, 'welcome_step_2')}</span>
-          <span className="rounded-[3px] border border-border-panel bg-[#1E1F22] px-1.5 py-0.5 text-[9px] text-text-muted">{t(language, 'welcome_step_3')}</span>
+          <span className="hidden text-[10px] text-text-secondary xl:inline">{t(language, 'welcome_step_1')}</span>
+          <span className="hidden rounded-[3px] border border-border-panel bg-[#1E1F22] px-1.5 py-0.5 text-[9px] text-text-muted 2xl:inline">{t(language, 'welcome_step_2')}</span>
+          <span className="hidden rounded-[3px] border border-border-panel bg-[#1E1F22] px-1.5 py-0.5 text-[9px] text-text-muted 2xl:inline">{t(language, 'welcome_step_3')}</span>
           <span className="ml-1 text-[9px] font-semibold uppercase tracking-wide text-[#86868B]">{t(language, 'welcome_supported_now')}</span>
           {publicAlphaRunnableDeviceTypes.map((type) => (
             <span key={type} className="rounded-[3px] border border-[#075985] bg-[#0B2233] px-1.5 py-0.5 text-[9px] text-[#38BDF8]">
@@ -1032,7 +1049,7 @@ function FirstRunGuide({
           {t(language, 'dismiss')}
         </button>
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-4 text-[#9AA3AF]">
+      <div className="mt-1.5 hidden flex-wrap items-center gap-x-3 gap-y-1 text-[10px] leading-4 text-[#9AA3AF] 2xl:flex">
         <span>{t(language, 'first_run_step_supported')}</span>
         <span className="text-[#4B5563]">|</span>
         <span>{t(language, 'first_run_step_command')}</span>
@@ -2435,33 +2452,74 @@ export default function Home() {
           onScenarioChange={handleScenarioChange}
           onAddAsset={handleAddAsset}
         />
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {showFirstRunGuide && (
-            <FirstRunGuide
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0F111A]">
+          <div className="relative min-h-0 flex-1 overflow-hidden border-b border-border-panel bg-[#0F111A]">
+            <VirtualDeviceStage
               language={language}
-              quickStartPaths={quickStartPaths}
-              onQuickStart={handleQuickStart}
-              onDismiss={dismissFirstRunGuide}
+              profile={effectiveSelectedProfile}
+              report={labReport}
+              replaySnapshot={selectedSnapshot}
+              currentActionFrame={currentActionFrame ?? selectedSnapshot?.action_frame}
+              scenarioPreview={scenarioPreview}
+              workspaceDevices={semanticWorkspaceDevices}
+              selectedWorkspaceDeviceId={selectedWorkspaceDeviceId}
+              runTargetWorkspaceDeviceId={currentRunTargetWorkspaceDeviceId}
+              expanded={workspaceExpanded}
+              running={running}
+              onExpandedChange={setWorkspaceExpanded}
+              onDropDevice={handleDropDevice}
+              onDropAsset={handleAddAsset}
+              onSelectWorkspaceDevice={handleWorkspaceSelect}
+              onMoveWorkspaceDevice={(deviceId, position) => updateWorkspaceDevice(deviceId, { position })}
             />
-          )}
-          <VirtualDeviceStage
-            language={language}
-            profile={effectiveSelectedProfile}
-            report={labReport}
-            replaySnapshot={selectedSnapshot}
-            currentActionFrame={currentActionFrame ?? selectedSnapshot?.action_frame}
-            scenarioPreview={scenarioPreview}
-            workspaceDevices={semanticWorkspaceDevices}
-            selectedWorkspaceDeviceId={selectedWorkspaceDeviceId}
-            runTargetWorkspaceDeviceId={currentRunTargetWorkspaceDeviceId}
-            expanded={workspaceExpanded}
-            running={running}
-            onExpandedChange={setWorkspaceExpanded}
-            onDropDevice={handleDropDevice}
-            onDropAsset={handleAddAsset}
-            onSelectWorkspaceDevice={handleWorkspaceSelect}
-            onMoveWorkspaceDevice={(deviceId, position) => updateWorkspaceDevice(deviceId, { position })}
-          />
+            {!workspaceExpanded && (
+              <>
+                {showFirstRunGuide && (
+                  <div className="pointer-events-none absolute left-3 top-3 z-30 w-[min(660px,calc(100%-24px))]">
+                    <div className="pointer-events-auto">
+                      <FirstRunGuide
+                        language={language}
+                        quickStartPaths={quickStartPaths}
+                        onQuickStart={handleQuickStart}
+                        onDismiss={dismissFirstRunGuide}
+                      />
+                    </div>
+                  </div>
+                )}
+                <div className="pointer-events-none absolute right-3 top-3 z-30 w-[360px] max-w-[calc(100%-24px)]">
+                  <div className="pointer-events-auto">
+                    <AutonomyDecisionPanel
+                      language={language}
+                      prompt={runtimeDecisionContext?.prompt ?? prompt.trim()}
+                      targetDeviceLabel={runtimeDecisionContext?.targetDeviceLabel ?? currentRunTargetLabel}
+                      targetDeviceType={runtimeDecisionContext?.targetDeviceType ?? effectiveSelectedProfile.deviceMeta.device_type}
+                      decision={runtimeDecision}
+                    />
+                  </div>
+                </div>
+                <div className="pointer-events-none absolute inset-x-4 bottom-4 z-30 mx-auto w-[min(980px,calc(100%-32px))]">
+                  <div className="pointer-events-auto">
+                    <AICommandTerminal
+                      language={language}
+                      prompt={prompt}
+                      running={running}
+                      status={commandStatus}
+                      runTargetLabel={currentRunTargetLabel}
+                      runTargetRunnable={currentRunTargetRunnable}
+                      runTargetDeviceType={effectiveSelectedProfile.deviceMeta.device_type}
+                      starterPrompts={currentRunStarterPrompts}
+                      quickStartPaths={quickStartPaths}
+                      activeQuickStart={activeQuickStart}
+                      onPromptChange={handlePromptChange}
+                      onQuickStart={handleQuickStart}
+                      onRun={runScenario}
+                      onStop={stopRun}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
           {!workspaceExpanded && (
             <>
               <WorkspaceDeviceStrip
@@ -2469,29 +2527,6 @@ export default function Home() {
                 devices={workspaceDevices}
                 selectedWorkspaceDeviceId={selectedWorkspaceDeviceId}
                 onSelectWorkspaceDevice={handleWorkspaceSelect}
-              />
-              <AICommandTerminal
-                language={language}
-                prompt={prompt}
-                running={running}
-                status={commandStatus}
-                runTargetLabel={currentRunTargetLabel}
-                runTargetRunnable={currentRunTargetRunnable}
-                runTargetDeviceType={effectiveSelectedProfile.deviceMeta.device_type}
-                starterPrompts={currentRunStarterPrompts}
-                quickStartPaths={quickStartPaths}
-                activeQuickStart={activeQuickStart}
-                onPromptChange={handlePromptChange}
-                onQuickStart={handleQuickStart}
-                onRun={runScenario}
-                onStop={stopRun}
-              />
-              <AutonomyDecisionPanel
-                language={language}
-                prompt={runtimeDecisionContext?.prompt ?? prompt.trim()}
-                targetDeviceLabel={runtimeDecisionContext?.targetDeviceLabel ?? currentRunTargetLabel}
-                targetDeviceType={runtimeDecisionContext?.targetDeviceType ?? effectiveSelectedProfile.deviceMeta.device_type}
-                decision={runtimeDecision}
               />
               <RealityAssetCatalog
                 language={language}
