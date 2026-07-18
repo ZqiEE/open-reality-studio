@@ -122,8 +122,9 @@ export function createSupportActions(appRoot: string, getLogPath: () => string):
         title: 'About RealityWarden',
         message: `RealityWarden ${app.getVersion()} · Public Alpha`,
         detail: [
-          'Simulation-first safety governance desktop.',
-          'REAL HARDWARE is a separate, evidence-locked reference-rig path.',
+          'REAL-device-first safety governance runtime.',
+          'Current REAL scope: ESP32-S3 + SG90 + HC-SR04 reviewed reference rig.',
+          'SIM LAB is an explicit, secondary, zero-signal test and review tool.',
           'No physical outcome is inferred from software acknowledgement.'
         ].join('\n')
       });

@@ -5,13 +5,21 @@ This guide is installed with RealityWarden and works offline.
 ## Product boundary
 
 RealityWarden 0.5.1 Public Alpha is a REAL-device-first safety-governance
-desktop application for one documented ESP32 reference rig. The disconnected
-REAL workspace intentionally shows no 3D stage or stale data.
+desktop application. Its only current executable hardware target is the
+reviewed **ESP32-S3 + SG90 + HC-SR04** reference rig. SG90 signal is GPIO18;
+HC-SR04 uses TRIG GPIO5 and ECHO GPIO4, with a mandatory 5V→3.3V divider on
+ECHO. Other boards, pins, or sensor configurations are not silently substituted.
+The disconnected REAL workspace intentionally shows no 3D stage or stale data.
 
 REAL HARDWARE remains evidence-locked, requires operator confirmation, and
 never treats a software acknowledgement as proof of physical motion. SIM LAB is
-a separate zero-signal mode; Robot Arm, Smart Light, and Camera Sensor are its
-runnable paths.
+an explicit, secondary, zero-signal tool for proposal, rule, action, and audit
+testing. It neither proves the real environment safe nor replaces a failed REAL
+operation.
+
+For a listed blank or unresponsive ESP32-S3, use **Prepare first flash** in the
+REAL HARDWARE task rail. Review the exact port, version, and SHA-256 before
+confirming; only the paired reviewed image or a valid write order is accepted.
 
 ## Recover from a startup problem
 

@@ -56,6 +56,16 @@ export function RealDeviceWorkspace({
                   ? '接好参考设备后，在右侧点击“自动检测”。系统只读扫描串口：已有固件则诊断并连接；空白或无响应的新板则进入受控首次烧录。'
                   : 'Plug in the reference device, then choose Auto-detect on the right. RealityWarden scans ports read-only: existing firmware is diagnosed and connected; a blank or unresponsive board enters governed first flash.'}
               </p>
+              <div data-supported-real-rig className="mt-4 border border-status-warning-edge bg-status-warning-surface px-3 py-2 text-[12px] leading-5">
+                <div className="font-semibold text-status-warning">{zh ? '当前唯一已审真机台架' : 'ONLY REVIEWED REAL RIG'}</div>
+                <div className="font-mono text-text-primary">ESP32-S3 + SG90 + HC-SR04</div>
+                <div className="text-text-secondary">
+                  {zh
+                    ? 'SG90 信号 GPIO18 · HC-SR04 TRIG GPIO5 · ECHO GPIO4（必须经 5V→3.3V 分压）'
+                    : 'SG90 signal GPIO18 · HC-SR04 TRIG GPIO5 · ECHO GPIO4 (5V→3.3V divider required)'}
+                </div>
+                <div className="text-text-muted">{zh ? '其他开发板、引脚或传感器配置当前不属于可执行产品范围。' : 'Other boards, pins, or sensor configurations are outside the current executable product scope.'}</div>
+              </div>
               <ol className="mt-6 grid grid-cols-3 gap-3" aria-label={zh ? '真实设备连接步骤' : 'Real-device connection steps'}>
                 {[
                   zh ? '插入参考设备' : 'Plug in reference rig',
