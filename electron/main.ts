@@ -114,6 +114,8 @@ interface RendererSmokeSnapshot {
   commandDock: boolean;
   realDeviceWorkspace: boolean;
   realModeSelected: boolean;
+  realDeviceControl: boolean;
+  simulationToolbarActions: number;
   runControls: number;
   stopControls: number;
   simulationBoundary: boolean;
@@ -144,6 +146,8 @@ async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegrada
         commandDock: Boolean(document.querySelector('[data-component="CommandDock"]')),
         realDeviceWorkspace: Boolean(document.querySelector('[data-component="RealDeviceWorkspace"]')),
         realModeSelected: Boolean(document.querySelector('button[title="REAL DEVICE"][aria-pressed="true"]')),
+        realDeviceControl: Boolean(document.querySelector('[data-real-hardware-focus]')),
+        simulationToolbarActions: document.querySelectorAll('[data-simulation-toolbar-action]').length,
         runControls: exactButtons('Run'),
         stopControls: exactButtons('Stop'),
         simulationBoundary: bodyText.includes('SIMULATION ONLY') || bodyText.includes('Simulation Only'),
@@ -160,8 +164,8 @@ async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegrada
         marketplaceTrigger: Boolean(document.querySelector('[data-marketplace-trigger]')),
         offlineDegradation: allText.includes('rule compiler (LLM offline)') || allText.includes('规则编译器（LLM 离线）')
       };
-      const modeReady = ${requireOfflineDegradation ? 'snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary' : 'snapshot.realDeviceWorkspace && snapshot.realModeSelected && snapshot.runControls === 0 && snapshot.stopControls === 0'};
-      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && modeReady && snapshot.realHardwareBoundary && (${requireOfflineDegradation ? 'true' : 'snapshot.realHardwarePrimary'}) && snapshot.preloadBridge && snapshot.hardwareBridge && snapshot.realHardwarePanelReady && snapshot.marketplaceBridge && snapshot.marketplaceTrigger && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
+      const modeReady = ${requireOfflineDegradation ? 'snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary && snapshot.simulationToolbarActions === 5 && snapshot.marketplaceTrigger' : 'snapshot.realDeviceWorkspace && snapshot.realModeSelected && snapshot.realDeviceControl && snapshot.simulationToolbarActions === 0 && !snapshot.marketplaceTrigger && snapshot.runControls === 0 && snapshot.stopControls === 0'};
+      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && modeReady && snapshot.realHardwareBoundary && (${requireOfflineDegradation ? 'true' : 'snapshot.realHardwarePrimary'}) && snapshot.preloadBridge && snapshot.hardwareBridge && snapshot.realHardwarePanelReady && snapshot.marketplaceBridge && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
     })()`, true) as RendererSmokeSnapshot;
     if (lastSnapshot.ready) return lastSnapshot;
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -283,6 +287,14 @@ async function captureRealWorkspaceLayout(window: BrowserWindow, width: number, 
   await waitForDomCondition(window, `innerWidth === ${width} && innerHeight === ${height}`);
   await setWorkspaceMode(window, 'real');
   await setDesignLanguage(window, language, false);
+  const focusedHardware = await window.webContents.executeJavaScript(`(() => {
+    const control = document.querySelector('[data-real-hardware-focus]');
+    if (!(control instanceof HTMLButtonElement)) return false;
+    control.click();
+    return true;
+  })()`, true) as boolean;
+  if (!focusedHardware) throw new Error('REAL workspace layout could not find the device-control focus action.');
+  await waitForDomCondition(window, `document.activeElement?.matches('[data-real-hardware-panel]') === true`);
   const snapshot = await window.webContents.executeJavaScript(`(() => {
     const rect = (selector) => {
       const element = document.querySelector(selector);
@@ -294,6 +306,13 @@ async function captureRealWorkspaceLayout(window: BrowserWindow, width: number, 
     const workspace = rect('[data-component="RealDeviceWorkspace"]');
     const sidebar = rect('[data-component="EvidenceSidebar"]');
     const hardware = rect('[data-real-hardware-primary="true"]');
+    const realDeviceControl = Boolean(document.querySelector('[data-real-hardware-focus]'));
+    const simulationToolbarActions = document.querySelectorAll('[data-simulation-toolbar-action]').length;
+    const hardwareFocused = document.activeElement?.matches('[data-real-hardware-panel]') === true;
+    const realWorkspaceElement = document.querySelector('[data-component="RealDeviceWorkspace"]');
+    const disconnectedOnboarding = Boolean(realWorkspaceElement?.querySelector('[data-real-device-onboarding]'));
+    const realTwinStage = Boolean(realWorkspaceElement?.querySelector('[data-real-twin-stage]'));
+    const canvasCount = realWorkspaceElement?.querySelectorAll('canvas').length ?? -1;
     const violations = [];
     if (innerWidth !== ${width} || innerHeight !== ${height}) violations.push('viewport_mismatch');
     if (document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight) violations.push('document_overflow');
@@ -302,7 +321,10 @@ async function captureRealWorkspaceLayout(window: BrowserWindow, width: number, 
     if (!sidebar || !hardware || hardware.height < sidebar.height * 0.5) violations.push('real_hardware_not_primary');
     if (document.querySelector('[data-component="DeviceNavigator"]') || document.querySelector('[data-component="CommandDock"]')) violations.push('simulation_surface_visible');
     if (document.querySelectorAll('button[data-run-control], button[data-stop-control]').length !== 0) violations.push('simulation_controls_visible');
-    return { mode: 'real', viewport: { width: innerWidth, height: innerHeight, devicePixelRatio }, language: '${language}', header, workspace, sidebar, hardware, violations };
+    if (!realDeviceControl || simulationToolbarActions !== 0) violations.push('real_toolbar_context');
+    if (!hardwareFocused) violations.push('real_hardware_focus_failed');
+    if (!disconnectedOnboarding || realTwinStage || canvasCount !== 0) violations.push('disconnected_real_workspace_mimics_simulation');
+    return { mode: 'real', viewport: { width: innerWidth, height: innerHeight, devicePixelRatio }, language: '${language}', header, workspace, sidebar, hardware, toolbar: { realDeviceControl, simulationToolbarActions, hardwareFocused }, workspaceState: { disconnectedOnboarding, realTwinStage, canvasCount }, violations };
   })()`, true) as { violations: string[]; [key: string]: unknown };
   if (snapshot.violations.length > 0) throw new Error(`REAL workspace layout failed at ${width}x${height}, ${language}: ${JSON.stringify(snapshot)}`);
   return snapshot;
@@ -328,6 +350,8 @@ async function captureDesignLayout(window: BrowserWindow, width: number, height:
     const dock = project('[data-component="CommandDock"]');
     const sidebar = project('[data-component="EvidenceSidebar"]');
     const hardware = project('[data-real-hardware-boundary]');
+    const realDeviceControl = Boolean(document.querySelector('[data-real-hardware-focus]'));
+    const simulationToolbarActions = document.querySelectorAll('[data-simulation-toolbar-action]').length;
     const violations = [];
     if (innerWidth !== ${width} || innerHeight !== ${height}) violations.push('viewport_mismatch');
     const expectedNavigatorWidth = innerWidth < 1280 ? 240 : 280;
@@ -338,6 +362,7 @@ async function captureDesignLayout(window: BrowserWindow, width: number, height:
     if (!sidebar || Math.abs(sidebar.width - expectedSidebarWidth) > 1) violations.push('sidebar_width');
     if (!workspace || workspace.width < 560) violations.push('workspace_min_width');
     if (!dock || dock.width < 520 || dock.x < (workspace?.x ?? 0) || dock.right > (workspace?.right ?? innerWidth)) violations.push('command_dock_bounds');
+    if (realDeviceControl || simulationToolbarActions !== 5) violations.push('simulation_toolbar_context');
     if (!hardware || hardware.x < (sidebar?.x ?? innerWidth) || hardware.right > (sidebar?.right ?? 0) + 1) violations.push('real_hardware_bounds');
     if (intersects(dock, sidebar) || intersects(dock, navigator) || intersects(dock, hardware)) violations.push('critical_overlap');
     const clippedControls = Array.from(document.querySelectorAll('[data-component="AppHeader"] button, [data-component="AppHeader"] summary, [data-component="CommandDock"] button, [data-component="EvidenceSidebar"] [role="tab"]'))
@@ -347,7 +372,7 @@ async function captureDesignLayout(window: BrowserWindow, width: number, height:
     const runControls = document.querySelectorAll('button[data-run-control]').length;
     const stopControls = document.querySelectorAll('button[data-stop-control]').length;
     if (runControls !== 1 || stopControls !== 1) violations.push('run_stop_count');
-    return { viewport: { width: innerWidth, height: innerHeight, devicePixelRatio }, requestedScale: ${scale}, language: '${language}', header, navigator, workspace, dock, sidebar, hardware, clippedControls, runControls, stopControls, violations };
+    return { viewport: { width: innerWidth, height: innerHeight, devicePixelRatio }, requestedScale: ${scale}, language: '${language}', header, navigator, workspace, dock, sidebar, hardware, toolbar: { realDeviceControl, simulationToolbarActions }, clippedControls, runControls, stopControls, violations };
   })()`, true) as { violations: string[]; [key: string]: unknown };
   if (snapshot.violations.length > 0) throw new Error(`Design layout failed at ${width}x${height}, ${language}, scale ${scale}: ${JSON.stringify(snapshot)}`);
   return snapshot;

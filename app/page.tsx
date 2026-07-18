@@ -3073,11 +3073,18 @@ export default function Home() {
     };
   }, [effectiveSelectedProfile, labReport?.result, prompt, replayPlaying, runPreviewTask, selectedScenario.mode, selectedWorkspaceDeviceId, semanticWorkspaceDevices]);
 
+  const focusRealHardware = () => {
+    const panel = document.querySelector<HTMLElement>('[data-real-hardware-panel]');
+    panel?.focus();
+    panel?.querySelector<HTMLElement>('[data-real-hardware-content]')?.scrollTo({ top: 0 });
+  };
+
   return (
     <div className={`industrial-workbench flex h-screen w-screen min-w-[1180px] flex-col overflow-hidden bg-bg-app text-text-primary ${assetImportOpen || actionComposerOpen || manualImportOpen || marketplaceOpen ? 'modal-surface-active' : ''}`}>
       <AppHeader
         language={language}
         workspaceMode={workspaceMode}
+        realHardwareConnected={realHardwareTelemetry.connected}
         projectName={projectName}
         preflight={workspaceBlocked ? 'blocked' : workspaceWarnings > 0 ? 'warning' : 'passed'}
         warningCount={workspaceWarnings}
@@ -3097,6 +3104,7 @@ export default function Home() {
         onQuickStart={reopenFirstRunGuide}
         onActions={() => setActionComposerOpen(true)}
         onMarketplace={() => setMarketplaceOpen(true)}
+        onFocusRealHardware={focusRealHardware}
         onWorkspaceModeChange={setWorkspaceMode}
         onExportReport={() => void exportCurrentLabReport()}
         onExportAdapter={() => void exportDeploymentConfig()}
@@ -3135,7 +3143,7 @@ export default function Home() {
         <div data-component="WorkspaceViewport" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0F111A]">
           <div className="relative min-h-0 flex-1 overflow-hidden border-b border-border-panel bg-[#0F111A]">
             {workspaceMode === 'real' ? (
-              <RealDeviceWorkspace language={language} telemetry={realHardwareTelemetry} />
+              <RealDeviceWorkspace language={language} telemetry={realHardwareTelemetry} onFocusRealHardware={focusRealHardware} />
             ) : (
             <VirtualDeviceStage
               language={language}

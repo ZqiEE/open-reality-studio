@@ -10,7 +10,7 @@ RealityWarden is a governed runtime between human or AI intent and physical hard
 
 ### 1. REAL device workspace: default central workspace
 
-The default central workspace contains no generic virtual device. Before connection it directs the operator to the independent REAL HARDWARE boundary. After connection it shows only the read-only REAL twin and current, non-stale telemetry.
+The default central workspace contains no generic virtual device. Before connection it is a flat, task-oriented onboarding surface: no canvas, 3D grid, camera controls, virtual device, or stale telemetry may render. It directs the operator to the independent REAL HARDWARE boundary. Only after a current connection exists does the 3D surface mount, showing the read-only REAL twin and current, non-stale telemetry.
 
 The default shell therefore follows the product's actual destination: onboarding and governing real hardware. It must never imply that a robot-arm demo model controls the connected reference servo.
 
@@ -39,6 +39,8 @@ After connection, the boundary presents one operator task at a time:
 Connection identity and the explicit session confirmation remain visible wherever actuation can be requested. Switching tasks changes presentation only; it never creates a new IPC or execution route.
 
 In REAL mode this boundary is the primary right-rail task area and remains open; device status and the safety-contract explanation move below it as auxiliary evidence. At compact 1180×720, the hardware boundary must retain at least half of the right rail. In Simulation Lab mode the hierarchy reverses: simulation decision evidence is primary and the independent hardware boundary may remain compact.
+
+The global toolbar follows the same mode boundary. REAL mode exposes a device-controls focus action, honest connected/disconnected state, and the gated-boundary reminder. Simulation onboarding, custom simulation actions, Marketplace, simulation reports, and adapter-package export appear only after explicit entry into Simulation Lab; none may be inert or masquerade as a REAL-device operation.
 
 ## Naming rules
 

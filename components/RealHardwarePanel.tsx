@@ -754,7 +754,8 @@ export function RealHardwarePanel({
   return (
     <div
       data-real-hardware-panel
-      className={`${primary ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0'} border-t-2 border-status-warning-edge bg-[#171310]`}
+      tabIndex={-1}
+      className={`${primary ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0'} border-t-2 border-status-warning-edge bg-[#171310] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-status-warning`}
       data-real-hardware-bridge-ready={available ? 'true' : 'false'}
     >
       {primary ? (
@@ -1119,8 +1120,8 @@ export function RealHardwarePanel({
                     </button>
                     <div className="text-[10px] leading-4 text-text-muted">
                       {zh
-                        ? '确定性理解（非 LLM）：显式角度 + 受控词表（左/中/右/归零、偏左偏右、“X 再 Y”序列）；词表外整条拒绝，绝不猜测；越界角度由验证器与安全门拒绝，绝不钳制。理解结果只是提案，须先通过参考伺服器预检。这不是左侧通用仿真工作区。'
-                        : 'Deterministic understanding (not an LLM): explicit angles plus a controlled vocabulary (left/center/right/home, half-left/right, "X then Y" sequences); anything outside it is rejected as a whole, never guessed. Out-of-range angles are rejected downstream, never clamped. The result is only a proposal and must pass the reference-servo preflight. This is not the generic simulation workspace on the left.'}
+                        ? '确定性理解（非 LLM）：显式角度 + 受控词表（左/中/右/归零、偏左偏右、“X 再 Y”序列）；词表外整条拒绝，绝不猜测；越界角度由验证器与安全门拒绝，绝不钳制。理解结果只是提案，须先通过参考伺服器预检；它与 SIM LAB 没有映射关系。'
+                        : 'Deterministic understanding (not an LLM): explicit angles plus a controlled vocabulary (left/center/right/home, half-left/right, "X then Y" sequences); anything outside it is rejected as a whole, never guessed. Out-of-range angles are rejected downstream, never clamped. The result is only a proposal and must pass the reference-servo preflight; it has no mapping to SIM LAB.'}
                     </div>
                       </div>
                     </>
