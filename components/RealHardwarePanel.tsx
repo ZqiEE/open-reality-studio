@@ -144,12 +144,14 @@ export function RealHardwarePanel({
   language,
   actions,
   onSaveAction,
-  onTelemetryChange
+  onTelemetryChange,
+  primary = false
 }: {
   language: 'zh' | 'en';
   actions: readonly ActionManifest[];
   onSaveAction: (manifest: ActionManifest) => void;
   onTelemetryChange?: (telemetry: RealHardwareTelemetry) => void;
+  primary?: boolean;
 }) {
   const zh = language === 'zh';
   const [expanded, setExpanded] = useState(true);
@@ -739,34 +741,44 @@ export function RealHardwarePanel({
     : status === 'connecting' || status === 'flashing'
       ? 'bg-status-warning'
       : 'bg-[#5F6670]';
+  const panelExpanded = primary || expanded;
+  const panelHeaderContent = (
+    <>
+      <span className="rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-1.5 text-[11px] font-bold uppercase tracking-wide text-status-warning">REAL HARDWARE</span>
+      <span className={`inline-block h-2 w-2 rounded-full ${dotClass}`} />
+      <span className="min-w-0 flex-1 truncate text-[11px] text-text-secondary">{statusText}</span>
+      <span className="text-[11px] font-bold text-text-secondary">{primary ? (zh ? '主任务区' : 'PRIMARY') : panelExpanded ? 'v' : '^'}</span>
+    </>
+  );
 
   return (
     <div
-      className="shrink-0 border-t-2 border-status-warning-edge bg-[#171310]"
+      data-real-hardware-panel
+      className={`${primary ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0'} border-t-2 border-status-warning-edge bg-[#171310]`}
       data-real-hardware-bridge-ready={available ? 'true' : 'false'}
     >
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="flex h-8 w-full items-center gap-2 px-3 text-left"
-        title={zh
-          ? '独立的真实硬件边界；执行受证据锁、人工确认和安全门控制。'
-          : 'Independent real-hardware boundary; execution requires the evidence lock, operator confirmation, and safety gate.'}
-      >
-        <span className="rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-1.5 text-[11px] font-bold uppercase tracking-wide text-status-warning">
-          REAL HARDWARE
-        </span>
-        <span className={`inline-block h-2 w-2 rounded-full ${dotClass}`} />
-        <span className="min-w-0 flex-1 truncate text-[11px] text-text-secondary">{statusText}</span>
-        <span className="text-[11px] font-bold text-text-secondary">{expanded ? 'v' : '^'}</span>
-      </button>
-      {expanded && (
-        <div className="flex max-h-[calc(100vh-80px)] flex-col gap-2 overflow-y-auto border-t border-[#3a2f1d] px-3 py-2 text-[12px]">
+      {primary ? (
+        <div className="flex h-8 w-full shrink-0 items-center gap-2 px-3 text-left" title={zh ? '独立的真实硬件边界；执行受证据锁、人工确认和安全门控制。' : 'Independent real-hardware boundary; execution requires the evidence lock, operator confirmation, and safety gate.'}>
+          {panelHeaderContent}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={panelExpanded}
+          className="flex h-8 w-full items-center gap-2 px-3 text-left"
+          title={zh ? '独立的真实硬件边界；执行受证据锁、人工确认和安全门控制。' : 'Independent real-hardware boundary; execution requires the evidence lock, operator confirmation, and safety gate.'}
+        >
+          {panelHeaderContent}
+        </button>
+      )}
+      {panelExpanded && (
+        <div data-real-hardware-content className={`flex flex-col gap-2 overflow-y-auto border-t border-[#3a2f1d] px-3 py-2 text-[12px] ${primary ? 'min-h-0 flex-1' : 'max-h-[calc(100vh-80px)]'}`}>
           {!available ? (
             <div className="text-text-secondary">
               {zh
-                ? '真实硬件桥接仅在桌面版（Electron）中可用。当前为网页模式，所有运行均为仿真，未向任何硬件发送信号。'
-                : 'The real-hardware bridge is only available in the desktop (Electron) build. This is web mode: every run is simulated and no signal reaches any hardware.'}
+                ? '真实硬件桥接仅在桌面版（Electron）中可用。网页模式无法连接设备，也无法发送硬件信号。'
+                : 'The real-hardware bridge is only available in the desktop (Electron) build. Web mode cannot connect or send a hardware signal.'}
             </div>
           ) : (
             <>
@@ -1250,8 +1262,8 @@ export function RealHardwarePanel({
           )}
           <div className="border-t border-[#3a2f1d] pt-1.5 text-[11px] text-text-secondary">
             {zh
-              ? 'AI Command Terminal 默认运行仿真；真实执行只存在于此独立危险边界，并受证据锁、逐次人工确认与完整安全门控制。'
-              : 'AI Command Terminal runs simulation by default. Real actuation exists only inside this independent danger boundary with evidence lock, per-run confirmation, and the full safety gate.'}
+              ? '仿真实验室是单独的零信号模式。真实执行只存在于此独立危险边界，并受证据锁、逐次人工确认与完整安全门控制。'
+              : 'Simulation Lab is a separate zero-signal mode. Real actuation exists only inside this independent danger boundary with evidence lock, per-run confirmation, and the full safety gate.'}
           </div>
         </div>
       )}

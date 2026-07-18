@@ -118,6 +118,7 @@ interface RendererSmokeSnapshot {
   stopControls: number;
   simulationBoundary: boolean;
   realHardwareBoundary: boolean;
+  realHardwarePrimary: boolean;
   preloadBridge: boolean;
   hardwareBridge: boolean;
   realHardwarePanelReady: boolean;
@@ -147,6 +148,11 @@ async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegrada
         stopControls: exactButtons('Stop'),
         simulationBoundary: bodyText.includes('SIMULATION ONLY') || bodyText.includes('Simulation Only'),
         realHardwareBoundary: Boolean(document.querySelector('[data-real-hardware-boundary]')) && bodyText.includes('REAL HARDWARE'),
+        realHardwarePrimary: (() => {
+          const boundary = document.querySelector('[data-real-hardware-primary="true"]');
+          const sidebar = document.querySelector('[data-component="EvidenceSidebar"]');
+          return boundary instanceof HTMLElement && sidebar instanceof HTMLElement && boundary.getBoundingClientRect().height >= sidebar.getBoundingClientRect().height * 0.5;
+        })(),
         preloadBridge: typeof window.openReality === 'object',
         hardwareBridge: typeof window.openReality?.hardware === 'object',
         realHardwarePanelReady: Boolean(document.querySelector('[data-real-hardware-bridge-ready="true"]')),
@@ -155,7 +161,7 @@ async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegrada
         offlineDegradation: allText.includes('rule compiler (LLM offline)') || allText.includes('规则编译器（LLM 离线）')
       };
       const modeReady = ${requireOfflineDegradation ? 'snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary' : 'snapshot.realDeviceWorkspace && snapshot.realModeSelected && snapshot.runControls === 0 && snapshot.stopControls === 0'};
-      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && modeReady && snapshot.realHardwareBoundary && snapshot.preloadBridge && snapshot.hardwareBridge && snapshot.realHardwarePanelReady && snapshot.marketplaceBridge && snapshot.marketplaceTrigger && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
+      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && modeReady && snapshot.realHardwareBoundary && (${requireOfflineDegradation ? 'true' : 'snapshot.realHardwarePrimary'}) && snapshot.preloadBridge && snapshot.hardwareBridge && snapshot.realHardwarePanelReady && snapshot.marketplaceBridge && snapshot.marketplaceTrigger && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
     })()`, true) as RendererSmokeSnapshot;
     if (lastSnapshot.ready) return lastSnapshot;
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -238,7 +244,7 @@ async function waitForDomCondition(window: BrowserWindow, expression: string, ti
   throw new Error(`Design acceptance DOM condition timed out: ${expression}`);
 }
 
-async function setDesignLanguage(window: BrowserWindow, language: 'zh' | 'en') {
+async function setDesignLanguage(window: BrowserWindow, language: 'zh' | 'en', requireSimulationControls = true) {
   const changed = await window.webContents.executeJavaScript(`(() => {
     const select = document.querySelector('[data-interface-language]');
     if (!(select instanceof HTMLSelectElement)) return false;
@@ -247,6 +253,11 @@ async function setDesignLanguage(window: BrowserWindow, language: 'zh' | 'en') {
     return true;
   })()`, true) as boolean;
   if (!changed) throw new Error('Design acceptance could not find the interface language control.');
+  await waitForDomCondition(window, `document.querySelector('[data-interface-language]')?.value === ${JSON.stringify(language)}`);
+  if (!requireSimulationControls) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return;
+  }
   const runLabel = language === 'zh' ? '运行' : 'Run';
   const stopLabel = language === 'zh' ? '停止' : 'Stop';
   await waitForDomCondition(window, `document.querySelectorAll('button[data-run-control][aria-label=${JSON.stringify(runLabel)}]').length === 1 && document.querySelectorAll('button[data-stop-control][aria-label=${JSON.stringify(stopLabel)}]').length === 1`);
@@ -266,9 +277,41 @@ async function setWorkspaceMode(window: BrowserWindow, mode: 'real' | 'simulatio
   await waitForDomCondition(window, `document.querySelector(${JSON.stringify(selector)})`);
 }
 
+async function captureRealWorkspaceLayout(window: BrowserWindow, width: number, height: number, language: 'zh' | 'en') {
+  window.setContentSize(width, height);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await waitForDomCondition(window, `innerWidth === ${width} && innerHeight === ${height}`);
+  await setWorkspaceMode(window, 'real');
+  await setDesignLanguage(window, language, false);
+  const snapshot = await window.webContents.executeJavaScript(`(() => {
+    const rect = (selector) => {
+      const element = document.querySelector(selector);
+      if (!(element instanceof HTMLElement)) return null;
+      const box = element.getBoundingClientRect();
+      return { x: box.x, y: box.y, right: box.right, bottom: box.bottom, width: box.width, height: box.height, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth };
+    };
+    const header = rect('[data-component="AppHeader"]');
+    const workspace = rect('[data-component="RealDeviceWorkspace"]');
+    const sidebar = rect('[data-component="EvidenceSidebar"]');
+    const hardware = rect('[data-real-hardware-primary="true"]');
+    const violations = [];
+    if (innerWidth !== ${width} || innerHeight !== ${height}) violations.push('viewport_mismatch');
+    if (document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight) violations.push('document_overflow');
+    if (!header || header.scrollWidth > header.clientWidth + 1) violations.push('header_overflow');
+    if (!workspace || workspace.width < 800) violations.push('real_workspace_min_width');
+    if (!sidebar || !hardware || hardware.height < sidebar.height * 0.5) violations.push('real_hardware_not_primary');
+    if (document.querySelector('[data-component="DeviceNavigator"]') || document.querySelector('[data-component="CommandDock"]')) violations.push('simulation_surface_visible');
+    if (document.querySelectorAll('button[data-run-control], button[data-stop-control]').length !== 0) violations.push('simulation_controls_visible');
+    return { mode: 'real', viewport: { width: innerWidth, height: innerHeight, devicePixelRatio }, language: '${language}', header, workspace, sidebar, hardware, violations };
+  })()`, true) as { violations: string[]; [key: string]: unknown };
+  if (snapshot.violations.length > 0) throw new Error(`REAL workspace layout failed at ${width}x${height}, ${language}: ${JSON.stringify(snapshot)}`);
+  return snapshot;
+}
+
 async function captureDesignLayout(window: BrowserWindow, width: number, height: number, language: 'zh' | 'en', scale = 1) {
   window.setContentSize(width, height);
   await new Promise((resolve) => setTimeout(resolve, 150));
+  await waitForDomCondition(window, `innerWidth === ${width} && innerHeight === ${height}`);
   await setWorkspaceMode(window, 'simulation');
   await setDesignLanguage(window, language);
   const snapshot = await window.webContents.executeJavaScript(`(() => {
@@ -286,6 +329,7 @@ async function captureDesignLayout(window: BrowserWindow, width: number, height:
     const sidebar = project('[data-component="EvidenceSidebar"]');
     const hardware = project('[data-real-hardware-boundary]');
     const violations = [];
+    if (innerWidth !== ${width} || innerHeight !== ${height}) violations.push('viewport_mismatch');
     const expectedNavigatorWidth = innerWidth < 1280 ? 240 : 280;
     const expectedSidebarWidth = innerWidth < 1280 ? 320 : 360;
     if (document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight) violations.push('document_overflow');
@@ -335,6 +379,11 @@ async function auditDesignDialog(
 }
 
 async function runProductDesignAcceptance(window: BrowserWindow) {
+  const realWorkspaceLayouts = [];
+  realWorkspaceLayouts.push(await captureRealWorkspaceLayout(window, 1440, 900, 'zh'));
+  realWorkspaceLayouts.push(await captureRealWorkspaceLayout(window, 1440, 900, 'en'));
+  realWorkspaceLayouts.push(await captureRealWorkspaceLayout(window, 1180, 720, 'zh'));
+  realWorkspaceLayouts.push(await captureRealWorkspaceLayout(window, 1180, 720, 'en'));
   const layouts = [];
   layouts.push(await captureDesignLayout(window, 1440, 900, 'zh'));
   layouts.push(await captureDesignLayout(window, 1440, 900, 'en'));
@@ -403,6 +452,7 @@ async function runProductDesignAcceptance(window: BrowserWindow) {
     product: 'RealityWarden',
     generated_at: new Date().toISOString(),
     gates: { responsive_layout: 'passed', bilingual_content: 'passed', windows_scaling: 'passed', dialog_boundaries: 'passed', keyboard_focus: 'passed', forced_colors: 'passed' },
+    real_workspace_layouts: realWorkspaceLayouts,
     layouts,
     scaling,
     dialogs,
