@@ -8,6 +8,7 @@ type EvidenceTab = 'evidence' | 'inspector';
 
 interface EvidenceSidebarProps {
   language: UiLanguage;
+  workspaceMode?: 'real' | 'simulation';
   evidence: ReactNode;
   inspector: ReactNode;
   hardware: ReactNode;
@@ -17,6 +18,7 @@ interface EvidenceSidebarProps {
 
 export function EvidenceSidebar({
   language,
+  workspaceMode = 'simulation',
   evidence,
   inspector,
   hardware,
@@ -32,9 +34,9 @@ export function EvidenceSidebar({
     }
   }, [evidenceKey]);
 
-  const labels = language === 'zh'
-    ? { evidence: '运行裁决', inspector: '仿真模型详情' }
-    : { evidence: 'Run Decision', inspector: 'Simulation Details' };
+  const labels = workspaceMode === 'real'
+    ? (language === 'zh' ? { evidence: '设备状态', inspector: '安全契约' } : { evidence: 'Device Status', inspector: 'Safety Contract' })
+    : (language === 'zh' ? { evidence: '运行裁决', inspector: '仿真模型详情' } : { evidence: 'Run Decision', inspector: 'Simulation Details' });
 
   return (
     <aside data-component="EvidenceSidebar" className="flex h-full w-[320px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface xl:w-[360px]">

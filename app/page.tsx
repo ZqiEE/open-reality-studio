@@ -10,6 +10,7 @@ import { validateActionManifest } from '@/lib/action-manifest/ActionManifest';
 import type { ActionManifest } from '@/lib/action-manifest/ActionManifest';
 import { LabConfigurator } from '@/components/LabConfigurator';
 import { RealHardwarePanel } from '@/components/RealHardwarePanel';
+import { RealDeviceWorkspace } from '@/components/RealDeviceWorkspace';
 import { EvidenceSidebar } from '@/components/EvidenceSidebar';
 import { AppHeader } from '@/components/AppHeader';
 import { MarketplaceManager } from '@/components/MarketplaceManager';
@@ -1313,6 +1314,7 @@ export default function Home() {
     distanceCm: null,
     lastCommandAngle: null
   });
+  const [workspaceMode, setWorkspaceMode] = useState<'real' | 'simulation'>('real');
   const [manualImports, setManualImports] = useState<ManualImportRecord[]>([]);
   const [manualSimulationAssets, setManualSimulationAssets] = useState<DeviceAsset[]>([]);
   const [selectedWorkspaceDeviceId, setSelectedWorkspaceDeviceId] = useState<string | null>(defaultWorkspaceDevice.id);
@@ -3075,6 +3077,7 @@ export default function Home() {
     <div className={`industrial-workbench flex h-screen w-screen min-w-[1180px] flex-col overflow-hidden bg-bg-app text-text-primary ${assetImportOpen || actionComposerOpen || manualImportOpen || marketplaceOpen ? 'modal-surface-active' : ''}`}>
       <AppHeader
         language={language}
+        workspaceMode={workspaceMode}
         projectName={projectName}
         preflight={workspaceBlocked ? 'blocked' : workspaceWarnings > 0 ? 'warning' : 'passed'}
         warningCount={workspaceWarnings}
@@ -3094,6 +3097,7 @@ export default function Home() {
         onQuickStart={reopenFirstRunGuide}
         onActions={() => setActionComposerOpen(true)}
         onMarketplace={() => setMarketplaceOpen(true)}
+        onWorkspaceModeChange={setWorkspaceMode}
         onExportReport={() => void exportCurrentLabReport()}
         onExportAdapter={() => void exportDeploymentConfig()}
         onLanguageChange={handleLanguageChange}
@@ -3111,7 +3115,7 @@ export default function Home() {
         <OperatorNotice language={language} notice={operatorNotice} onDismiss={() => setOperatorNotice(null)} onAction={handleNoticeAction} />
       )}
       <div className="flex min-h-0 flex-1 w-full gap-0 overflow-hidden">
-        <LabConfigurator
+        {workspaceMode === 'simulation' && <LabConfigurator
           language={language}
           deviceTypes={deviceTypes}
           deviceType={deviceType}
@@ -3127,9 +3131,12 @@ export default function Home() {
           onProfileChange={handleProfileChange}
           onScenarioChange={handleScenarioChange}
           onAddAsset={handleAddAsset}
-        />
+        />}
         <div data-component="WorkspaceViewport" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0F111A]">
           <div className="relative min-h-0 flex-1 overflow-hidden border-b border-border-panel bg-[#0F111A]">
+            {workspaceMode === 'real' ? (
+              <RealDeviceWorkspace language={language} telemetry={realHardwareTelemetry} />
+            ) : (
             <VirtualDeviceStage
               language={language}
               profile={effectiveSelectedProfile}
@@ -3154,7 +3161,8 @@ export default function Home() {
                 updateWorkspaceDevice(selectedWorkspaceDevice.id, { config: { ...selectedWorkspaceDevice.config, forbidden_zones: forbiddenZones } });
               }}
             />
-            {!workspaceExpanded && (
+            )}
+            {workspaceMode === 'simulation' && !workspaceExpanded && (
               <>
                 {showFirstRunGuide && (
                   <div className="pointer-events-none absolute inset-4 z-30">
@@ -3192,7 +3200,7 @@ export default function Home() {
               </>
             )}
           </div>
-          {!workspaceExpanded && (
+          {workspaceMode === 'simulation' && !workspaceExpanded && (
             <>
               <WorkspaceDeviceStrip
                 language={language}
@@ -3230,9 +3238,27 @@ export default function Home() {
         </div>
         <EvidenceSidebar
           language={language}
+          workspaceMode={workspaceMode}
           selectionKey={selectedWorkspaceDeviceId}
           evidenceKey={runtimeDecisionContext?.prompt ?? labReport?.lab_run_id ?? (running ? 'running' : null)}
-          evidence={(
+          evidence={workspaceMode === 'real' ? (
+            <section className="flex h-full flex-col gap-3 overflow-y-auto p-3" aria-label={language === 'zh' ? '真实设备状态' : 'Real-device status'}>
+              <div className="border border-status-warning-edge bg-status-warning-surface p-3">
+                <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-status-warning">REAL DEVICE</div>
+                <div className="mt-2 text-[15px] font-semibold text-text-primary">
+                  {realHardwareTelemetry.connected ? (language === 'zh' ? '参考设备已连接' : 'Reference device connected') : (language === 'zh' ? '尚未连接真实设备' : 'No real device connected')}
+                </div>
+                <div className="mt-1 text-[12px] leading-5 text-text-secondary">
+                  {language === 'zh' ? '连接、诊断、固件、指令和示教都在下方独立的 REAL HARDWARE 边界中完成。' : 'Connection, diagnosis, firmware, commands, and teach all stay inside the independent REAL HARDWARE boundary below.'}
+                </div>
+              </div>
+              <dl className="grid gap-2 border border-border-panel bg-bg-panel p-3 text-[12px]">
+                <div className="flex justify-between gap-3"><dt className="text-text-muted">{language === 'zh' ? '硬件信号' : 'Hardware signal'}</dt><dd className="font-semibold text-text-primary">{language === 'zh' ? '仅在门控指令成功时' : 'Only after a gated command succeeds'}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-text-muted">{language === 'zh' ? '当前距离' : 'Current distance'}</dt><dd className="font-mono text-text-primary">{realHardwareTelemetry.connected && realHardwareTelemetry.distanceCm !== null ? `${realHardwareTelemetry.distanceCm.toFixed(1)} cm` : '—'}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-text-muted">{language === 'zh' ? '最后指令角度' : 'Last command angle'}</dt><dd className="font-mono text-text-primary">{realHardwareTelemetry.connected && realHardwareTelemetry.lastCommandAngle !== null ? `${realHardwareTelemetry.lastCommandAngle.toFixed(1)}°` : '—'}</dd></div>
+              </dl>
+            </section>
+          ) : (
             <div className="flex h-full min-h-0 flex-col overflow-hidden">
               <div className={`${runtimeDecision ? 'h-[44%] min-h-[280px]' : 'h-[104px]'} shrink-0 overflow-hidden`}>
                 <AutonomyDecisionPanel
@@ -3267,7 +3293,17 @@ export default function Home() {
               </div>
             </div>
           )}
-          inspector={(
+          inspector={workspaceMode === 'real' ? (
+            <section className="flex h-full flex-col gap-3 overflow-y-auto p-3" aria-label={language === 'zh' ? '真实设备安全契约' : 'Real-device safety contract'}>
+              <div className="text-[13px] font-semibold text-text-primary">{language === 'zh' ? '不可绕过的执行契约' : 'Non-bypassable execution contract'}</div>
+              <ul className="grid gap-2 text-[12px] leading-5 text-text-secondary">
+                <li className="border-l-2 border-status-warning-edge pl-2">{language === 'zh' ? '所有动作只经 HardwareExecutionGate ticket 通路。' : 'Every actuation uses the HardwareExecutionGate ticket path.'}</li>
+                <li className="border-l-2 border-status-warning-edge pl-2">{language === 'zh' ? '缺失、过期或无效证据默认拦截。' : 'Missing, stale, or invalid evidence blocks by default.'}</li>
+                <li className="border-l-2 border-status-warning-edge pl-2">{language === 'zh' ? '越界提案整条拒绝，绝不钳制。' : 'Out-of-range proposals are rejected, never clamped.'}</li>
+                <li className="border-l-2 border-status-warning-edge pl-2">{language === 'zh' ? '角度只是最后指令值（开环，未实测）。' : 'Angle is only the last commanded value (open-loop, not measured).'}</li>
+              </ul>
+            </section>
+          ) : (
             <AuditPanel
               view="inspector"
               language={language}

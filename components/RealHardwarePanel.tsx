@@ -22,6 +22,7 @@ import { adviceForFailure, interpretProbe } from '@/lib/hardware/SetupAdvisor';
 import type { FirmwareIdentity, SetupAdvice } from '@/lib/hardware/SetupAdvisor';
 import type { RealHardwareTelemetry } from '@/types/realHardwareTelemetry';
 import { visibleRealHardwareTelemetry } from '@/lib/hardware/RealHardwareTelemetry';
+import { handleRovingTabKey } from '@/lib/ui/keyboardNavigation';
 import {
   REAL_SERVO_TEACH_DEVICE_META,
   REAL_TEACH_BUILTIN_INTENT_IDS,
@@ -137,6 +138,7 @@ function errorMessage(error: unknown): string {
 }
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'flashing';
+type RealHardwareTool = 'command' | 'teach' | 'firmware';
 
 export function RealHardwarePanel({
   language,
@@ -150,7 +152,8 @@ export function RealHardwarePanel({
   onTelemetryChange?: (telemetry: RealHardwareTelemetry) => void;
 }) {
   const zh = language === 'zh';
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
+  const [activeTool, setActiveTool] = useState<RealHardwareTool>('command');
   const [ports, setPorts] = useState<Array<{ path: string; label?: string }>>([]);
   const [selectedPort, setSelectedPort] = useState('');
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
@@ -254,6 +257,7 @@ export function RealHardwarePanel({
     setIdentity(null);
     setFirmwarePlan(null);
     setFirmwareConfirmed(false);
+    setActiveTool('command');
     const api = bridge();
     if (api) {
       try {
@@ -438,6 +442,7 @@ export function RealHardwarePanel({
   const flashFirmware = useCallback(async () => {
     const api = bridge();
     if (!api?.flashFirmware || !selectedPort || !firmwarePlan || !firmwareConfirmed) return;
+    setActiveTool('firmware');
     setFlashing(true);
     setFirmwareFeedback(null);
     setFirmwareError(null);
@@ -714,6 +719,11 @@ export function RealHardwarePanel({
     const checked = validateActionManifest(manifest, REAL_SERVO_TEACH_DEVICE_META, REAL_TEACH_BUILTIN_INTENT_IDS);
     return checked.ok;
   });
+  const hardwareTools: ReadonlyArray<readonly [RealHardwareTool, string]> = [
+    ['command', zh ? '指令' : 'Command'],
+    ['teach', zh ? '示教' : 'Teach'],
+    ['firmware', zh ? '固件' : 'Firmware']
+  ];
 
   const statusText = !available
     ? (zh ? '不可用（仅桌面版）' : 'unavailable (desktop app only)')
@@ -858,8 +868,38 @@ export function RealHardwarePanel({
               )}
             </>
           )}
-          {(status === 'connected' || status === 'flashing') && bridge()?.firmwarePlan && (
+          {(status === 'connected' || status === 'flashing') && (
+            <div
+              role="tablist"
+              aria-label={zh ? '真实硬件任务' : 'Real-hardware tasks'}
+              className="grid grid-cols-3 gap-1 border-t border-status-warning-edge pt-2"
+            >
+              {hardwareTools.map(([tool, label], index) => (
+                <button
+                  key={tool}
+                  id={`real-hardware-tab-${tool}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTool === tool}
+                  aria-controls={`real-hardware-panel-${tool}`}
+                  tabIndex={activeTool === tool ? 0 : -1}
+                  onClick={() => setActiveTool(tool)}
+                  onKeyDown={(event) => {
+                    if (status !== 'flashing') handleRovingTabKey(event, index, hardwareTools.length, (nextIndex) => setActiveTool(hardwareTools[nextIndex][0]));
+                  }}
+                  disabled={status === 'flashing' && tool !== 'firmware'}
+                  className={`h-7 rounded-[3px] border text-[11px] font-semibold ${activeTool === tool ? 'border-status-warning-edge bg-status-warning-surface text-status-warning' : 'border-border-panel text-text-secondary hover:bg-[#232736]'} disabled:opacity-40`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {(status === 'connected' || status === 'flashing') && (activeTool === 'firmware' || status === 'flashing') && bridge()?.firmwarePlan && (
             <section
+              id="real-hardware-panel-firmware"
+              role="tabpanel"
+              aria-labelledby="real-hardware-tab-firmware"
               aria-label={zh ? '固件' : 'Firmware'}
               className="flex flex-col gap-1.5 border-t border-status-warning-edge pt-2"
             >
@@ -941,8 +981,13 @@ export function RealHardwarePanel({
               )}
             </section>
           )}
-          {status === 'connected' && bridge()?.execute && (
-            <div className="flex flex-col gap-1.5 border-t border-[#3a2f1d] pt-2">
+          {status === 'connected' && activeTool !== 'firmware' && bridge()?.execute && (
+            <div
+              id={`real-hardware-panel-${activeTool}`}
+              role="tabpanel"
+              aria-labelledby={`real-hardware-tab-${activeTool}`}
+              className="flex flex-col gap-1.5 border-t border-[#3a2f1d] pt-2"
+            >
               <div className="flex items-center gap-2">
                 <span className="rounded-[3px] border border-status-blocked-edge bg-status-blocked-surface px-1.5 text-[11px] font-bold uppercase tracking-wide text-status-blocked-soft">
                   {zh ? '真机执行' : 'REAL EXECUTION'}
@@ -961,7 +1006,13 @@ export function RealHardwarePanel({
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-2 py-1 text-[11px] text-text-secondary">
+                    <input type="checkbox" checked={execConfirmed} onChange={(event) => setExecConfirmed(event.target.checked)} />
+                    {zh ? '本次 REAL 会话：我确认设备周围无人且可以安全动作' : 'This REAL session: I confirm the rig area is clear and safe to move'}
+                  </label>
+                  {activeTool === 'command' && (
+                    <>
+                      <div className="flex items-center gap-2">
                     <span className="text-[11px] text-text-secondary">{zh ? '目标角度' : 'target angle'}</span>
                     <input
                       value={execAngle}
@@ -978,17 +1029,13 @@ export function RealHardwarePanel({
                     >
                       {executing ? (zh ? '执行中…' : 'Executing…') : (zh ? '通过安全门执行' : 'Execute via gate')}
                     </button>
-                  </div>
-                  <label className="flex items-center gap-1.5 text-[11px] text-text-secondary">
-                    <input type="checkbox" checked={execConfirmed} onChange={(event) => setExecConfirmed(event.target.checked)} />
-                    {zh ? '我确认设备周围无人且可以安全动作' : 'I confirm the rig area is clear and safe to move'}
-                  </label>
-                  <div className="text-[11px] leading-4 text-text-muted">
+                      </div>
+                      <div className="text-[11px] leading-4 text-text-muted">
                     {zh
                       ? '执行走完整安全链：传感器采样→中值→互锁→安全门。缺读数/过近/越界都会被拦截并如实审计。'
                       : 'Execution runs the full safety chain: sensor sampling, median, interlock, gate. Missing data / close obstacle / out-of-range all block, honestly audited.'}
                   </div>
-                  <div className="mt-1 flex flex-col gap-1.5 border-t border-status-warning-edge pt-2">
+                      <div className="mt-1 flex flex-col gap-1.5 border-t border-status-warning-edge pt-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[12px] font-bold text-status-warning">
                         {zh ? '自然语言指令（REAL · 规则解析）' : 'Natural-language command (REAL · rule parser)'}
@@ -1063,8 +1110,11 @@ export function RealHardwarePanel({
                         ? '确定性理解（非 LLM）：显式角度 + 受控词表（左/中/右/归零、偏左偏右、“X 再 Y”序列）；词表外整条拒绝，绝不猜测；越界角度由验证器与安全门拒绝，绝不钳制。理解结果只是提案，须先通过参考伺服器预检。这不是左侧通用仿真工作区。'
                         : 'Deterministic understanding (not an LLM): explicit angles plus a controlled vocabulary (left/center/right/home, half-left/right, "X then Y" sequences); anything outside it is rejected as a whole, never guessed. Out-of-range angles are rejected downstream, never clamped. The result is only a proposal and must pass the reference-servo preflight. This is not the generic simulation workspace on the left.'}
                     </div>
-                  </div>
-                  <div className="mt-1 flex flex-col gap-2 border-t border-status-warning-edge pt-2">
+                      </div>
+                    </>
+                  )}
+                  {activeTool === 'teach' && (
+                    <div className="mt-1 flex flex-col gap-2 border-t border-status-warning-edge pt-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[12px] font-bold text-status-warning">
                         {zh ? '\u793a\u6559\u6a21\u5f0f\uff08REAL \u70b9\u52a8\uff09' : 'Teach mode (REAL jog)'}
@@ -1167,7 +1217,8 @@ export function RealHardwarePanel({
                       </div>
                     )}
                     {teachFeedback && <div role="status" className="break-all text-[11px] text-status-warning">{teachFeedback}</div>}
-                  </div>
+                    </div>
+                  )}
                 </>
               )}
               {execOutcome && (

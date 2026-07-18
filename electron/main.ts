@@ -112,6 +112,8 @@ interface RendererSmokeSnapshot {
   appHeader: boolean;
   deviceNavigator: boolean;
   commandDock: boolean;
+  realDeviceWorkspace: boolean;
+  realModeSelected: boolean;
   runControls: number;
   stopControls: number;
   simulationBoundary: boolean;
@@ -125,6 +127,8 @@ interface RendererSmokeSnapshot {
 }
 
 async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegradation = false, timeoutMs = 60_000) {
+  await waitForDomCondition(window, `document.querySelector('[data-component="RealDeviceWorkspace"]') && document.querySelector('button[title="REAL DEVICE"][aria-pressed="true"]')`, timeoutMs);
+  if (requireOfflineDegradation) await setWorkspaceMode(window, 'simulation');
   const started = Date.now();
   let lastSnapshot: RendererSmokeSnapshot | null = null;
   while (Date.now() - started < timeoutMs) {
@@ -137,6 +141,8 @@ async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegrada
         appHeader: Boolean(document.querySelector('[data-component="AppHeader"]')),
         deviceNavigator: Boolean(document.querySelector('[data-component="DeviceNavigator"]')),
         commandDock: Boolean(document.querySelector('[data-component="CommandDock"]')),
+        realDeviceWorkspace: Boolean(document.querySelector('[data-component="RealDeviceWorkspace"]')),
+        realModeSelected: Boolean(document.querySelector('button[title="REAL DEVICE"][aria-pressed="true"]')),
         runControls: exactButtons('Run'),
         stopControls: exactButtons('Stop'),
         simulationBoundary: bodyText.includes('SIMULATION ONLY') || bodyText.includes('Simulation Only'),
@@ -148,7 +154,8 @@ async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegrada
         marketplaceTrigger: Boolean(document.querySelector('[data-marketplace-trigger]')),
         offlineDegradation: allText.includes('rule compiler (LLM offline)') || allText.includes('规则编译器（LLM 离线）')
       };
-      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary && snapshot.realHardwareBoundary && snapshot.preloadBridge && snapshot.hardwareBridge && snapshot.realHardwarePanelReady && snapshot.marketplaceBridge && snapshot.marketplaceTrigger && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
+      const modeReady = ${requireOfflineDegradation ? 'snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary' : 'snapshot.realDeviceWorkspace && snapshot.realModeSelected && snapshot.runControls === 0 && snapshot.stopControls === 0'};
+      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && modeReady && snapshot.realHardwareBoundary && snapshot.preloadBridge && snapshot.hardwareBridge && snapshot.realHardwarePanelReady && snapshot.marketplaceBridge && snapshot.marketplaceTrigger && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
     })()`, true) as RendererSmokeSnapshot;
     if (lastSnapshot.ready) return lastSnapshot;
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -182,6 +189,7 @@ async function submitJourneyPrompt(window: BrowserWindow, prompt: string) {
 }
 
 async function runInstalledCoreJourney(window: BrowserWindow) {
+  await setWorkspaceMode(window, 'simulation');
   await setDesignLanguage(window, 'en');
   // The isolated first launch intentionally demonstrates a blocked unsafe task.
   await waitForCommandState(window, 'blocked');
@@ -245,9 +253,23 @@ async function setDesignLanguage(window: BrowserWindow, language: 'zh' | 'en') {
   await new Promise((resolve) => setTimeout(resolve, 50));
 }
 
+async function setWorkspaceMode(window: BrowserWindow, mode: 'real' | 'simulation') {
+  const label = mode === 'real' ? 'REAL DEVICE' : 'Simulation Lab';
+  const changed = await window.webContents.executeJavaScript(`(() => {
+    const button = document.querySelector('button[title="${label}"]');
+    if (!(button instanceof HTMLButtonElement)) return false;
+    if (button.getAttribute('aria-pressed') !== 'true') button.click();
+    return true;
+  })()`, true) as boolean;
+  if (!changed) throw new Error(`Design acceptance could not select workspace mode: ${mode}`);
+  const selector = mode === 'real' ? '[data-component="RealDeviceWorkspace"]' : '[data-component="DeviceNavigator"]';
+  await waitForDomCondition(window, `document.querySelector(${JSON.stringify(selector)})`);
+}
+
 async function captureDesignLayout(window: BrowserWindow, width: number, height: number, language: 'zh' | 'en', scale = 1) {
   window.setContentSize(width, height);
   await new Promise((resolve) => setTimeout(resolve, 150));
+  await setWorkspaceMode(window, 'simulation');
   await setDesignLanguage(window, language);
   const snapshot = await window.webContents.executeJavaScript(`(() => {
     const project = (selector) => {
@@ -265,10 +287,11 @@ async function captureDesignLayout(window: BrowserWindow, width: number, height:
     const hardware = project('[data-real-hardware-boundary]');
     const violations = [];
     const expectedNavigatorWidth = innerWidth < 1280 ? 240 : 280;
+    const expectedSidebarWidth = innerWidth < 1280 ? 320 : 360;
     if (document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight) violations.push('document_overflow');
     if (!header || Math.abs(header.height - 48) > 1 || header.scrollWidth > header.clientWidth + 1) violations.push('header_contract');
     if (!navigator || Math.abs(navigator.width - expectedNavigatorWidth) > 1) violations.push('navigator_width');
-    if (!sidebar || Math.abs(sidebar.width - 360) > 1) violations.push('sidebar_width');
+    if (!sidebar || Math.abs(sidebar.width - expectedSidebarWidth) > 1) violations.push('sidebar_width');
     if (!workspace || workspace.width < 560) violations.push('workspace_min_width');
     if (!dock || dock.width < 520 || dock.x < (workspace?.x ?? 0) || dock.right > (workspace?.right ?? innerWidth)) violations.push('command_dock_bounds');
     if (!hardware || hardware.x < (sidebar?.x ?? innerWidth) || hardware.right > (sidebar?.right ?? 0) + 1) violations.push('real_hardware_bounds');

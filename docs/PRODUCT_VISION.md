@@ -19,6 +19,13 @@ natural-language commands on real hardware in under 15 minutes — no Arduino
 IDE, no firmware knowledge, no YAML — and at no point along that journey is a
 single safety guarantee weaker than it is in today's simulation.
 
+**Owner correction (2026-07-18):** "simulation-first" describes the safety
+pipeline and historical lab capability, not the permanent primary desktop
+navigation. The default product shell is REAL-device-first. Simulation remains
+an explicit, visibly separate secondary mode for asset review, protocol work,
+and no-signal testing; a generic virtual model must never occupy the primary
+workspace or imply a mapping to connected hardware.
+
 The thesis stays what it has always been: AI must never jump straight from
 text into actuation. Every proposal — whether it comes from an LLM, a
 marketplace asset, an imported manual, or the user's own custom action — is

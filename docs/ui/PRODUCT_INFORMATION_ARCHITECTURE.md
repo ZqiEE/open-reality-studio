@@ -1,30 +1,42 @@
 # RealityWarden product information architecture
 
-RealityWarden is a governed runtime between human or AI intent and physical hardware. It is not a device dashboard and it is not a generic 3D editor. Every primary surface must help a non-developer answer one of three questions in order:
+RealityWarden is a governed runtime between human or AI intent and physical hardware. It is not a device dashboard and it is not a generic 3D editor. The primary desktop shell is REAL-first. Every primary surface must help a non-developer answer one of three questions in order:
 
-1. What do I want to test without touching hardware?
-2. Why did the runtime allow or block it?
-3. Am I explicitly ready to ask a connected reference device to act?
+1. Is my reviewed physical device connected and what can it do?
+2. Why did the runtime allow or block the proposed action?
+3. Am I explicitly ready to ask that device to act?
 
 ## The three product planes
 
-### 1. Safe rehearsal: left setup plus central workspace
+### 1. REAL device workspace: default central workspace
 
-The left rail selects a **simulation target**, a simulator profile, and a test case. The central workspace shows the proposed or simulated outcome. This plane is air-gapped from actuation and must always say that it sends no hardware signal.
+The default central workspace contains no generic virtual device. Before connection it directs the operator to the independent REAL HARDWARE boundary. After connection it shows only the read-only REAL twin and current, non-stale telemetry.
 
-Its value is to let a user learn the intended motion, expose unsupported capabilities, and see predictable policy failures before entering the real-hardware boundary. A successful rehearsal does **not** prove that the physical environment is safe. Generic virtual devices do not automatically map to a connected device.
+The default shell therefore follows the product's actual destination: onboarding and governing real hardware. It must never imply that a robot-arm demo model controls the connected reference servo.
 
-The model library exists to add a simulator to a rehearsal. It is not a list of discovered physical devices.
+### 2. Simulation Lab: explicit secondary mode
 
-### 2. Run decision: right upper rail
+Simulation remains available for protocol development, asset/manual review, unsupported-device exploration, and reproducible no-signal safety tests. It is entered explicitly from the workspace-mode control and may then expose the simulation setup rail, model library, command dock, timeline, and console.
 
-The default right-side view explains the most recent runtime decision and its evidence. Model details are secondary and open when the user explicitly changes the selected simulation model. The right rail must not lead with configuration duplication or stale completed state before a run.
+Simulation is not the default onboarding path and is not presented as a prerequisite that proves physical safety. Its model library is not a list of discovered physical devices.
 
-### 3. REAL HARDWARE: separate black/yellow boundary
+### 3. Status and safety contract: right upper rail
+
+In REAL mode, the upper rail reports honest connection/telemetry status and the non-bypassable safety contract. In Simulation Lab mode it explains the most recent simulated runtime decision and its evidence. It must not show simulation-model details as the default REAL-device context.
+
+### 4. REAL HARDWARE: separate black/yellow boundary
 
 The REAL HARDWARE area is an optional physical reference rig. It remains outside the simulation evidence tabs and uses independent connection, evidence lock, operator confirmation, tickets, and `HardwareExecutionGate` execution.
 
 The Stage 1 REAL servo twin is a read-only mirror of the connected reference rig. It displays the last acknowledged command angle as open-loop, not measured, plus current distance telemetry. It is not the selected generic simulator and it never creates a simulation-to-real mapping by visual proximity.
+
+After connection, the boundary presents one operator task at a time:
+
+- **Command** prepares and executes a single governed reference-servo request.
+- **Teach** records acknowledged jog commands and replays a saved manifest through the existing gated sequence runner.
+- **Firmware** is an isolated maintenance task; it does not share the actuation controls.
+
+Connection identity and the explicit session confirmation remain visible wherever actuation can be requested. Switching tasks changes presentation only; it never creates a new IPC or execution route.
 
 ## Naming rules
 
