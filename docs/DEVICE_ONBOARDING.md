@@ -3,9 +3,13 @@
 This guide explains the minimum contract for adding a simulation device to
 RealityWarden without granting it real-hardware authority.
 
-Current boundary:
+This guide covers the **new-device asset pipeline**, not the product's default
+navigation. The desktop product is REAL-first for the existing documented
+reference rig; every newly proposed device still starts simulation-only.
 
-- simulation-first
+Onboarding boundary:
+
+- simulation-first for untrusted new device proposals
 - new device manifests default to simulation-only
 - no manifest or public adapter can opt into direct hardware control
 - the existing ESP32 reference rig remains a separate, private-ticketed path
@@ -202,4 +206,6 @@ Do not:
 - silently map unsupported prompts to existing device actions
 - claim industrial certification or production readiness
 
-RealityWarden remains a simulation-first runtime prototype.
+RealityWarden remains REAL-first only for the documented reference rig. A new
+device stays simulation-only until it earns a separately reviewed profile,
+transport, hardware gate integration, evidence chain, and acceptance suite.

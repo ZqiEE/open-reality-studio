@@ -16,7 +16,10 @@ evidence, not a development or release-engineering prerequisite.
 
 ### Product boundary — pass
 
-- AI Command remains the default simulation workflow and sole Run/Stop surface.
+- The default shell is REAL-first and disconnected REAL mode contains no
+  simulation canvas, virtual device, or stale telemetry.
+- Simulation Run/Stop, imports, Marketplace, and exports appear only after
+  explicit entry into SIM LAB; desktop simulation shortcuts switch there first.
 - Manual-derived profiles and assets remain permanently simulation-only.
 - REAL HARDWARE is visually independent and limited to the reference rig.
 - Evidence lock, operator confirmation, default-block interlocks, private ticket
@@ -70,7 +73,12 @@ npm run release:prepare-public
 Next runtime, compiled shared safety runtime, pinned `pdfjs-dist`, manual-import
 UI boundary, firmware SHA256 pairs, branding metadata, and Windows serialport
 bindings are present. It must then run the packaged executable with
-`--prod --smoke-test` successfully. The smoke is a packaged first-run renderer smoke, not only a local-server readiness probe: it loads the renderer in an isolated session and verifies the desktop regions, sole Run/Stop controls, simulation/REAL HARDWARE separation, and preload bridge. Failure exits non-zero.
+`--prod --smoke-test` successfully. The smoke is a packaged first-run renderer
+smoke, not only a local-server readiness probe: it verifies the REAL-first
+workspace with zero simulation controls/imports, the primary REAL HARDWARE
+boundary, and preload bridges. Its explicit SIM LAB pass verifies the sole
+Run/Stop pair, simulation-only tools, and simulation/REAL separation. Failure
+exits non-zero.
 
 The packaged executable must then pass the versioned product-design acceptance
 matrix: 1440×900 and 1180×720 in Chinese and English, Windows 125% and 150%

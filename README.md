@@ -11,8 +11,8 @@
 ### Try it in 2 minutes (Windows)
 
 1. Download the installer from the [latest release](https://github.com/realitywarden/realitywarden/releases/latest) and run it.
-2. Drag a virtual device into the workspace and type a goal like *"pick up the red cube"* — everything runs simulation-first. No hardware required.
-3. Real hardware stays locked behind acceptance evidence plus per-run operator confirmation.
+2. The app opens in the REAL workspace. With the documented ESP32 reference rig, select its port, diagnose it, connect, and issue a governed command. Every actuation request still requires visible operator confirmation.
+3. Without hardware, explicitly enter **SIM LAB** to rehearse supported virtual workflows with zero hardware signal. Simulation is a secondary tool, not a silent fallback or a claim about physical safety.
 
 To build from source instead, see [Quick Start](#quick-start) below.
 
@@ -58,13 +58,16 @@ RealityWarden is designed for the opposite direction: more devices, more adapter
 **Current status — v0.5.1 Public Alpha**
 
 - Public Alpha
-- the main simulation workbench never touches hardware
-- a first, tightly gated REAL hardware path exists for one bench rig
+- the default desktop shell is REAL-device-first; disconnected state contains no
+  virtual model or 3D simulation stage
+- a first, tightly gated REAL hardware path exists for one reference rig
   (ESP32 + SG90 servo + HC-SR04 — see
   [docs/REAL_HARDWARE_ESP32.md](./docs/REAL_HARDWARE_ESP32.md)); it runs only
   through an evidence lock, per-run operator confirmation, and an audited
   safety gate; blocked commands can never reach the wire
 - no production hardware control, no industrial safety certification
+- SIM LAB remains a visibly separate, zero-signal secondary mode for asset
+  review, protocol work, and repeatable safety testing
 - local PDF/Markdown/text manual import produces reviewable, simulation-only
   device proposals; a second explicit review is required before a generated
   asset can enter Virtual Lab; proposed actions require a separate explicit
@@ -79,30 +82,16 @@ Real-hardware safety invariants — **48/48 passing**, plus **5/5** virtual-loop
 
 ```mermaid
 flowchart LR
-  A["Natural Language Prompt"]
-  B["RealityWarden Local Runtime"]
-  B1["Capability Check"]
-  B2["World Model"]
-  B3["Safety Governor"]
-  B4["TaskDSL"]
-  B5["AdapterPlan"]
-  B6["Runtime Audit Log"]
-  C["Simulation Adapter"]
-  D["Virtual Device Runtime"]
-  E["Lab Report / Replay / Audit"]
-  X["Real Hardware"]
-
-  A --> B
-  B --> B1
-  B1 --> B2
-  B2 --> B3
-  B3 --> B4
-  B4 --> B5
-  B5 --> C
-  B --> B6
-  C --> D
-  D --> E
-  X -. gated: bench rig only, via HardwareExecutionGate .- B
+  A["Human or AI intent"] --> V["Untrusted proposal validation"]
+  V --> C["Capability + bounds"]
+  C --> S["Safety policy + fresh sensor evidence"]
+  S --> D{"Explicit mode"}
+  D -->|"REAL reference rig"| G["HardwareExecutionGate ticket"]
+  G --> H["ESP32 + servo"]
+  D -->|"SIM LAB"| L["Simulation adapter"]
+  L --> R["Replay / lab report"]
+  G --> A1["Honest hardware audit"]
+  S --> A1
 ```
 
 The important point is the boundary in the middle. The current repository proves that AI-to-device workflows can be mediated by a local runtime before anything touches execution.
@@ -111,8 +100,9 @@ See [docs/LOCAL_RUNTIME.md](./docs/LOCAL_RUNTIME.md) for the exact runtime scope
 
 ## What is implemented now
 
-- **Simulation-first Local Runtime gate**
-  - Prompt -> Runtime decision -> `TaskDSL` -> `AdapterPlan` -> dry-run -> simulation
+- **REAL-first governed desktop shell**
+  - connect -> diagnose -> explicit confirmation -> fresh sensor evidence ->
+    ticketed `HardwareExecutionGate` -> honest audit
 - **Safety Governor**
   - blocks unsafe, unsupported, ambiguous, and not-runnable requests before simulation dispatch
 - **Reality Asset foundation**
@@ -120,8 +110,10 @@ See [docs/LOCAL_RUNTIME.md](./docs/LOCAL_RUNTIME.md) for the exact runtime scope
 - **Structured runtime audit log**
   - execution path is captured in lab reports instead of disappearing inside UI-only state
 - **Adapter boundary**
-  - simulation adapters exist
-  - one reference ESP32 rig exists behind a separate ticketed `HardwareExecutionGate`, evidence lock, sensor interlocks, and per-run operator confirmation
+  - one reference ESP32 rig exists behind a ticketed
+    `HardwareExecutionGate`, evidence lock, sensor interlocks, and per-run
+    operator confirmation
+  - simulation adapters exist only inside the explicitly selected SIM LAB
 - **Runnable simulation paths**
   - `robot_arm`
   - `smart_light`
@@ -132,18 +124,24 @@ See [docs/LOCAL_RUNTIME.md](./docs/LOCAL_RUNTIME.md) for the exact runtime scope
     revalidated before use
   - examples: [`examples/action-manifests`](./examples/action-manifests)
 
-## Develop in simulation, deploy to real hardware
+## REAL workspace and SIM LAB
 
-**Develop in simulation, deploy to real hardware — strictly separated, never conflated.** This is invariant 6 of the project: simulated runs are marked `[SIMULATION]`, real runs are marked `real_hardware`, and you always know which world you are acting in.
+The default workspace is for the documented REAL reference rig. Before a
+connection it shows a flat onboarding state; after connection it may show only
+the read-only REAL twin and current telemetry. The last command angle is
+open-loop feedback, never claimed as measured position.
 
-Simulation is where workflows are built, tested, replayed, and audited before any device is involved. The simulation workbench itself remains a **simulation-only Public Alpha**.
-No hardware required.
+SIM LAB is entered explicitly for virtual assets, manual/profile review,
+protocol development, replay, and reproducible no-signal tests. It is useful
+without hardware, but it is not the product's default navigation and never
+proves that a physical scene is safe. Simulated runs are marked `[SIMULATION]`;
+real decisions are marked `real_hardware`.
 
 Simulation and hardware share capability/safety semantics but deliberately use separate execution interfaces; a generic simulation adapter cannot actuate hardware.
 
 ## Runnable devices
 
-| Device Type | Main Run | Boundary |
+| Device Type | SIM LAB support | Boundary |
 | --- | --- | --- |
 | `robot_arm` | Yes | Simulation-only golden path |
 | `smart_light` | Yes | Low-risk simulation-only path |
@@ -159,7 +157,7 @@ Exact support matrix: [docs/DEVICE_SUPPORT.md](./docs/DEVICE_SUPPORT.md)
 
 ## What this Public Alpha does not do
 
-- no real device execution from the main simulation workbench
+- no arbitrary/customer real-device execution outside the documented reference rig
 - no production hardware control
 - no certified industrial safety guarantee
 - no claim that all device families are runnable
@@ -169,10 +167,10 @@ Do not describe this repository as:
 
 - production-ready
 - industrial-grade certified
-- real hardware enabled
-- full multi-device execution platform
+- a general-purpose real-hardware control platform
 
-It is a **desktop runtime prototype** with a strict **simulation-only** boundary.
+It is a **REAL-first Public Alpha safety runtime** with one tightly scoped
+reference-hardware path and a separate simulation lab.
 
 ## Why this matters
 
@@ -195,7 +193,7 @@ RealityWarden exists to prove a different execution model:
 6. compile a structured task
 7. validate an adapter plan
 8. log the decision path
-9. only then run simulation
+9. only then enter the explicitly selected destination: SIM LAB or the ticketed reference-hardware gate
 
 This is the ecosystem direction:
 
@@ -249,9 +247,9 @@ npm run build
 npm run verify
 ```
 
-## First-run prompts
+## SIM LAB example prompts
 
-Use one of these:
+Explicitly select **SIM LAB**, then use one of these:
 
 ```text
 Move the red cube to the back safe zone
@@ -276,21 +274,15 @@ Expected behavior:
 - `smart_light` and `camera_sensor` run through limited low-risk simulation paths
 - Coming Soon devices remain not runnable
 
-## Local Runtime boundary
+## Local Runtime boundaries
 
-The current main execution path is:
+The product keeps two visibly separate destinations behind shared proposal and
+safety semantics:
 
 ```text
-Prompt
--> Local Runtime
--> Capability Check
--> Safety Governor
--> TaskDSL
--> AdapterPlan
--> Dry Run
--> Simulation Adapter
--> Virtual Device Runtime
--> Lab Report / Replay / Audit
+Intent -> validation -> capability/bounds -> safety decision
+  -> REAL reference rig: fresh telemetry -> HardwareExecutionGate ticket -> transport -> hardware audit
+  -> SIM LAB: TaskDSL -> AdapterPlan -> simulation adapter -> report/replay
 ```
 
 This is the current product truth:
@@ -298,7 +290,8 @@ This is the current product truth:
 - **audited gate before any execution**
 - **local runtime gated**
 - **adapter boundary present**
-- **real execution isolated behind the evidence-locked reference path**
+- **real execution isolated behind the evidence-locked, ticketed reference path**
+- **simulation is explicit and never a fallback from REAL**
 
 More detail: [docs/LOCAL_RUNTIME.md](./docs/LOCAL_RUNTIME.md)
 
@@ -328,9 +321,9 @@ The first real path (ESP32 bench rig) already follows this rule:
   and every decision is audited with `hardwareSignalSent`
 - simulation and reality stay strictly separated; hardware support expands
   only device-by-device, each behind the same gate
-- the default workbench and all manually generated assets remain
-  simulation-only; the separately marked reference-rig path is the only real
-  hardware scope
+- the default shell is REAL-first, but only the separately marked reference-rig
+  boundary has real execution scope; manual/Marketplace assets remain
+  simulation-only and cannot grant hardware authority
 
 ## Contributing
 

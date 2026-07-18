@@ -4,8 +4,8 @@ This document is for customer discovery and paid pilot validation. It is not a f
 
 Current product boundary:
 
-- simulation-first main workbench
-- one separately gated ESP32 reference rig, not general device support
+- REAL-first governed ESP32 reference rig, not general device support
+- separate SIM LAB for no-signal review and reproducible testing
 - Public Alpha
 - current runnable paths:
   - `robot_arm`
@@ -34,7 +34,8 @@ Each conversation should test whether the prospect actually cares about:
 
 1. seeing what the runtime understood from natural language
 2. blocking unsupported or unsafe execution before adapter dispatch
-3. having a simulation-first path before real hardware integration
+3. preventing unsafe or unsupported intent from reaching hardware while still
+   offering an explicit no-signal test path
 4. producing an audit trail for why a task executed or was rejected
 5. onboarding new device families through a clear runtime contract
 
@@ -48,7 +49,7 @@ Use these in real conversations:
 4. How much work does it take to validate a new workflow before touching hardware?
 5. Which device families matter first for your team?
 6. Who needs to understand why a task was allowed or blocked?
-7. Would a simulation-first runtime save engineering time, operator time, or hardware risk for you?
+7. Would one governed intent-to-hardware boundary plus a separate test lab save engineering time, operator time, or hardware risk for you?
 8. What evidence would you need before trusting a runtime layer in front of real adapters?
 9. If we onboarded one device family for you, which one should it be and why?
 10. What would have to be true for you to run a paid pilot?
@@ -57,12 +58,12 @@ Use these in real conversations:
 
 Keep the walkthrough honest and narrow:
 
-1. show the AI command input
-2. show a safe `robot_arm` path
-3. show a blocked unsafe path
-4. show that only some devices are runnable today
-5. show the runtime decision and lab report
-6. show the REAL HARDWARE boundary only as a reference-rig proof path and state its evidence-lock, operator-confirmation, and non-certified limitations
+1. show the connected REAL reference-rig identity and explicit confirmation
+2. show one allowed servo command and honest open-loop acknowledgement
+3. show a live interlock block with zero hardware signal
+4. show the audit distinction between sent and not sent
+5. enter SIM LAB explicitly and show one reproducible virtual allow/block path
+6. state the reference-rig-only and non-certified limitations
 
 Do not demo Coming Soon devices as if they are supported.
 
@@ -72,7 +73,7 @@ Track each conversation against these signals:
 
 - clear pain acknowledged
 - current workaround exists and is costly
-- interest in simulation-first validation
+- interest in a governed real-device boundary and separate no-signal validation
 - interest in runtime explainability / audit
 - willingness to continue conversation
 - willingness to share device requirements
@@ -98,7 +99,7 @@ That is the real signal. Everything before that is still evidence gathering.
 A realistic first paid pilot would likely include:
 
 1. one customer device family
-2. simulation-first runtime setup
+2. reviewed profile, evidence, and governed runtime setup
 3. device manifest and capability mapping
 4. safety / blocked / unsupported behavior validation
 5. lab report / audit export review

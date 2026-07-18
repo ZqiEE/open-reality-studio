@@ -2,7 +2,8 @@
 
 ## One-line Position
 
-Open Reality is a simulation-first AI-to-Action Runtime that helps ordinary hardware become part of Physical AI through a universal software boundary.
+RealityWarden is a REAL-first AI-to-Action safety runtime that governs the
+boundary between intent and physical hardware.
 
 ## What Open Reality Is
 
@@ -14,7 +15,10 @@ Open Reality is not a closed device stack.
 
 Open Reality is a common runtime layer between AI models and physical devices.
 
-An AI model gives a natural-language goal. Open Reality turns that goal into a checked, simulated, permissioned, and auditable action path before it reaches any device boundary.
+An AI model or human gives an intent. RealityWarden treats it as an untrusted
+proposal, validates capability and bounds, checks current evidence, applies
+safety policy, requires explicit authorization, and audits whether any hardware
+signal was actually sent.
 
 ## Why This Exists
 
@@ -52,7 +56,7 @@ Open Reality is designed to describe and route AI workflows for many categories 
 - cameras
 - smart home hardware
 - mobile robots
-- drones in simulation-first form
+- drones as future simulation-only assets until a reviewed real boundary exists
 - future Physical AI systems
 
 A device should become visible through a Reality Asset, not through a hardcoded brand-specific path.
@@ -109,13 +113,14 @@ The goal is a common software layer that helps more hardware companies and devel
 
 ## Current Boundary
 
-Open Reality Studio Public Alpha is simulation-first.
-
-Real device execution is disabled.
+RealityWarden Public Alpha is REAL-first for one documented ESP32 reference
+rig. SIM LAB is a visibly separate zero-signal mode for virtual assets and
+reproducible tests.
 
 It does not claim production hardware readiness or certified industrial safety.
 
-The current runnable paths are simulation-only or read-only examples.
+No public asset, imported manual, model, or generic adapter can grant itself
+real-device authority.
 
 ## Guiding Rule
 

@@ -3015,10 +3015,19 @@ export default function Home() {
       if (action === 'project:saveAs') void saveWorkspace(true);
       if (action === 'export:labReport') void exportCurrentLabReport();
       if (action === 'export:deploymentPackage') void exportDeploymentConfig();
-      if (action === 'run:preflight') void runFullValidation();
-      if (action === 'run:virtualLab') void runScenario();
+      if (action === 'run:preflight') {
+        setWorkspaceMode('simulation');
+        void runFullValidation();
+      }
+      if (action === 'run:virtualLab') {
+        setWorkspaceMode('simulation');
+        void runScenario();
+      }
       if (action === 'run:stop') stopRun();
-      if (action === 'run:replay') replayRun();
+      if (action === 'run:replay') {
+        setWorkspaceMode('simulation');
+        replayRun();
+      }
     });
   }, [exportCurrentLabReport, exportDeploymentConfig, newProject, openProject, replayRun, runFullValidation, runScenario, saveWorkspace, stopRun]);
 

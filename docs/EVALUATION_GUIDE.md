@@ -6,9 +6,13 @@ Use it when you want a clean first evaluation of the product without guessing wh
 
 ## What This Alpha Is
 
-RealityWarden Desktop is a **simulation-first** Physical AI workbench. The main AI Command workflow is simulation-only and requires no hardware. A separate REAL HARDWARE boundary exists only for the documented ESP32 reference rig and remains evidence-locked, sensor-gated, operator-confirmed, and visibly distinct.
+RealityWarden Desktop is a **REAL-device-first** Physical AI safety runtime. It
+opens on the documented ESP32 reference-rig path, which remains evidence-locked,
+sensor-gated, operator-confirmed, ticketed, and visibly distinct. Disconnected
+REAL mode renders no simulation canvas or stale telemetry.
 
-Runnable device paths in the current Public Alpha:
+SIM LAB is a separate explicit zero-signal mode. It can be evaluated without
+hardware and currently supports:
 
 - `robot_arm`
 - `smart_light`
@@ -26,17 +30,26 @@ Everything else in the workspace should be treated as:
 - protocol surface
 - Coming Soon runtime coverage
 
-It is **not** general-purpose or production-certified real-device control.
+The product is **not** general-purpose or production-certified real-device
+control; the ESP32-S3 + SG90 + HC-SR04 rig is the only current hardware scope.
 
 ## Best First-Run Path
 
-Recommended evaluation order:
+1. Confirm REAL is selected on launch.
+2. Confirm the disconnected center is flat and has no 3D grid or virtual model.
+3. If you have the documented rig, evaluate port selection, diagnose, connect,
+   explicit confirmation, one allowed angle, and one interlock-blocked angle.
+4. For the no-hardware path, explicitly select **SIM LAB**.
+
+Recommended SIM LAB order:
 
 1. `robot_arm`
 2. `smart_light`
 3. `camera_sensor`
 
-Do not start with `mobile_robot`, `plc_cabinet`, `conveyor_belt`, `lab_instrument`, `warehouse_rack`, or `sensor_box`. Those are not runnable in the main Run path yet.
+Do not start with `mobile_robot`, `plc_cabinet`, `conveyor_belt`,
+`lab_instrument`, `warehouse_rack`, or `sensor_box`. Those are not runnable in
+SIM LAB yet and have no real-device authority.
 
 ## Language Note
 
@@ -46,7 +59,7 @@ If the desktop UI is set to English, use the English prompt examples below.
 
 For the current Public Alpha, staying close to the documented prompt wording will give the most reliable evaluation result.
 
-## 1. Robot Arm
+## 1. SIM LAB Robot Arm
 
 Expected result:
 
@@ -83,7 +96,7 @@ Blocked task:
 - No motion frames execute
 - Robot arm and object remain still
 
-## 2. Smart Light
+## 2. SIM LAB Smart Light
 
 Expected result:
 
@@ -121,7 +134,7 @@ Expected unsupported behavior:
 - no silent fallback
 - no robot-arm commands
 
-## 3. Camera Sensor
+## 3. SIM LAB Camera Sensor
 
 Expected result:
 
@@ -185,9 +198,10 @@ If the run target is a non-runnable device family, the correct behavior is:
 
 Use this Public Alpha to evaluate:
 
-- desktop simulation workflow direction
-- safety-gated prompt execution
-- narrow runnable golden paths
+- governed reference-rig onboarding and allow/block behavior
+- truthful hardware delivery audit semantics
+- explicit zero-signal simulation workflows
+- narrow, honestly bounded runnable paths
 
 Do not use this Public Alpha as evidence of:
 

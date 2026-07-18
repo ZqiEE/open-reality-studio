@@ -1,10 +1,15 @@
 # Desktop App
 
-RealityWarden Desktop is the primary product direction. It is a desktop virtual lab for AI-controlled devices, not a website and not a browser presentation.
+RealityWarden Desktop is the primary product. It is a REAL-device-first local
+safety runtime with an explicit secondary Simulation Lab, not a website or a
+browser presentation.
 
 ## Why Desktop
 
-AI reality-device development needs local project files, workspace persistence, audit exports, simulator assets, menus, keyboard shortcuts, and a tool layout that behaves like engineering software. Electron lets the current Next.js, React, and TypeScript workbench become a cross-platform desktop Alpha quickly while preserving Web development mode.
+Governed physical-device work needs serial access, approved firmware flashing,
+local project files, audit exports, simulator assets, menus, keyboard shortcuts,
+and a tool layout that behaves like engineering software. Electron supplies the
+trusted local boundary while preserving Web mode for non-hardware UI review.
 
 ## Electron Architecture
 
@@ -29,7 +34,7 @@ Renderer code never receives direct Node.js or `fs` access.
 - application title: RealityWarden
 - application menu creation
 - IPC registration
-- shutdown of the local simulator server
+- shutdown of the local renderer server
 
 ## Renderer
 
@@ -37,7 +42,7 @@ The renderer remains the Studio Workbench UI. In desktop mode it calls `window.o
 
 ## Preload
 
-`electron/preload.ts` exposes only:
+`electron/preload.ts` exposes bounded API groups for:
 
 - `window.openReality.project.new()`
 - `window.openReality.project.open()`
@@ -49,9 +54,16 @@ The renderer remains the Studio Workbench UI. In desktop mode it calls `window.o
 - `window.openReality.support.openGuide()`
 - `window.openReality.support.exportDiagnostics()`
 - `window.openReality.support.showAbout()`
+- `window.openReality.hardware.listPorts()/autoDetect()/probe()/connect()/readDistance()/disconnect()`
+- `window.openReality.hardware.executionStatus()/execute()/executeManifest()`
+- `window.openReality.hardware.firmwarePlan()/flashFirmware()`
+- declarative Marketplace review/install/simulation-enable/uninstall and
+  publisher-trust operations
 - `window.openReality.onMenuAction(callback)`
 
-The preload does not expose `fs`, Node globals, or arbitrary IPC channels.
+The preload does not expose `fs`, Node globals, arbitrary IPC channels, raw
+serial writes, or an actuation method outside the governed `hardware:execute`
+route.
 
 ## IPC
 
@@ -61,6 +73,9 @@ IPC modules live in `electron/ipc/`:
 - `file.ipc.ts`: limited local file reveal
 - `export.ipc.ts`: Lab Report and Deployment Package exports
 - `support.ipc.ts`: packaged support guide, local diagnostic export, and local About dialog
+- `hardware.ipc.ts`: serial lifecycle, read-only diagnostics, governed firmware,
+  and the compiled shared `HardwareExecutionGate` execution authority
+- `marketplace.ipc.ts`: declarative package and publisher trust lifecycle
 
 All local file reads and writes happen in the Main Process through these IPC handlers.
 
@@ -96,8 +111,8 @@ Browser workspace import uses the same contract. Complete validated v3 projects 
 
 Desktop export uses native save dialogs:
 
-- Export Lab Report
-- Export Deployment Package
+- Export Simulation Lab Report
+- Export Simulation Adapter Package
 
 Web development mode keeps browser download fallbacks.
 
@@ -105,15 +120,18 @@ Web development mode keeps browser download fallbacks.
 
 The desktop menu includes:
 
-- File: New Project, Open Project, Save Project, Save Project As, Export Lab Report, Export Deployment Package, Exit
-- Run: Run Preflight, Run Virtual Lab, Stop, Replay
+- File: New Project, Open Project, Save Project, Save Project As, explicit
+  simulation report/package exports, Exit
+- Simulation: Run Simulation Preflight, Enter and Run Simulation Lab, Stop
+  Simulation, Replay Simulation
 - View: Toggle Project Explorer, Toggle Inspector, Toggle Console, Reload
 - Help: Open Support Guide, Export Local Diagnostic Bundle, About RealityWarden
 
 Menu actions are sent to the renderer through a safe `menu:action` channel.
 
 The same support actions are discoverable in the visible File menu because the
-Windows native menu bar is normally collapsed. The installed guide is packaged
+Windows native menu bar is normally collapsed. Simulation asset/manual imports
+appear there only after the operator explicitly enters SIM LAB. The installed guide is packaged
 under `resources/support` and opens in an isolated in-app window without network
 access. Diagnostic export is
 user-initiated and local-only: it contains version/runtime metadata and a
@@ -129,19 +147,25 @@ Electron is configured with:
 - `nodeIntegration: false`
 - a limited preload bridge
 - no renderer `fs` access
-- no Real Device execution in the main UI
+- real actuation only through the compiled shared hardware authority and private
+  `HardwareExecutionGate` ticket path
 
 ## Real Device Boundary
 
-Real Device execution is not enabled by default. The current product path is Virtual Lab first.
+The desktop opens in the REAL workspace, but actuation remains default-blocked.
+The disconnected state has no simulation canvas. A user must select a reviewed
+port, diagnose, connect, keep the explicit session confirmation visible, and
+submit each command through the independent black/yellow boundary.
 
-The separately marked reference-rig Real Device execution requires:
+The reference-rig path requires:
 
-- certified adapter
-- verified RealDeviceTransport behind HardwareExecutionGate
-- Safety Runtime approval before transport execution
-- human supervision
-- emergency stop handling
+- the documented ESP32-S3 + SG90 + HC-SR04 profile
+- verified `RealDeviceTransport` behind `HardwareExecutionGate`
+- fresh sensor evidence and device timestamp
+- evidence lock plus explicit operator confirmation
+- per-primitive validation and stop-on-first-block semantics
+- an honest audit that distinguishes not sent, attempted/unconfirmed, and
+  acknowledged open-loop delivery
 
 ## Windows Packaging
 
@@ -189,7 +213,7 @@ That command fails before packaging unless `marketplace/distribution.json` passe
 
 Both paths package the compiled shared hardware safety runtime, the Next production runtime, the SHA256-paired prebuilt firmware image, and rebuilt Windows `serialport` native bindings. Next runs from `app.asar.unpacked` because Windows child processes require a real working directory; Electron and the shared safety runtime remain loaded from the packaged application.
 
-After electron-builder finishes, `scripts/verify-electron-package.cjs` fails the command unless all required asar/unpacked entries, native bindings, PDF/manual-import runtime, firmware checksums, branding metadata, and the versioned NSIS artifact are present. `desktop:pack` then runs a packaged first-run renderer smoke: a hidden, isolated Electron session starts the bundled Next server and must load the real AppHeader, Device Navigator, CommandDock, sole Run/Stop pair, simulation boundary, independent REAL HARDWARE boundary, and preload bridge. Any missing contract exits non-zero. The same smoke check can be repeated manually without installing:
+After electron-builder finishes, `scripts/verify-electron-package.cjs` fails the command unless all required asar/unpacked entries, native bindings, PDF/manual-import runtime, firmware checksums, branding metadata, and the versioned NSIS artifact are present. `desktop:pack` then runs a packaged first-run renderer smoke: a hidden, isolated Electron session starts the bundled Next server and must load the REAL-first workspace without simulation controls, the primary independent REAL HARDWARE boundary, the hardware/Marketplace preload bridges, and the flat disconnected state. A separate explicit SIM LAB smoke requires its navigator, command dock, sole Run/Stop pair, zero-signal boundary, and simulation-only tools. Any missing contract exits non-zero. The same smoke check can be repeated manually without installing:
 
 ```powershell
 release\win-unpacked\RealityWarden.exe --prod --smoke-test

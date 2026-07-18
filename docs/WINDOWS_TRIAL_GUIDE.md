@@ -2,13 +2,22 @@
 
 Use this guide when you want to try the current `v0.5.1 Public Alpha` on Windows.
 
-This is a **simulation-first desktop application**. The normal evaluation path requires no hardware.
+This is a **REAL-device-first Public Alpha**. It opens on a flat disconnected
+REAL workspace and never invents a virtual device or telemetry there.
 
-The separately marked REAL HARDWARE panel supports only the documented ESP32 reference rig behind an evidence lock and safety gate. This is not general-purpose or production-certified device control.
+The REAL HARDWARE boundary supports only the documented ESP32 reference rig
+behind an evidence lock, explicit confirmation, fresh sensor checks, and the
+single ticketed safety gate. This is not general-purpose or
+production-certified device control. If you do not have the rig, explicitly
+select SIM LAB for a zero-signal evaluation.
 
 ## What You Can Actually Run
 
-Runnable device paths in the current Public Alpha:
+Real hardware:
+
+- ESP32-S3 + SG90 + HC-SR04 reference rig only
+
+Runnable SIM LAB device paths:
 
 - `robot_arm`
 - `smart_light`
@@ -38,9 +47,10 @@ Install flow:
 Expected first-run outcome:
 
 - the desktop window opens
-- the virtual workspace shows the default robot arm
-- the AI Command input is visible
-- the product does not require real hardware
+- REAL mode is selected
+- no 3D canvas or virtual device appears while hardware is disconnected
+- the primary REAL HARDWARE boundary shows the honest disconnected state
+- SIM LAB tools appear only after explicitly selecting SIM LAB
 
 Offline help and recovery are included in the installation. Open the visible
 **File** menu (or press Alt for the native **Help** menu) to open the packaged
@@ -61,15 +71,15 @@ npm run desktop:pack
 Expected output:
 
 ```text
-release/RealityWarden-0.5.0-Setup.exe
-release/RealityWarden-0.5.0-Startup-Acceptance.json
-release/RealityWarden-0.5.0-Startup-Acceptance.json.sha256
-release/RealityWarden-0.5.0-Design-Acceptance.json
-release/RealityWarden-0.5.0-Design-Acceptance.json.sha256
-release/RealityWarden-0.5.0-Install-Lifecycle.json
-release/RealityWarden-0.5.0-Install-Lifecycle.json.sha256
-release/RealityWarden-0.5.0-Release-Evidence.json
-release/RealityWarden-0.5.0-Release-Evidence.json.sha256
+release/RealityWarden-0.5.1-Setup.exe
+release/RealityWarden-0.5.1-Startup-Acceptance.json
+release/RealityWarden-0.5.1-Startup-Acceptance.json.sha256
+release/RealityWarden-0.5.1-Design-Acceptance.json
+release/RealityWarden-0.5.1-Design-Acceptance.json.sha256
+release/RealityWarden-0.5.1-Install-Lifecycle.json
+release/RealityWarden-0.5.1-Install-Lifecycle.json.sha256
+release/RealityWarden-0.5.1-Release-Evidence.json
+release/RealityWarden-0.5.1-Release-Evidence.json.sha256
 ```
 
 The release evidence JSON is written only after package inspection, packaged
@@ -98,9 +108,12 @@ npm run desktop:dev
 
 ## First Evaluation Path
 
-Do not start by clicking random device families.
+First verify that the default REAL workspace is visibly disconnected and
+contains no simulation stage. If you have the documented reference rig, follow
+`docs/REAL_HARDWARE_ESP32.md` and evaluate diagnose/connect/confirm/allow/block.
 
-Use this order:
+For a no-hardware evaluation, explicitly select **SIM LAB**, then use this
+order:
 
 1. `robot_arm`
 2. `smart_light`
@@ -108,7 +121,7 @@ Use this order:
 
 Then use [docs/EVALUATION_GUIDE.md](./EVALUATION_GUIDE.md).
 
-## Recommended First Commands
+## Recommended SIM LAB Commands
 
 ### Robot Arm
 
@@ -159,8 +172,9 @@ These are current product boundaries:
 
 - non-runnable device families show `Coming Soon`
 - unsupported prompts fail instead of silently guessing
-- real hardware is never reached from the normal simulation workflow; the
-  separately marked reference-rig panel remains evidence-locked and opt-in
+- SIM LAB never reaches hardware and never silently replaces a failed REAL
+  operation
+- the reference-rig panel remains evidence-locked and operator-confirmed
 
 ## When To Stop And Re-check
 
@@ -168,4 +182,4 @@ If you see any of these, stop and verify the run target first:
 
 - you selected a non-runnable device family
 - the current run target does not match the device you expected
-- you expected real hardware execution from the desktop alpha
+- you expected arbitrary hardware outside the documented reference rig

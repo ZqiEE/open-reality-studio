@@ -4,9 +4,14 @@ This guide is installed with RealityWarden and works offline.
 
 ## Product boundary
 
-RealityWarden 0.5.0 Public Alpha is a simulation-first safety-governance desktop application. Robot Arm, Smart Light, and Camera Sensor are the runnable simulation paths. Other displayed device families are not finished runtime paths.
+RealityWarden 0.5.1 Public Alpha is a REAL-device-first safety-governance
+desktop application for one documented ESP32 reference rig. The disconnected
+REAL workspace intentionally shows no 3D stage or stale data.
 
-REAL HARDWARE is a separate, explicitly marked reference-rig path. It remains evidence-locked, requires operator confirmation, and never treats a software acknowledgement as proof of physical motion.
+REAL HARDWARE remains evidence-locked, requires operator confirmation, and
+never treats a software acknowledgement as proof of physical motion. SIM LAB is
+a separate zero-signal mode; Robot Arm, Smart Light, and Camera Sensor are its
+runnable paths.
 
 ## Recover from a startup problem
 
@@ -39,7 +44,7 @@ Review the JSON before sharing it. Support staff should request this bundle inst
 
 ## Simulation and REAL HARDWARE
 
-- The normal Run/Stop controls apply to the AI Command simulation workflow.
+- Simulation Run/Stop controls appear only inside explicitly selected SIM LAB.
 - REAL HARDWARE stays in its independent black/yellow boundary and is not enabled by simulation state.
 - Missing, stale, invalid, or frozen sensor evidence blocks real execution.
 - Physical-device acceptance is optional evidence and is not required to use or evaluate the software paths.

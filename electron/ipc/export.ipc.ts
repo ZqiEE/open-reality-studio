@@ -14,10 +14,10 @@ async function saveJson(title: string, defaultPath: string, payload: unknown) {
 
 export function registerExportIpc() {
   ipcMain.handle('export:labReport', async (_event, payload: { report: unknown }) => {
-    return saveJson('Export Lab Report', `lab-report-${Date.now()}.json`, payload.report);
+    return saveJson('Export Simulation Lab Report', `lab-report-${Date.now()}.json`, payload.report);
   });
 
   ipcMain.handle('export:deploymentPackage', async (_event, payload: { deploymentPackage: unknown }) => {
-    return saveJson('Export Deployment Package', `deployment-package-${Date.now()}.json`, payload.deploymentPackage);
+    return saveJson('Export Simulation Adapter Package', `deployment-package-${Date.now()}.json`, payload.deploymentPackage);
   });
 }

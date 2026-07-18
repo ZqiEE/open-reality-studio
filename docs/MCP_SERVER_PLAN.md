@@ -1,6 +1,8 @@
 # MCP Server Plan
 
-This document describes a future agent integration boundary. The current product is the desktop Virtual Lab.
+This document describes a future agent integration boundary. The current
+product is a REAL-first desktop safety runtime for one documented reference rig,
+with a separate zero-signal Simulation Lab.
 
 ## Future Architecture
 

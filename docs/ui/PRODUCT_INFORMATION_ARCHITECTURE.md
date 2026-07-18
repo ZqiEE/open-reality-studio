@@ -40,7 +40,14 @@ Connection identity and the explicit session confirmation remain visible whereve
 
 In REAL mode this boundary is the primary right-rail task area and remains open; device status and the safety-contract explanation move below it as auxiliary evidence. At compact 1180×720, the hardware boundary must retain at least half of the right rail. In Simulation Lab mode the hierarchy reverses: simulation decision evidence is primary and the independent hardware boundary may remain compact.
 
-The global toolbar follows the same mode boundary. REAL mode exposes a device-controls focus action, honest connected/disconnected state, and the gated-boundary reminder. Simulation onboarding, custom simulation actions, Marketplace, simulation reports, and adapter-package export appear only after explicit entry into Simulation Lab; none may be inert or masquerade as a REAL-device operation.
+The global toolbar and visible File menu follow the same mode boundary. REAL
+mode exposes a device-controls focus action, honest connected/disconnected
+state, and the gated-boundary reminder. Simulation asset/manual import,
+onboarding, custom simulation actions, Marketplace, simulation reports, and
+adapter-package export appear only after explicit entry into Simulation Lab;
+none may be inert or masquerade as a REAL-device operation. Native desktop
+simulation shortcuts must first switch the visible workspace to SIM LAB before
+running or replaying anything.
 
 ## Naming rules
 

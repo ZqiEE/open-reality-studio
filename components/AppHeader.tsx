@@ -6,6 +6,7 @@ import { t } from '@/lib/i18n';
 
 interface FileMenuProps {
   language: UiLanguage;
+  workspaceMode: 'real' | 'simulation';
   onNew: () => void;
   onOpen: () => void;
   onImportAsset: () => void;
@@ -18,15 +19,17 @@ interface FileMenuProps {
   onAbout: () => void;
 }
 
-export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManual, onSave, onSaveAs, onRestore, onOpenSupport, onExportDiagnostics, onAbout }: FileMenuProps) {
+export function FileMenu({ language, workspaceMode, onNew, onOpen, onImportAsset, onImportManual, onSave, onSaveAs, onRestore, onOpenSupport, onExportDiagnostics, onAbout }: FileMenuProps) {
   const [open, setOpen] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
-  const items: Array<{ id: string; label: string; action: () => void }> = [
+  const items: Array<{ id: string; label: string; action: () => void; simulationOnly?: true }> = [
     { id: 'new', label: t(language, 'app_new'), action: onNew },
     { id: 'open', label: t(language, 'app_open'), action: onOpen },
-    { id: 'import-asset', label: t(language, 'app_import_asset'), action: onImportAsset },
-    { id: 'import-manual', label: language === 'zh' ? '导入设备手册…' : 'Import Device Manual…', action: onImportManual },
+    ...(workspaceMode === 'simulation' ? [
+      { id: 'import-asset', label: language === 'zh' ? '导入仿真资产…' : 'Import Simulation Asset…', action: onImportAsset, simulationOnly: true as const },
+      { id: 'import-manual', label: language === 'zh' ? '导入设备手册（仅仿真）…' : 'Import Device Manual (Simulation Only)…', action: onImportManual, simulationOnly: true as const },
+    ] : []),
     { id: 'save', label: t(language, 'app_save_project'), action: onSave },
     { id: 'save-as', label: t(language, 'app_save_as'), action: onSaveAs },
     { id: 'restore', label: t(language, 'app_restore'), action: onRestore },
@@ -83,6 +86,7 @@ export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManua
             type="button"
             role="menuitem"
             data-file-action={item.id}
+            data-simulation-file-action={item.simulationOnly ? item.id : undefined}
             tabIndex={-1}
             onClick={() => { setOpen(false); item.action(); }}
             onKeyDown={(event) => {
@@ -112,7 +116,6 @@ export function FileMenu({ language, onNew, onOpen, onImportAsset, onImportManua
 }
 
 interface AppHeaderProps extends FileMenuProps {
-  workspaceMode: 'real' | 'simulation';
   realHardwareConnected: boolean;
   projectName: string;
   preflight: 'passed' | 'warning' | 'blocked';

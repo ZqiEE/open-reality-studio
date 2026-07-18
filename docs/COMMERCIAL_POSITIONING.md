@@ -1,113 +1,112 @@
 # Commercial Positioning
 
-RealityWarden is a simulation-first desktop runtime for Physical AI workflows.
+RealityWarden is a local safety-governance runtime for Physical AI: the audited
+boundary between natural-language or human intent and real hardware.
 
-It is not a generic website, not a cloud dashboard, and not only a robot arm demo. The product thesis is that AI systems should not jump directly from natural language into real hardware execution. They need a local runtime that can understand intent, check device capability, ground the task against world state, apply safety policy, simulate the outcome, and record an audit trail before any real adapter is allowed.
+It is not a generic website, a cloud dashboard, a robot-arm animation, or a
+promise that arbitrary equipment is AI-ready. Its commercial value is making
+the path from intent to physical action inspectable, bounded, and reusable
+without allowing a model, imported manual, Marketplace package, or operator
+input to grant itself execution authority.
 
-Current product boundary:
+Current Public Alpha boundary:
 
-- simulation-first main workbench
-- one separately gated ESP32 reference-hardware path; no general real-device support
-- no production hardware control
-- no certified industrial safety guarantee
-- current runnable paths are limited to `robot_arm`, `smart_light`, and `camera_sensor`
+- REAL-device-first desktop shell
+- one governed ESP32-S3 + SG90 + HC-SR04 reference path
+- explicit SIM LAB for zero-signal review and testing
+- no arbitrary/customer hardware execution
+- no production deployment or certified industrial-safety claim
 
 ## Target customers
 
-Early customer candidates:
+The strongest early customers are technical teams that already have hardware
+downstream risk:
 
-1. robotics software teams building AI-assisted task layers above device control
-2. industrial automation teams evaluating AI before touching PLCs, conveyors, or physical manipulators
-3. edge AI / embodied AI startups that need a controlled desktop runtime before field deployment
-4. systems integrators exploring simulation-first workflows for customer demos, presales, and validation
-5. advanced labs or applied research teams that need auditable prompt-to-runtime behavior
+1. robotics and embodied-AI teams adding natural-language task layers
+2. systems integrators onboarding customer devices and reusable actions
+3. industrial automation teams evaluating governed AI assistance
+4. edge-AI startups that need local execution and audit boundaries
+5. applied labs that need reproducible allow/block evidence
 
-The best first customers are not broad consumers. They are technical teams with real hardware downstream risk and a clear need for runtime explainability.
+The initial buyer is not a broad consumer. It is the person responsible for
+proving why a physical command was allowed, blocked, or never sent.
 
 ## Pain points
 
-The product is aimed at teams facing these problems:
+1. Natural-language intent is not runnable device control.
+2. Device integrations are fragmented across scripts, serial tools, and opaque
+   adapter glue.
+3. Missing/stale sensor evidence and partial failures are often hidden.
+4. Teams cannot reliably show what the model proposed, what rules recomputed,
+   and whether a signal actually reached the wire.
+5. Onboarding firmware, profiles, actions, and manuals requires specialist
+   tooling that ordinary operators do not have.
+6. Simulation demos are frequently mistaken for physical proof.
 
-1. natural-language intent is not the same thing as runnable device control
-2. unsupported tasks are often hidden behind brittle fallback behavior
-3. teams lack a unified place to inspect:
-   - what the AI understood
-   - what capability was required
-   - why execution was allowed or blocked
-4. hardware-facing testing is expensive, slow, risky, and hard to replay
-5. device support is fragmented across custom scripts, simulator demos, and adapter glue
-6. customers and operators need an audit trail, not only a visual demo
+## Product wedge
 
-## Why simulation-first runtime matters
+The first credible wedge is a governed reference-device workflow that a maker
+can use without an IDE:
 
-Simulation-first is not a cosmetic choice. It is the product boundary that makes the runtime trustworthy enough to evaluate.
+1. diagnose and flash an approved prebuilt firmware image
+2. connect the reviewed reference rig
+3. issue deterministic natural-language or jog-teach commands
+4. block on unsafe distance, missing evidence, or out-of-range proposals
+5. preserve an honest per-decision audit
 
-The value is:
+SIM LAB supports that business by reviewing declarative assets, reproducing
+policy outcomes, and developing protocols without hardware. It is valuable,
+but it is not the headline product and it never substitutes for physical
+acceptance.
 
-1. the same runtime kernel can reason about multiple device families
-2. unsupported or risky tasks can stop before adapter dispatch
-3. world state, capability requirements, and safety decisions become visible artifacts
-4. customers can evaluate workflow logic without needing hardware on day one
-5. future real-device adapters can be attached to a clearer boundary instead of bypassing the runtime
+## Why this is not just a servo demo
 
-## Why this is not just a robot arm demo
-
-The current Public Alpha uses `robot_arm` as the strongest visible path, but the product claim is wider than robotic motion:
-
-1. the runtime kernel already models device manifests, capability contracts, world model assumptions, planning, safety gating, TaskDSL, and adapter boundaries
-2. `smart_light` and `camera_sensor` prove that the runtime is not limited to manipulation devices
-3. Coming Soon device families are intentionally kept non-runnable rather than falsely presented as supported
-4. the core commercial angle is runtime governance for Physical AI, not only 3D animation
+The reference servo is the smallest affordable proof that the governance
+architecture reaches reality. The extensible product assets are the strict
+device profile, Action Manifest, ticketed execution gate, sensor-generation
+model, transport contract, audit vocabulary, firmware onboarding, and
+malicious-input tests. New devices must reuse and tighten those boundaries;
+they may not add a bypass.
 
 ## What the current alpha can do
 
-Today the alpha can:
-
-1. accept natural-language input in the desktop runtime
-2. compile supported tasks into the default simulation execution path
-3. show runtime decisions and blocked reasons before execution
-4. simulate limited runnable devices:
-   - `robot_arm`
-   - `smart_light`
-   - `camera_sensor`
-5. generate TaskDSL, adapter commands, playback feedback, and lab reports
-6. keep unsupported / ambiguous / blocked cases visible instead of silently falling back
+1. diagnose, connect, command, jog-teach, replay, and govern the documented
+   reference rig
+2. flash only reviewed digest-paired firmware inputs and verify after reconnect
+3. stop multi-step hardware actions after the first blocked primitive
+4. show current distance and honest open-loop last-command feedback
+5. run separate virtual workflows for supported SIM LAB device profiles
+6. review declarative manual and Marketplace proposals without granting real
+   authority
 
 ## What the current alpha cannot do
 
-Today the alpha cannot:
-
-1. execute arbitrary/customer hardware outside the documented reference rig
-2. claim production deployment readiness
-3. support all device families shown in the asset library
-4. provide certified industrial safety
-5. replace a full robotics simulator, PLC engineering suite, or hardware control stack
-6. guarantee that natural language works for arbitrary devices or arbitrary prompts
+1. execute arbitrary or customer hardware
+2. claim a measured servo position from an open-loop command acknowledgement
+3. claim production deployment readiness or certified industrial safety
+4. support every device family shown in the asset library
+5. replace a robotics simulator, PLC engineering suite, or device controller
+6. guarantee arbitrary natural-language understanding
 
 ## Monetization path
 
-Do not position monetization as generic AI SaaS. The likely path is narrower and more defensible.
+1. paid reference-kit onboarding and governed workflow pilots
+2. customer-specific declarative device/profile/action onboarding
+3. adapter SDK and verification support for integrators
+4. enterprise policy, audit, evidence-retention, and deployment governance
+5. curated declarative asset distribution after trust operations mature
 
-Potential path:
-
-1. simulation-first runtime seats for technical teams
-2. paid pilot for customer-specific device onboarding and workflow validation
-3. adapter SDK / device onboarding support for integrators and internal platform teams
-4. enterprise audit / governance features once the runtime boundary proves useful
-
-The monetization wedge is not “chat with your robot.” It is reducing the cost and risk of moving from intent to controlled device execution.
+The defensible wedge is not “chat with your robot.” It is reducing the cost and
+risk of proving that intent became—or did not become—a physical signal through
+one inspectable control boundary.
 
 ## Honest current positioning
 
-The right current statement is:
+Use this statement:
 
-RealityWarden is a simulation-first Physical AI desktop runtime for understanding, validating, and auditing device workflows, with one separately gated reference-hardware proof path.
+> RealityWarden is a REAL-first Physical AI safety runtime in Public Alpha. It
+> governs one documented reference rig today and includes a visibly separate
+> zero-signal Simulation Lab for asset review and reproducible testing.
 
-The wrong current statement would be:
-
-- production-ready industrial control platform
-- general real hardware execution product
-- certified safety runtime
-- universal multi-device AI operating system
-
-Those claims are not true yet and should not be used in customer conversations.
+Do not claim production readiness, certified safety, arbitrary hardware
+support, or a universal multi-device operating system.

@@ -67,10 +67,12 @@ The following are out of scope for the current public alpha:
 
 ## Honest Summary
 
-This Public Alpha is a simulation-first desktop prototype with three public runnable device paths:
+This Public Alpha is REAL-first for one documented ESP32-S3 + SG90 + HC-SR04
+reference rig. SIM LAB has three public runnable virtual paths:
 
 - `robot_arm`
 - `smart_light`
 - `camera_sensor`
 
-Everything else should be treated as workbench scaffolding, not as finished capability.
+Everything else should be treated as workbench scaffolding, not as finished
+capability. SIM LAB profiles and assets have no real-device authority.

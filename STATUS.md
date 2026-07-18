@@ -1,9 +1,15 @@
 # STATUS
 
-## REAL 面板自然语言指令（Promote-to-Real，2026-07-17）✅ 待本机 verify
+## REAL-first 产品真相与入口收口（2026-07-18）✅
+
+- 根因修复：此前界面已转为 REAL-first，但 README、PRD、商业定位、试用/评估/演示/支持/发布文档和 conformance 仍把产品定义为 simulation-first，导致后续设计会反复把仿真放回主流程。现统一为：RealityWarden 是“意图与真实硬件之间的安全治理运行时”；当前真机范围仅为 ESP32-S3 + SG90 + HC-SR04 参考台架；SIM LAB 是显式、独立、零信号的次级审查/测试工具。新设备/手册/Marketplace 提案仍必须 simulation-first 且零真机权限，这是输入信任策略，不再被误写成桌面主导航。
+- 入口语义：REAL 模式的可见 File 菜单不再渗漏仿真资产/手册导入；进入 SIM LAB 后才出现并明确标注 Simulation Only。Windows 原生 Simulation 菜单的运行/回放动作会先切换可见工作区，禁止在 REAL 画面背后静默运行仿真；原生导出名称也明确为 Simulation Lab Report / Simulation Adapter Package。
+- 可执行验收：打包渲染器在 1440×900 与 1180×720、中英文四组 REAL 布局中要求仿真 File 动作为 0；四组 SIM LAB 布局中要求恰为 2。发布/desktop/conformance/accessibility/launch-closure 契约同步收紧，产品设计证据八组零违规；提交前 `npm run verify` 全绿。
+
+## REAL 面板自然语言指令（Promote-to-Real，2026-07-17）✅
 
 - REAL HARDWARE 面板真机执行区新增**自然语言指令（规则解析）**：确定性解析显式角度 token（`45°`/`45度`/`45 degrees`/`归零`），解析不了或含无法归类的数字即整条拒绝（绝不猜测）；解析结果为不可信提案，经 `buildTeachManifest` → 现有 `executeManifest` IPC → 主进程权威 `validateActionManifest`（越界如 200° 在此被拒，绝不钳制）→ `HardwareActionSequenceRunner` 每步新传感器 generation + `HardwareExecutionGate`，中途 blocked 零后续帧。零新 IPC、零新执行通道，逐次人工确认与证据锁不变。设计取舍：不从仿真会话 TaskDSL 派生（三维位姿无法诚实映射一维舵机）。
-- 新增 `lib/hardware/RealCommandParser.ts`（诚实契约注释）；real-hardware 套件 46→**48**（解析器显式性、越界下游拒绝）；desktop 套件新增 3 条面板断言。沙箱验证：real-hardware 48/48、虚拟回环 5/5、desktop、conformance、action-manifest 20/20、三处 typecheck 绿。**`npm run verify` 与真机冒烟待所有者本机执行后再提交。**
+- 新增 `lib/hardware/RealCommandParser.ts`（诚实契约注释）；real-hardware 套件 46→**48**（解析器显式性、越界下游拒绝）；desktop 套件新增 3 条面板断言。三处 typecheck、real-hardware 48/48、虚拟回环 5/5、desktop、conformance、action-manifest 20/20 与本机 `npm run verify` 全绿，已随 REAL-first 产品界面演进提交。
 - 运维：会话中 Edit 工具再次截断千行大文件（RealHardwarePanel.tsx），已按预案从 git HEAD 重建 + 沙箱侧脚本重放修改，`git hash-object` 双向核对一致——大文件修改一律走沙箱侧写入。
 
 ## 真机四场景验收通过（2026-07-16）✅

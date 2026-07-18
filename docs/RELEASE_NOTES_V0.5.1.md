@@ -1,9 +1,10 @@
 # RealityWarden v0.5.1 Public Alpha Release Notes
 
-RealityWarden v0.5.1 is a software-complete Public Alpha release candidate for
-simulation-first Physical AI workflows and one explicitly gated ESP32 reference
-rig. It does not claim general hardware compatibility, verified physical motion,
-industrial safety certification, or production readiness.
+RealityWarden v0.5.1 is a software-complete, REAL-device-first Public Alpha
+release candidate for one explicitly governed ESP32 reference rig plus a
+separate zero-signal Simulation Lab. It does not claim general hardware
+compatibility, verified physical motion, industrial safety certification, or
+production readiness.
 
 ## Highlights since v0.3.0
 
@@ -11,9 +12,11 @@ industrial safety certification, or production readiness.
   embedded GLB/GLTF bytes, across Save/Open and durable IndexedDB autosave.
   Version 1 migrates explicitly; unknown fields, non-portable paths, dangling
   assets, oversized files, and simulator-boundary tampering are rejected.
-- A product-grade desktop information architecture keeps the 3D Workspace as
-  the visual center, AI Command as the only Run/Stop surface, evidence one step
-  away, and REAL HARDWARE inside an independent danger boundary.
+- A REAL-first desktop information architecture keeps the independent
+  REAL HARDWARE task boundary primary. Disconnected state mounts no 3D canvas;
+  only a current connection may show the read-only REAL twin. Simulation
+  navigation, commands, imports, Marketplace, and exports appear only after
+  explicit entry into SIM LAB.
 - The Action Composer supports capability-scoped custom actions, strict atomic
   action-library import/export, reference recipes, and editable 3D forbidden
   zones backed by the same runtime constraints.
@@ -40,9 +43,9 @@ industrial safety certification, or production readiness.
 
 ## Real-hardware boundary
 
-The normal AI Command workflow and all manual-derived assets are simulation-only
-and require no device. REAL HARDWARE is a separate, visibly distinct path only
-for the documented ESP32 + SG90 + HC-SR04 bench rig. Actuation requires the
+The default shell is REAL-first, but only the documented ESP32 + SG90 + HC-SR04
+bench rig has real execution authority. SIM LAB and all manual-derived assets
+remain simulation-only. Actuation requires the
 evidence lock (or explicit supervised bench override), per-run confirmation,
 fresh plausible sensor evidence, SafetyMonitor approval, and the gate-private
 HardwareExecutionGate ticket path.
