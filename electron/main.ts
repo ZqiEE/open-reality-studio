@@ -157,7 +157,7 @@ async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegrada
         realHardwarePrimary: (() => {
           const boundary = document.querySelector('[data-real-hardware-primary="true"]');
           const sidebar = document.querySelector('[data-component="EvidenceSidebar"]');
-          return boundary instanceof HTMLElement && sidebar instanceof HTMLElement && boundary.getBoundingClientRect().height >= sidebar.getBoundingClientRect().height * 0.5;
+          return boundary instanceof HTMLElement && sidebar instanceof HTMLElement && boundary.getBoundingClientRect().height >= sidebar.getBoundingClientRect().height * 0.95;
         })(),
         preloadBridge: typeof window.openReality === 'object',
         hardwareBridge: typeof window.openReality?.hardware === 'object',
@@ -321,7 +321,7 @@ async function captureRealWorkspaceLayout(window: BrowserWindow, width: number, 
     if (document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight) violations.push('document_overflow');
     if (!header || header.scrollWidth > header.clientWidth + 1) violations.push('header_overflow');
     if (!workspace || workspace.width < 800) violations.push('real_workspace_min_width');
-    if (!sidebar || !hardware || hardware.height < sidebar.height * 0.5) violations.push('real_hardware_not_primary');
+    if (!sidebar || !hardware || hardware.height < sidebar.height * 0.95) violations.push('real_hardware_not_full_height');
     if (document.querySelector('[data-component="DeviceNavigator"]') || document.querySelector('[data-component="CommandDock"]')) violations.push('simulation_surface_visible');
     if (document.querySelectorAll('button[data-run-control], button[data-stop-control]').length !== 0) violations.push('simulation_controls_visible');
     if (!realDeviceControl || simulationToolbarActions !== 0 || simulationFileActions !== 0) violations.push('real_toolbar_context');

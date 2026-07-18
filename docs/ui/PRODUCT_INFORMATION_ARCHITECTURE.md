@@ -38,7 +38,7 @@ After connection, the boundary presents one operator task at a time:
 
 Connection identity and the explicit session confirmation remain visible wherever actuation can be requested. Switching tasks changes presentation only; it never creates a new IPC or execution route.
 
-In REAL mode this boundary is the primary right-rail task area and remains open; device status and the safety-contract explanation move below it as auxiliary evidence. At compact 1180×720, the hardware boundary must retain at least half of the right rail. In Simulation Lab mode the hierarchy reverses: simulation decision evidence is primary and the independent hardware boundary may remain compact.
+In REAL mode this boundary owns the full right task rail and remains open. Connection state, telemetry, execution evidence, and safety explanations appear contextually inside that one governed task surface or on the read-only twin; they are not repeated in competing status/safety tabs. At compact 1180×720, the hardware boundary must retain at least 95% of the right rail height. In Simulation Lab mode the hierarchy changes: simulation decision evidence is primary and the independent hardware boundary may remain compact.
 
 The global toolbar and visible File menu follow the same mode boundary. REAL
 mode exposes a device-controls focus action, honest connected/disconnected

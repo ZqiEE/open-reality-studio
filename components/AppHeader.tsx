@@ -151,7 +151,11 @@ export function AppHeader(props: AppHeaderProps) {
         <nav className="flex shrink-0 items-center gap-2" aria-label={language === 'zh' ? '项目操作' : 'Project actions'}>
           <FileMenu {...props} />
           {realMode ? (
-            <button data-real-hardware-focus type="button" onClick={props.onFocusRealHardware} className="h-8 shrink-0 whitespace-nowrap border border-status-warning-edge bg-status-warning-surface px-3 text-[13px] font-semibold text-status-warning">{language === 'zh' ? '设备控制' : 'Device Controls'}</button>
+            <button data-real-hardware-focus type="button" onClick={props.onFocusRealHardware} className="h-8 shrink-0 whitespace-nowrap border border-status-warning-edge bg-status-warning-surface px-3 text-[13px] font-semibold text-status-warning">
+              {props.realHardwareConnected
+                ? (language === 'zh' ? '设备控制' : 'Device Controls')
+                : (language === 'zh' ? '连接设备' : 'Connect Device')}
+            </button>
           ) : (
             <>
               <button data-simulation-toolbar-action="quick-start" type="button" onClick={props.onQuickStart} className="h-8 shrink-0 whitespace-nowrap border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_quick_start')}</button>

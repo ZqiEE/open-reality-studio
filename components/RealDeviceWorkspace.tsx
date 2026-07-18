@@ -53,14 +53,14 @@ export function RealDeviceWorkspace({
               <h1 id="real-device-onboarding-title" className="mt-2 text-[24px] font-semibold text-text-primary">{zh ? '先让真实设备上线' : 'Bring the real device online first'}</h1>
               <p className="mt-3 max-w-[560px] text-[13px] leading-6 text-text-secondary">
                 {zh
-                  ? '这里不是仿真区。未连接时不渲染 3D 网格、虚拟设备或伪造遥测；连接成功后，才显示只读 REAL 孪生体。'
-                  : 'This is not a simulation surface. While disconnected, no 3D grid, virtual device, or invented telemetry is rendered. The read-only REAL twin appears only after connection.'}
+                  ? '接好参考设备后，在右侧点击“自动检测”。系统只读扫描串口、诊断固件并连接；成功后才显示只读 REAL 孪生体。'
+                  : 'Plug in the reference device, then choose Auto-detect on the right. RealityWarden scans ports read-only, diagnoses the firmware, and connects; only then does the read-only REAL twin appear.'}
               </p>
               <ol className="mt-6 grid grid-cols-3 gap-3" aria-label={zh ? '真实设备连接步骤' : 'Real-device connection steps'}>
                 {[
-                  zh ? '选择端口' : 'Select port',
-                  zh ? '诊断设备' : 'Diagnose',
-                  zh ? '显式连接' : 'Connect explicitly',
+                  zh ? '插入参考设备' : 'Plug in reference rig',
+                  zh ? '点击自动检测' : 'Choose Auto-detect',
+                  zh ? '确认诊断并连接' : 'Verify diagnosis + connection',
                 ].map((label, index) => (
                   <li key={label} className="border border-border bg-surface px-3 py-3 text-[12px] text-text-secondary">
                     <span className="mr-2 font-mono font-bold text-status-warning">{index + 1}</span>{label}
@@ -68,9 +68,13 @@ export function RealDeviceWorkspace({
                 ))}
               </ol>
               <button type="button" onClick={onFocusRealHardware} className="mt-6 h-10 border border-status-warning-edge bg-status-warning-surface px-4 text-[13px] font-semibold text-status-warning focus:outline-none focus:ring-2 focus:ring-status-warning">
-                {zh ? '打开右侧设备控制' : 'Open device controls on the right'}
+                {zh ? '前往自动检测' : 'Go to Auto-detect'}
               </button>
-              <p className="mt-3 text-[11px] text-text-muted">{zh ? '此操作只移动界面焦点，不会发送硬件信号。' : 'This only moves interface focus; it sends no hardware signal.'}</p>
+              <p className="mt-3 text-[11px] leading-4 text-text-muted">
+                {zh
+                  ? '自动检测是只读操作，不会驱动舵机。也可刷新端口后手动选择并连接。'
+                  : 'Auto-detect is read-only and never moves the servo. You can also refresh, select a port, and connect manually.'}
+              </p>
             </div>
           </div>
         </section>

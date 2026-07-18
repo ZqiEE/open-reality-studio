@@ -34,13 +34,28 @@ export function EvidenceSidebar({
     }
   }, [evidenceKey]);
 
-  const labels = workspaceMode === 'real'
-    ? (language === 'zh' ? { evidence: '设备状态', inspector: '安全契约' } : { evidence: 'Device Status', inspector: 'Safety Contract' })
-    : (language === 'zh' ? { evidence: '运行裁决', inspector: '仿真模型详情' } : { evidence: 'Run Decision', inspector: 'Simulation Details' });
+  if (workspaceMode === 'real') {
+    return (
+      <aside data-component="EvidenceSidebar" data-real-task-sidebar className="flex h-full w-[320px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface xl:w-[360px]">
+        <div
+          data-real-hardware-boundary
+          data-real-hardware-primary="true"
+          aria-label={language === 'zh' ? '独立真实硬件边界' : 'Independent real-hardware boundary'}
+          className="flex min-h-0 flex-1 flex-col border-t-4 border-real-hardware [border-image:repeating-linear-gradient(135deg,var(--color-real-hardware)_0_10px,#090A0C_10px_20px)_1]"
+        >
+          {hardware}
+        </div>
+      </aside>
+    );
+  }
+
+  const labels = language === 'zh'
+    ? { evidence: '运行裁决', inspector: '仿真模型详情' }
+    : { evidence: 'Run Decision', inspector: 'Simulation Details' };
 
   return (
     <aside data-component="EvidenceSidebar" className="flex h-full w-[320px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface xl:w-[360px]">
-      <div className={`grid h-10 shrink-0 grid-cols-2 border-b border-border bg-surface p-1 ${workspaceMode === 'real' ? 'order-2 border-t' : ''}`} role="tablist" aria-label={language === 'zh' ? '证据侧栏' : 'Evidence sidebar'}>
+      <div className="grid h-10 shrink-0 grid-cols-2 border-b border-border bg-surface p-1" role="tablist" aria-label={language === 'zh' ? '证据侧栏' : 'Evidence sidebar'}>
         {(['evidence', 'inspector'] as EvidenceTab[]).map((tab, index, tabs) => {
           const selected = activeTab === tab;
           return (
@@ -62,14 +77,14 @@ export function EvidenceSidebar({
         })}
       </div>
 
-      <div id="evidence-sidebar-panel-evidence" aria-labelledby="evidence-sidebar-tab-evidence" hidden={activeTab !== 'evidence'} className={`${workspaceMode === 'real' ? 'order-3 h-[240px] shrink-0' : 'min-h-0 flex-1'} overflow-hidden`} role="tabpanel">
+      <div id="evidence-sidebar-panel-evidence" aria-labelledby="evidence-sidebar-tab-evidence" hidden={activeTab !== 'evidence'} className="min-h-0 flex-1 overflow-hidden" role="tabpanel">
         {evidence}
       </div>
-      <div id="evidence-sidebar-panel-inspector" aria-labelledby="evidence-sidebar-tab-inspector" hidden={activeTab !== 'inspector'} className={`${workspaceMode === 'real' ? 'order-3 h-[240px] shrink-0' : 'min-h-0 flex-1'} overflow-hidden`} role="tabpanel">
+      <div id="evidence-sidebar-panel-inspector" aria-labelledby="evidence-sidebar-tab-inspector" hidden={activeTab !== 'inspector'} className="min-h-0 flex-1 overflow-hidden" role="tabpanel">
         {inspector}
       </div>
 
-      <div data-real-hardware-boundary data-real-hardware-primary={workspaceMode === 'real' ? 'true' : 'false'} aria-label={language === 'zh' ? '独立真实硬件边界' : 'Independent real-hardware boundary'} className={`${workspaceMode === 'real' ? 'order-1 flex min-h-0 flex-1 flex-col' : 'shrink-0'} border-t-4 border-real-hardware [border-image:repeating-linear-gradient(135deg,var(--color-real-hardware)_0_10px,#090A0C_10px_20px)_1]`}>
+      <div data-real-hardware-boundary data-real-hardware-primary="false" aria-label={language === 'zh' ? '独立真实硬件边界' : 'Independent real-hardware boundary'} className="shrink-0 border-t-4 border-real-hardware [border-image:repeating-linear-gradient(135deg,var(--color-real-hardware)_0_10px,#090A0C_10px_20px)_1]">
         {hardware}
       </div>
     </aside>

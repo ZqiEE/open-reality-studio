@@ -154,7 +154,7 @@ export function RealHardwarePanel({
   primary?: boolean;
 }) {
   const zh = language === 'zh';
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [activeTool, setActiveTool] = useState<RealHardwareTool>('command');
   const [ports, setPorts] = useState<Array<{ path: string; label?: string }>>([]);
   const [selectedPort, setSelectedPort] = useState('');
