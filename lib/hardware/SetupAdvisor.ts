@@ -127,13 +127,13 @@ export function interpretProbe(input: {
     }
     if (identity.firmwareVersion === null || !EXPECTED_FIRMWARE_VERSIONS.includes(identity.firmwareVersion)) {
       items.push(advice('firmware_outdated', 'warning',
-        `固件版本 ${identity.firmwareVersion ?? '未知'}，期望 ${EXPECTED_FIRMWARE_VERSIONS.join(' 或 ')}。运行 npm run hardware:flash -- --port COMx 一键升级（或按 docs/REAL_HARDWARE_ESP32.md 用 Arduino IDE 重刷）。`,
-        `Firmware ${identity.firmwareVersion ?? 'unknown'}, expected ${EXPECTED_FIRMWARE_VERSIONS.join(' or ')}. Run npm run hardware:flash -- --port COMx to upgrade (or reflash via Arduino IDE per docs/REAL_HARDWARE_ESP32.md).`));
+        `固件版本 ${identity.firmwareVersion ?? '未知'}，期望 ${EXPECTED_FIRMWARE_VERSIONS.join(' 或 ')}。打开右侧“固件”任务，核对端口、版本和 SHA-256 后烧录已审镜像。`,
+        `Firmware ${identity.firmwareVersion ?? 'unknown'}, expected ${EXPECTED_FIRMWARE_VERSIONS.join(' or ')}. Open the Firmware task, verify port, version, and SHA-256, then flash the reviewed image.`));
     }
     if (!identity.reportsDeviceMs) {
       items.push(advice('no_device_clock', 'error',
-        '固件未上报设备侧时钟 deviceMs：安全门会拦截一切执行（audit 2.2 防护）。必须重刷最新固件。',
-        'Firmware does not report the device-side clock (deviceMs): the safety gate will block all actuation (audit 2.2). Reflash the latest firmware.'));
+        '固件未上报设备侧时钟 deviceMs：安全门会拦截一切执行（audit 2.2 防护）。请在右侧“固件”任务中烧录最新已审镜像。',
+        'Firmware does not report the device-side clock (deviceMs): the safety gate blocks all actuation (audit 2.2). Flash the latest reviewed image from the Firmware task.'));
     }
     const echoes = typeof data.successfulEchoes === 'number' ? data.successfulEchoes : null;
     if (identity.sensorInterface === 'pulse_width' && echoes === 0) {
@@ -160,11 +160,11 @@ export function interpretProbe(input: {
     };
     items.push(identity.reportsDeviceMs
       ? advice('legacy_but_clocked', 'warning',
-        '旧版固件（无诊断命令）但已带设备时钟。建议升级到最新固件以获得诊断能力：npm run hardware:flash -- --port COMx。',
-        'Legacy firmware (no diagnostic commands) but the device clock is present. Upgrade recommended for diagnostics: npm run hardware:flash -- --port COMx.')
+        '旧版固件（无诊断命令）但已带设备时钟。建议从右侧“固件”任务升级已审镜像以获得诊断能力。',
+        'Legacy firmware (no diagnostic commands) but the device clock is present. Upgrade the reviewed image from the Firmware task to add diagnostics.')
       : advice('legacy_no_clock', 'error',
-        '旧版固件且无设备时钟 deviceMs：安全门会拦截一切执行。必须重刷：npm run hardware:flash -- --port COMx。',
-        'Legacy firmware without the device clock (deviceMs): the safety gate blocks all actuation. Reflash required: npm run hardware:flash -- --port COMx.'));
+        '旧版固件且无设备时钟 deviceMs：安全门会拦截一切执行。必须从右侧“固件”任务烧录最新已审镜像。',
+        'Legacy firmware without the device clock (deviceMs): the safety gate blocks all actuation. Flash the latest reviewed image from the Firmware task.'));
     return { identity, advice: items };
   }
 

@@ -75,7 +75,7 @@ export interface HardwareBridge {
   /** Real execution (product path): locked until acceptance evidence exists. */
   executionStatus?: () => Promise<HardwareExecutionLock>;
   firmwarePlan?: (portPath: string, request: unknown) => Promise<HardwareFirmwarePlanResult>;
-  flashFirmware?: (portPath: string, request: unknown, expectedSha256: string, confirm: boolean) => Promise<HardwareFirmwareFlashResult>;
+  flashFirmware?: (portPath: string, request: unknown, expectedSha256: string, authorizationId: string, confirm: boolean) => Promise<HardwareFirmwareFlashResult>;
   execute?: (portPath: string, angle: number, confirm: boolean) => Promise<HardwareExecuteOutcome>;
   executeManifest?: (portPath: string, manifest: unknown, confirm: boolean) => Promise<HardwareExecuteOutcome>;
 }
@@ -91,6 +91,10 @@ export interface HardwareFirmwarePlanResult {
     sensorInterface: string;
     address: number;
     byteLength: number;
+    authorizationId: string;
+    targetPort: string;
+    targetLabel?: string;
+    expiresAtMs: number;
   };
 }
 
@@ -357,6 +361,7 @@ export function RealHardwarePanel({
         ?? result.results.find((entry) => entry.ok);
       if (!hit) {
         const firstError = result.results[0]?.error;
+        if (result.results[0]?.path) setSelectedPort(result.results[0].path);
         setLastError(zh ? '未发现 RealityWarden 设备' : 'No RealityWarden device found');
         setAdvice([adviceForFailure(firstError ?? (result.results.length === 0 ? 'not found' : 'no valid response'))]);
         return;
@@ -388,7 +393,7 @@ export function RealHardwarePanel({
 
   const loadFirmwarePlan = useCallback(async (request: unknown = firmwareRequest) => {
     const api = bridge();
-    if (!api?.firmwarePlan || !selectedPort || status !== 'connected') {
+    if (!api?.firmwarePlan || !selectedPort || (status !== 'connected' && status !== 'disconnected')) {
       setFirmwarePlan(null);
       return;
     }
@@ -413,11 +418,17 @@ export function RealHardwarePanel({
 
   useEffect(() => {
     if (status === 'connected') void loadFirmwarePlan();
-    else {
+    else if (status !== 'disconnected') {
       setFirmwarePlan(null);
       setFirmwareConfirmed(false);
     }
   }, [loadFirmwarePlan, status]);
+
+  useEffect(() => {
+    setFirmwarePlan(null);
+    setFirmwareConfirmed(false);
+    setFirmwareError(null);
+  }, [selectedPort]);
 
   const selectWriteOrder = useCallback(async (file: File | undefined) => {
     if (!file) return;
@@ -443,7 +454,7 @@ export function RealHardwarePanel({
 
   const flashFirmware = useCallback(async () => {
     const api = bridge();
-    if (!api?.flashFirmware || !selectedPort || !firmwarePlan || !firmwareConfirmed) return;
+    if (!api?.flashFirmware || !firmwarePlan || !firmwareConfirmed) return;
     setActiveTool('firmware');
     setFlashing(true);
     setFirmwareFeedback(null);
@@ -452,7 +463,7 @@ export function RealHardwarePanel({
     setDistanceCm(null);
     setStatus('flashing');
     try {
-      const result = await api.flashFirmware(selectedPort, firmwareRequest, firmwarePlan.sha256, firmwareConfirmed);
+      const result = await api.flashFirmware(firmwarePlan.targetPort, firmwareRequest, firmwarePlan.sha256, firmwarePlan.authorizationId, firmwareConfirmed);
       if (!mounted.current) return;
       if (result.reconnected) {
         setStatus('connected');
@@ -490,7 +501,7 @@ export function RealHardwarePanel({
         setFirmwareConfirmed(false);
       }
     }
-  }, [firmwareConfirmed, firmwarePlan, firmwareRequest, selectedPort, startPolling, stopPolling, zh]);
+  }, [firmwareConfirmed, firmwarePlan, firmwareRequest, startPolling, stopPolling, zh]);
 
 
 
@@ -835,6 +846,22 @@ export function RealHardwarePanel({
                   </button>
                 )}
               </div>
+              {status === 'disconnected' && selectedPort && bridge()?.firmwarePlan && (
+                <div className="flex items-center justify-between gap-2 border border-status-warning-edge bg-status-warning-surface px-2 py-1.5">
+                  <div className="min-w-0 text-[11px] leading-4 text-text-secondary">
+                    <span className="block font-semibold text-status-warning">{zh ? '新板或固件无响应？' : 'New or unresponsive board?'}</span>
+                    {zh ? '无需先连接；可为当前枚举端口准备已审 ESP32-S3 固件。' : 'No handshake required; prepare reviewed ESP32-S3 firmware for the currently listed port.'}
+                  </div>
+                  <button
+                    data-first-flash-entry
+                    type="button"
+                    onClick={() => { setActiveTool('firmware'); void useReviewedPrebuilt(); }}
+                    className="h-7 shrink-0 rounded-[3px] border border-status-warning-edge px-2 text-[11px] font-semibold text-status-warning hover:bg-[#2B2111]"
+                  >
+                    {zh ? '准备首次烧录' : 'Prepare first flash'}
+                  </button>
+                </div>
+              )}
               <div className="flex items-center gap-3 font-mono text-[12px]">
                 <span className="text-text-secondary">{zh ? '距离传感器' : 'distance sensor'}:</span>
                 <span className={distanceCm === null ? 'text-text-secondary' : 'text-status-executed'}>
@@ -908,7 +935,7 @@ export function RealHardwarePanel({
               ))}
             </div>
           )}
-          {(status === 'connected' || status === 'flashing') && (activeTool === 'firmware' || status === 'flashing') && bridge()?.firmwarePlan && (
+          {(status === 'connected' || status === 'disconnected' || status === 'flashing') && (activeTool === 'firmware' || status === 'flashing') && bridge()?.firmwarePlan && (
             <section
               id="real-hardware-panel-firmware"
               role="tabpanel"
@@ -951,10 +978,11 @@ export function RealHardwarePanel({
               </div>
               {firmwarePlan && (
                 <div className="rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-2 py-1.5 text-[11px] leading-4">
-                  <div><span className="text-text-muted">{zh ? '目标端口' : 'target port'}:</span> <span className="font-mono text-status-warning">{selectedPort}</span></div>
+                  <div><span className="text-text-muted">{zh ? '目标端口' : 'target port'}:</span> <span className="font-mono text-status-warning">{firmwarePlan.targetPort}{firmwarePlan.targetLabel ? ` · ${firmwarePlan.targetLabel}` : ''}</span></div>
                   <div><span className="text-text-muted">{zh ? '镜像版本/接口' : 'image version/interface'}:</span> <span className="font-mono text-text-primary">v{firmwarePlan.version} · {firmwarePlan.sensorInterface}</span></div>
                   <div className="break-all"><span className="text-text-muted">sha256:</span> <span className="font-mono text-text-primary">{firmwarePlan.sha256}</span></div>
                   <div className="text-text-muted">{(firmwarePlan.byteLength / 1024 / 1024).toFixed(2)} MiB · {zh ? '合并镜像地址' : 'merged image address'} 0x{firmwarePlan.address.toString(16)}</div>
+                  <div className="text-text-muted">{zh ? '端口与镜像授权 5 分钟有效，烧录尝试后即失效。' : 'Port + image authorization is valid for five minutes and expires after one flash attempt.'}</div>
                 </div>
               )}
               {firmwareError && (
@@ -971,8 +999,8 @@ export function RealHardwarePanel({
                   onChange={(event) => setFirmwareConfirmed(event.target.checked)}
                 />
                 {zh
-                  ? '我已核对上方目标端口、镜像版本和 sha256，并确认现在可以断开串口连接进行烧录。'
-                  : 'I verified the target port, image version, and sha256 above, and confirm the serial connection may be closed for flashing.'}
+                  ? '我已核对上方目标端口、镜像版本和 sha256，并授权向该端口写入此已审固件。'
+                  : 'I verified the target port, image version, and sha256, and authorize writing this reviewed firmware to that port.'}
               </label>
               <div className="flex items-center gap-2">
                 <button

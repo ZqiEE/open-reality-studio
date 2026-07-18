@@ -53,14 +53,14 @@ export function RealDeviceWorkspace({
               <h1 id="real-device-onboarding-title" className="mt-2 text-[24px] font-semibold text-text-primary">{zh ? '先让真实设备上线' : 'Bring the real device online first'}</h1>
               <p className="mt-3 max-w-[560px] text-[13px] leading-6 text-text-secondary">
                 {zh
-                  ? '接好参考设备后，在右侧点击“自动检测”。系统只读扫描串口、诊断固件并连接；成功后才显示只读 REAL 孪生体。'
-                  : 'Plug in the reference device, then choose Auto-detect on the right. RealityWarden scans ports read-only, diagnoses the firmware, and connects; only then does the read-only REAL twin appear.'}
+                  ? '接好参考设备后，在右侧点击“自动检测”。系统只读扫描串口：已有固件则诊断并连接；空白或无响应的新板则进入受控首次烧录。'
+                  : 'Plug in the reference device, then choose Auto-detect on the right. RealityWarden scans ports read-only: existing firmware is diagnosed and connected; a blank or unresponsive board enters governed first flash.'}
               </p>
               <ol className="mt-6 grid grid-cols-3 gap-3" aria-label={zh ? '真实设备连接步骤' : 'Real-device connection steps'}>
                 {[
                   zh ? '插入参考设备' : 'Plug in reference rig',
                   zh ? '点击自动检测' : 'Choose Auto-detect',
-                  zh ? '确认诊断并连接' : 'Verify diagnosis + connection',
+                  zh ? '连接或准备首次烧录' : 'Connect or prepare first flash',
                 ].map((label, index) => (
                   <li key={label} className="border border-border bg-surface px-3 py-3 text-[12px] text-text-secondary">
                     <span className="mr-2 font-mono font-bold text-status-warning">{index + 1}</span>{label}

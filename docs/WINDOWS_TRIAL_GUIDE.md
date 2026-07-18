@@ -110,7 +110,11 @@ npm run desktop:dev
 
 First verify that the default REAL workspace is visibly disconnected and
 contains no simulation stage. If you have the documented reference rig, follow
-`docs/REAL_HARDWARE_ESP32.md` and evaluate diagnose/connect/confirm/allow/block.
+`docs/REAL_HARDWARE_ESP32.md`. A board with current firmware follows
+auto-detect → diagnose → connect. A blank or unresponsive listed ESP32-S3
+follows Prepare first flash → review exact port/version/SHA-256 → explicit
+confirmation → one governed write → reconnect/diagnose. No Arduino IDE or
+arbitrary BIN is part of the product path. Then evaluate confirm/allow/block.
 
 For a no-hardware evaluation, explicitly select **SIM LAB**, then use this
 order:

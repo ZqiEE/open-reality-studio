@@ -79,6 +79,14 @@ IPC modules live in `electron/ipc/`:
 
 All local file reads and writes happen in the Main Process through these IPC handlers.
 
+Governed first flash does not require a blank board to fake a RealityWarden
+handshake. `firmwarePlan()` accepts only a currently enumerated port and returns
+a five-minute, one-use authorization bound to the port fingerprint, exact
+governed request, and reviewed image SHA-256. `flashFirmware()` consumes that
+authorization, re-enumerates the target, revalidates the paired image/order,
+and then delegates chip identification and writing to esptool-js. A changed,
+missing, expired, or non-ESP32-S3 target is rejected without fallback.
+
 ## Local Project Files
 
 Project files use the extension:

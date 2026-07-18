@@ -1,4 +1,5 @@
 import { app, ipcMain } from 'electron';
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { flashWithEsptoolJs } from '../hardware/esptoolFlasher';
@@ -35,9 +36,20 @@ interface SerialPortInstanceLike {
 interface SerialPortModuleLike {
   SerialPort: {
     new (options: { path: string; baudRate: number; autoOpen: boolean }): SerialPortInstanceLike;
-    list(): Promise<Array<{ path: string; manufacturer?: string }>>;
+    list(): Promise<SerialPortDescriptor[]>;
   };
 }
+
+interface SerialPortDescriptor {
+  path: string;
+  manufacturer?: string;
+  serialNumber?: string;
+  vendorId?: string;
+  productId?: string;
+}
+
+type SerialPortDescriptorResult = { ok: true; ports: SerialPortDescriptor[] } | { ok: false; error: string };
+type SerialPortListResult = { ok: true; ports: Array<{ path: string; label?: string }> } | { ok: false; error: string };
 
 function loadSerialPortModule(): SerialPortModuleLike | { error: string } {
   try {
@@ -70,14 +82,29 @@ class HardwareConnection {
     return result;
   }
 
-  async listPorts() {
+  async listPorts(): Promise<SerialPortListResult> {
+    const listed = await this.listPortDescriptors();
+    if (!listed.ok) return listed;
+    return {
+      ok: true,
+      ports: listed.ports.map((port) => ({ path: port.path, label: port.manufacturer }))
+    };
+  }
+
+  async listPortDescriptors(): Promise<SerialPortDescriptorResult> {
     const loaded = loadSerialPortModule();
     if ('error' in loaded) return { ok: false, error: loaded.error };
     try {
       const ports = await loaded.SerialPort.list();
       return {
         ok: true,
-        ports: ports.map((port) => ({ path: port.path, label: port.manufacturer }))
+        ports: ports.map((port) => ({
+          path: port.path,
+          manufacturer: port.manufacturer,
+          serialNumber: port.serialNumber,
+          vendorId: port.vendorId,
+          productId: port.productId
+        }))
       };
     } catch (error) {
       return { ok: false, error: `list failed: ${error instanceof Error ? error.message : String(error)}` };
@@ -349,6 +376,56 @@ interface RuntimeGovernedFirmwareModule {
     | { ok: false; code: string; detail: string };
 }
 
+interface RuntimeFirmwareTargetAuthority {
+  createFirmwareTargetAuthorization(input: {
+    authorizationId: string;
+    requestedPortPath: unknown;
+    listedPorts: ReadonlyArray<{ path: string; manufacturer?: string; serialNumber?: string; vendorId?: string; productId?: string }>;
+    request: unknown;
+    imageSha256: string;
+    nowMs: number;
+  }): { ok: true; authorization: FirmwareTargetAuthorization } | { ok: false; code: string; detail: string };
+  validateFirmwareTargetAuthorization(input: {
+    authorization: FirmwareTargetAuthorization;
+    authorizationId: unknown;
+    requestedPortPath: unknown;
+    listedPorts: ReadonlyArray<{ path: string; manufacturer?: string; serialNumber?: string; vendorId?: string; productId?: string }>;
+    request: unknown;
+    imageSha256: unknown;
+    nowMs: number;
+  }): { ok: true } | { ok: false; code: string; detail: string };
+}
+
+interface FirmwareTargetAuthorization {
+  authorizationId: string;
+  target: { portPath: string; label?: string; fingerprint: string };
+  requestSha256: string;
+  imageSha256: string;
+  expiresAtMs: number;
+}
+
+const pendingFirmwareAuthorizations = new Map<string, FirmwareTargetAuthorization>();
+
+function storeFirmwareAuthorization(authorization: FirmwareTargetAuthorization) {
+  const now = Date.now();
+  pendingFirmwareAuthorizations.forEach((existing, id) => {
+    if (existing.expiresAtMs < now) pendingFirmwareAuthorizations.delete(id);
+  });
+  while (pendingFirmwareAuthorizations.size >= 8) {
+    const oldest = pendingFirmwareAuthorizations.keys().next().value as string | undefined;
+    if (!oldest) break;
+    pendingFirmwareAuthorizations.delete(oldest);
+  }
+  pendingFirmwareAuthorizations.set(authorization.authorizationId, authorization);
+}
+
+function consumeFirmwareAuthorization(authorizationId: unknown): FirmwareTargetAuthorization | null {
+  if (typeof authorizationId !== 'string') return null;
+  const authorization = pendingFirmwareAuthorizations.get(authorizationId) ?? null;
+  pendingFirmwareAuthorizations.delete(authorizationId); // one use, including failed/tampered attempts
+  return authorization;
+}
+
 function loadGovernedFirmware(): RuntimeGovernedFirmwareModule | { error: string } {
   try {
     // Electron consumes the compiled root authority; rootDir prevents a direct
@@ -362,25 +439,59 @@ function loadGovernedFirmware(): RuntimeGovernedFirmwareModule | { error: string
   }
 }
 
+function loadFirmwareTargetAuthority(): RuntimeFirmwareTargetAuthority | { error: string } {
+  try {
+    // Same compiled root authority as the CLI/tests; Electron never imports
+    // lib/ directly and does not duplicate target-binding policy.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require(path.join(RUNTIME_LIB, 'device-onboarding', 'FirmwareTargetAuthorization')) as RuntimeFirmwareTargetAuthority;
+  } catch (error) {
+    return {
+      error: `firmware_target_authority_unavailable: rebuild the desktop runtime. Underlying: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
 function connectedSensorInterface() {
   const value = connection.connectedContext().diagnoseData?.sensorInterface;
   return typeof value === 'string' ? value : null;
 }
 
-function firmwarePlan(payload: { portPath?: unknown; request?: unknown }) {
+async function firmwarePlan(payload: { portPath?: unknown; request?: unknown }) {
   if (!payload || typeof payload !== 'object') return { ok: false, error: 'invalid_firmware_request: object payload required' };
   const context = connection.connectedContext();
-  if (typeof payload.portPath !== 'string' || payload.portPath.length === 0 || context.portPath !== payload.portPath) {
-    return { ok: false, error: 'firmware_requires_connected_target: connect and diagnose the exact target port first' };
-  }
+  if (typeof payload.portPath !== 'string' || payload.portPath.length === 0) return { ok: false, error: 'invalid_target_port: select a currently listed serial port' };
   const runtime = loadGovernedFirmware();
   if ('error' in runtime) return { ok: false, error: runtime.error };
-  const availability = runtime.governedFirmwareAvailability(connectedSensorInterface());
+  const availability = runtime.governedFirmwareAvailability(context.portPath === payload.portPath ? connectedSensorInterface() : null);
   if (!availability.available) return { ok: false, unavailable: true, error: availability.reason };
   const resolved = runtime.resolveGovernedFirmwareImage(payload.request, FIRMWARE_RESOURCE_ROOT);
   if (!resolved.ok) return { ok: false, error: `${resolved.code}: ${resolved.detail}` };
+  const listed = await connection.listPortDescriptors();
+  if (!listed.ok) return { ok: false, error: `firmware_target_list_failed: ${listed.error}` };
+  const targetAuthority = loadFirmwareTargetAuthority();
+  if ('error' in targetAuthority) return { ok: false, error: targetAuthority.error };
+  const authorized = targetAuthority.createFirmwareTargetAuthorization({
+    authorizationId: randomUUID(),
+    requestedPortPath: payload.portPath,
+    listedPorts: listed.ports,
+    request: payload.request,
+    imageSha256: resolved.plan.sha256,
+    nowMs: Date.now()
+  });
+  if (!authorized.ok) return { ok: false, error: `${authorized.code}: ${authorized.detail}` };
+  storeFirmwareAuthorization(authorized.authorization);
   const { bytes: _bytes, ...publicPlan } = resolved.plan;
-  return { ok: true, plan: publicPlan };
+  return {
+    ok: true,
+    plan: {
+      ...publicPlan,
+      authorizationId: authorized.authorization.authorizationId,
+      targetPort: authorized.authorization.target.portPath,
+      targetLabel: authorized.authorization.target.label,
+      expiresAtMs: authorized.authorization.expiresAtMs
+    }
+  };
 }
 
 async function flashGovernedFirmware(payload: {
@@ -388,26 +499,40 @@ async function flashGovernedFirmware(payload: {
   request?: unknown;
   confirm?: unknown;
   expectedSha256?: unknown;
+  authorizationId?: unknown;
 }) {
   if (firmwareFlashInProgress) return { ok: false, error: 'firmware_flash_in_progress: wait for the current operation to finish' };
   if (payload?.confirm !== true) return { ok: false, error: 'firmware_confirmation_required: explicitly confirm the displayed target, version, and sha256' };
-  const preview = firmwarePlan(payload);
-  if (!preview.ok || !('plan' in preview) || !preview.plan) return preview;
-  if (payload.expectedSha256 !== preview.plan.sha256) {
-    return { ok: false, error: 'firmware_plan_changed: displayed sha256 no longer matches; review the plan again' };
-  }
-  const runtime = loadGovernedFirmware();
-  if ('error' in runtime) return { ok: false, error: runtime.error };
-  const resolved = runtime.resolveGovernedFirmwareImage(payload.request, FIRMWARE_RESOURCE_ROOT);
-  if (!resolved.ok) return { ok: false, error: `${resolved.code}: ${resolved.detail}` };
-  if (resolved.plan.sha256 !== payload.expectedSha256) {
-    return { ok: false, error: 'firmware_plan_changed: verified image changed after preview; flashing refused' };
-  }
-
+  const authorization = consumeFirmwareAuthorization(payload.authorizationId);
+  if (!authorization) return { ok: false, error: 'firmware_authorization_required: prepare and review the firmware plan first' };
   firmwareFlashInProgress = true;
-  const portPath = payload.portPath as string;
+  let flashAttempted = false;
   try {
+    const listed = await connection.listPortDescriptors();
+    if (!listed.ok) return { ok: false, error: `firmware_target_list_failed: ${listed.error}` };
+    const targetAuthority = loadFirmwareTargetAuthority();
+    if ('error' in targetAuthority) return { ok: false, error: targetAuthority.error };
+    const targetCheck = targetAuthority.validateFirmwareTargetAuthorization({
+      authorization,
+      authorizationId: payload.authorizationId,
+      requestedPortPath: payload.portPath,
+      listedPorts: listed.ports,
+      request: payload.request,
+      imageSha256: payload.expectedSha256,
+      nowMs: Date.now()
+    });
+    if (!targetCheck.ok) return { ok: false, error: `${targetCheck.code}: ${targetCheck.detail}` };
+    const runtime = loadGovernedFirmware();
+    if ('error' in runtime) return { ok: false, error: runtime.error };
+    const resolved = runtime.resolveGovernedFirmwareImage(payload.request, FIRMWARE_RESOURCE_ROOT);
+    if (!resolved.ok) return { ok: false, error: `${resolved.code}: ${resolved.detail}` };
+    if (resolved.plan.sha256 !== payload.expectedSha256) {
+      return { ok: false, error: 'firmware_plan_changed: verified image changed after preview; flashing refused' };
+    }
+
+    const portPath = authorization.target.portPath;
     await connection.disconnect();
+    flashAttempted = true;
     const flashed = await flashWithEsptoolJs({
       runtimeRoot: ESPTOOL_RUNTIME_ROOT,
       portPath,
@@ -447,9 +572,9 @@ async function flashGovernedFirmware(payload: {
     return {
       ok: false,
       flashCompleted: false,
-      hardwareState: 'unknown_or_incomplete_after_failed_flash',
+      hardwareState: flashAttempted ? 'unknown_or_incomplete_after_failed_flash' : 'not_written',
       reconnected: false,
-      error: `flash failed without retry: ${error instanceof Error ? error.message : String(error)}`
+      error: `${flashAttempted ? 'flash' : 'firmware preparation'} failed without retry: ${error instanceof Error ? error.message : String(error)}`
     };
   } finally {
     firmwareFlashInProgress = false;
@@ -708,7 +833,7 @@ export function registerHardwareIpc() {
   ipcMain.handle('hardware:executionStatus', () => executionLock());
   ipcMain.handle('hardware:firmwarePlan', (_event, payload: { portPath?: unknown; request?: unknown }) =>
     firmwarePlan(payload));
-  ipcMain.handle('hardware:flashFirmware', (_event, payload: { portPath?: unknown; request?: unknown; confirm?: unknown; expectedSha256?: unknown }) =>
+  ipcMain.handle('hardware:flashFirmware', (_event, payload: { portPath?: unknown; request?: unknown; confirm?: unknown; expectedSha256?: unknown; authorizationId?: unknown }) =>
     flashGovernedFirmware(payload));
   ipcMain.handle('hardware:execute', (_event, payload: { portPath?: string; angle?: number; manifest?: unknown; confirm?: boolean }) =>
     executeRealAngle(payload));

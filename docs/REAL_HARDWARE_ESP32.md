@@ -9,35 +9,50 @@ execution is always labeled `real_hardware`.
 
 ## What you need
 
-- ESP32 DevKit (any board with USB serial)
+- ESP32-S3 DevKit with a USB serial port
 - SG90 servo (signal on GPIO 18)
 - HC-SR04 ultrasonic distance sensor (TRIG GPIO 5, ECHO GPIO 4 through a
   voltage divider — ECHO is 5V, the ESP32 pin is 3.3V)
-- USB cable, Arduino IDE with the `ESP32Servo` and `ArduinoJson` libraries
+- USB data cable
 
-## 1. Flash the firmware
+## 1. Flash the firmware — no IDE
 
-One-click (recommended): a prebuilt, sha256-verified ESP32-S3 image ships in
-`firmware/prebuilt/`. With esptool available (pip, or the Arduino IDE ESP32
-core installs it automatically - the script finds that copy):
+Use the desktop app's `REAL HARDWARE` boundary:
+
+1. Plug in the ESP32-S3 and choose **Auto-detect**. If it already runs a
+   compatible RealityWarden firmware, the app diagnoses and connects it.
+2. For a blank or unresponsive new board, select the enumerated COM port and
+   choose **Prepare first flash**. A firmware handshake is not claimed or
+   required for this branch.
+3. Review the exact target port, image version/interface, and full SHA-256,
+   then tick the explicit confirmation and choose **Flash reviewed firmware**.
+4. The preview authorization is bound to the enumerated port identity, exact
+   governed request, and image digest for five minutes and one attempt. The
+   main process re-enumerates the port before writing; any path, device,
+   request, digest, or expiry mismatch is refused.
+5. esptool-js identifies the chip and refuses anything except ESP32-S3. After
+   writing, the app reconnects once and requires `diagnose_hardware` to report
+   the expected version. A failure is shown without a silent retry.
+
+The app accepts only the reviewed image paired with its `.sha256` companion,
+or a valid write-order JSON that agrees with both. It never accepts an
+arbitrary BIN or source code, and it never falls back to onsite compilation.
+
+For firmware developers only, the repository CLI remains available:
 
 ```bash
-npm run hardware:flash -- --port COM3   # ESP32-S3: use the "COM/UART" flashing port
+npm run hardware:flash -- --port COM3
 ```
 
-Fallback: open `firmware/esp32-realitywarden/esp32-realitywarden.ino` in the
-Arduino IDE, pick your ESP32 board and port, and upload. The firmware speaks
-newline-delimited JSON at 115200 baud and refuses (never clamps) angles
-outside 0-180.
-
-## 2. Install the serial driver package (one time)
+## 2. Source-development dependency
 
 ```bash
 npm install serialport
 ```
 
-Without it, the runtime raises an explicit error. It will not silently fall
-back to simulation.
+The Windows installer already includes the serial runtime. The command above
+is needed only when running from a source checkout. Without it, the source
+runtime raises an explicit error and never silently falls back to simulation.
 
 ## 3. Run the acceptance scenarios
 

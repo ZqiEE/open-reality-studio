@@ -12,14 +12,19 @@ industrial-safety claim.
 
 ## Primary REAL Product Path
 
-1. Select or auto-detect a serial port.
-2. Diagnose board, firmware, device clock, and sensor evidence.
-3. Connect inside the visually independent `REAL HARDWARE` boundary.
-4. Propose a single command, jog-teach sequence, or saved Action Manifest.
-5. Recompute validation and risk; require fresh sensor evidence and visible
+1. Auto-detect, or refresh and explicitly select, a currently enumerated serial port.
+2. If RealityWarden firmware responds, diagnose and connect it. If a blank or
+   unresponsive listed ESP32-S3 does not respond, prepare a governed first
+   flash without claiming a successful handshake.
+3. Review the exact target port, reviewed image version, and SHA-256; explicitly
+   confirm a five-minute, one-use authorization. Re-enumerate and reject any
+   target, request, or image change before esptool identifies the ESP32-S3 and writes.
+4. Reconnect and require `diagnose` to verify the expected firmware version.
+5. Propose a single command, jog-teach sequence, or saved Action Manifest.
+6. Recompute validation and risk; require fresh sensor evidence and visible
    operator confirmation.
-6. Execute only through a private `HardwareExecutionGate` ticket.
-7. Report `hardwareSignalSent` truthfully and stop a sequence at the first
+7. Execute only through a private `HardwareExecutionGate` ticket.
+8. Report `hardwareSignalSent` truthfully and stop a sequence at the first
    blocked/failed/cancelled primitive with zero subsequent frames.
 
 The disconnected REAL workspace contains no virtual model or 3D simulation

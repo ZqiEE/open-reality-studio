@@ -102,6 +102,25 @@ assert.equal(validateFirmwareWriteOrder(order.order, { image_sha256: 'c'.repeat(
 assert.equal(validateFirmwareWriteOrder(order.order, { image_sha256: imageSha }).ok, true, 'A matching on-disk digest passes.');
 
 const { resolveGovernedFirmwareImage, governedFirmwareAvailability } = requireFromCompiled('lib/device-onboarding/GovernedFirmwareImage.js');
+const { createFirmwareTargetAuthorization, validateFirmwareTargetAuthorization } = requireFromCompiled('lib/device-onboarding/FirmwareTargetAuthorization.js');
+const blankBoardRequest = { source: 'reviewed_prebuilt' };
+const blankBoardPorts = [{ path: 'COM7', manufacturer: 'Espressif', serialNumber: 'S3-001', vendorId: '303a', productId: '1001' }];
+const blankBoardAuthorization = createFirmwareTargetAuthorization({
+  authorizationId: 'first-flash-1',
+  requestedPortPath: 'COM7',
+  listedPorts: blankBoardPorts,
+  request: blankBoardRequest,
+  imageSha256: imageSha,
+  nowMs: 1000
+});
+assert.equal(blankBoardAuthorization.ok, true, 'A currently listed blank board can receive a short-lived governed first-flash authorization without a firmware handshake.');
+assert.equal(createFirmwareTargetAuthorization({ authorizationId: 'metadata-optional', requestedPortPath: 'COM8', listedPorts: [{ path: 'COM8' }], request: blankBoardRequest, imageSha256: imageSha, nowMs: 1000 }).ok, true, 'A listed port without optional USB metadata remains bindable by its exact enumerated path.');
+assert.equal(createFirmwareTargetAuthorization({ authorizationId: 'bad-path', requestedPortPath: 'C:\\arbitrary.bin', listedPorts: blankBoardPorts, request: blankBoardRequest, imageSha256: imageSha, nowMs: 1000 }).ok, false, 'An arbitrary renderer path cannot become a firmware target.');
+assert.equal(validateFirmwareTargetAuthorization({ authorization: blankBoardAuthorization.authorization, authorizationId: 'first-flash-1', requestedPortPath: 'COM7', listedPorts: blankBoardPorts, request: blankBoardRequest, imageSha256: imageSha, nowMs: 2000 }).ok, true, 'The exact listed port, request, and image digest pass before expiry.');
+assert.equal(validateFirmwareTargetAuthorization({ authorization: blankBoardAuthorization.authorization, authorizationId: 'first-flash-1', requestedPortPath: 'COM7', listedPorts: [{ ...blankBoardPorts[0], serialNumber: 'SWAPPED' }], request: blankBoardRequest, imageSha256: imageSha, nowMs: 2000 }).ok, false, 'A device swap on the same port is rejected before flashing.');
+assert.equal(validateFirmwareTargetAuthorization({ authorization: blankBoardAuthorization.authorization, authorizationId: 'first-flash-1', requestedPortPath: 'COM7', listedPorts: blankBoardPorts, request: { source: 'reviewed_prebuilt', order: {} }, imageSha256: imageSha, nowMs: 2000 }).ok, false, 'A firmware request changed after preview is rejected.');
+assert.equal(validateFirmwareTargetAuthorization({ authorization: blankBoardAuthorization.authorization, authorizationId: 'first-flash-1', requestedPortPath: 'COM7', listedPorts: blankBoardPorts, request: blankBoardRequest, imageSha256: 'f'.repeat(64), nowMs: 2000 }).ok, false, 'An image digest changed after preview is rejected.');
+assert.equal(validateFirmwareTargetAuthorization({ authorization: blankBoardAuthorization.authorization, authorizationId: 'first-flash-1', requestedPortPath: 'COM7', listedPorts: blankBoardPorts, request: blankBoardRequest, imageSha256: imageSha, nowMs: 301000 }).ok, false, 'A firmware preview is rejected at its exact expiry boundary instead of silently refreshed.');
 const flashFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'realitywarden-governed-flash-'));
 try {
   const fixtureImageFile = PREBUILT_FIRMWARE_IMAGES.esp32_s3_sg90_hc_sr04_v1.file;
@@ -226,5 +245,6 @@ console.log('- Unsupported actuation prompt does not execute.');
 console.log('- Reviewed ESP32-S3 firmware drafts stay simulation-only and write-disabled.');
 console.log('- Unsafe GPIO, duplicate pins, mismatched components, and authority tampering are rejected.');
 console.log('- Write orders require a second review, a reviewed prebuilt image, and matching digests; they grant no execution authority.');
+console.log('- Blank-board first flash binds a listed port, governed request, image digest, expiry, and device identity before writing.');
 console.log('- Diagnostics evidence accepts only read-only commands, RealityWarden firmware with a device clock, and plausible interlock samples.');
 console.log('- Onboarding closure links manual source, reviewed profile, write order, and diagnostics; it stays simulation-only.');

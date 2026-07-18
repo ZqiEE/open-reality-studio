@@ -43,8 +43,8 @@ const api = {
     autoDetect: () => ipcRenderer.invoke('hardware:autoDetect'),
     executionStatus: () => ipcRenderer.invoke('hardware:executionStatus'),
     firmwarePlan: (portPath: string, request: unknown) => ipcRenderer.invoke('hardware:firmwarePlan', { portPath, request }),
-    flashFirmware: (portPath: string, request: unknown, expectedSha256: string, confirm: boolean) =>
-      ipcRenderer.invoke('hardware:flashFirmware', { portPath, request, expectedSha256, confirm }),
+    flashFirmware: (portPath: string, request: unknown, expectedSha256: string, authorizationId: string, confirm: boolean) =>
+      ipcRenderer.invoke('hardware:flashFirmware', { portPath, request, expectedSha256, authorizationId, confirm }),
     execute: (portPath: string, angle: number, confirm: boolean) => ipcRenderer.invoke('hardware:execute', { portPath, angle, confirm }),
     executeManifest: (portPath: string, manifest: unknown, confirm: boolean) => ipcRenderer.invoke('hardware:execute', { portPath, manifest, confirm })
   },
