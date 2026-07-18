@@ -21,6 +21,12 @@ For a listed blank or unresponsive ESP32-S3, use **Prepare first flash** in the
 REAL HARDWARE task rail. Review the exact port, version, and SHA-256 before
 confirming; only the paired reviewed image or a valid write order is accepted.
 
+The official matching build also carries a version- and digest-bound REAL
+release approval for this profile. It is verified locally before actuation is
+shown as available. If that approval is missing or altered, execution remains
+locked and the recovery is to reinstall the matching official build; adding
+JSON files or setting an environment variable cannot unlock an installed app.
+
 ## Recover from a startup problem
 
 1. Use **Retry startup** in the recovery window.

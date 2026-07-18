@@ -1,5 +1,12 @@
 # STATUS
 
+## 安装版 REAL 执行批准死锁与任意 JSON 解锁修复（2026-07-18）
+
+- 产品审计发现：旧 `executionLock()` 只统计源码路径 `docs/acceptance/evidence/*.json`。安装包未携带该目录，因此正常用户即使连接、诊断和传感器全部正常也永远显示 0/4；反过来源码版放入任意四个 JSON 又能解锁，既不可用也不够严格。
+- 新增根权威 `RealExecutionReleaseApproval`：批准绑定 RealityWarden 0.5.1、唯一真机 profile `esp32_s3_sg90_hc_sr04_v1`、四个指定场景文件与精确 SHA-256，并二次检查场景 1 的开环确认语义及场景 2/3/4 的零信号拦截语义。篡改、缺失、换版本、语义漂移和四个任意 JSON 均默认锁定。
+- Electron 只加载 `dist-electron-runtime` 编译权威；安装版把四份批准证据放入固定 support 资源路径并在打包验收时调用同一权威。`ORS_REAL_EXECUTION=enabled` 只允许未打包源码台架且 UI 明示，安装版无旁路。发布批准只决定该构建能否进入真机流程，逐次人工确认、新鲜传感器、HardwareExecutionGate ticket、诚实审计与中途 blocked 零后续帧均未放宽。
+- real-hardware 行为套件 48→49，覆盖精确批准、摘要篡改、版本错配和任意 JSON 拒绝；desktop/conformance/package 契约同步防回归。
+
 ## 离线帮助与“参考台架”产品语义纠偏（2026-07-18）
 
 - Windows 成品实机审查确认默认工作区已只有 REAL 上线流程，SIM LAB 仅在显式选择后出现；但进一步发现“关于”窗口和实际打开的 `SUPPORT.html` 仍遗留 `simulation first`，帮助入口会把用户重新带回错误定位。

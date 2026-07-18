@@ -136,6 +136,16 @@
           "THIRD_PARTY_NOTICES.md",
           "THIRD_PARTY_NOTICES.html"
         ]
+      },
+      {
+        "from": "docs/acceptance/evidence",
+        "to": "support/acceptance/evidence",
+        "filter": [
+          "2026-07-16-scenario-1.json",
+          "2026-07-16-scenario-2.json",
+          "2026-07-16-scenario-3.json",
+          "2026-07-16-scenario-4.json"
+        ]
       }
     ],
     "extraMetadata": {

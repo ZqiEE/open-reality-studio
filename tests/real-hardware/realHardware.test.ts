@@ -34,6 +34,10 @@ import type {
 } from '../../lib/hardware/types';
 import { RuntimeAuditLog } from '../../lib/runtime/RuntimeAuditLog';
 import { SafetyMonitor } from '../../lib/runtime/SafetyMonitor';
+import { mkdtempSync, copyFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { REAL_EXECUTION_RELEASE_APPROVAL, verifyRealExecutionReleaseApproval } from '../../lib/hardware/RealExecutionReleaseApproval';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -1546,6 +1550,39 @@ async function testRealCommandOutOfRangeRejectedDownstreamNeverClamped() {
   assert(!checked.ok && checked.code === 'invalid_value', 'the authoritative validator must reject the out-of-range angle instead of clamping it');
 }
 
+async function testRealExecutionReleaseApprovalIsVersionAndDigestBound() {
+  const sourceEvidence = join(process.cwd(), 'docs', 'acceptance', 'evidence');
+  const approved = verifyRealExecutionReleaseApproval({ appVersion: '0.5.1', evidenceDir: sourceEvidence });
+  assert(approved.approved && approved.evidenceCount === 4, 'the exact owner-reviewed release evidence must approve the matching app version');
+
+  const fixture = mkdtempSync(join(tmpdir(), 'realitywarden-release-approval-'));
+  try {
+    for (const evidence of REAL_EXECUTION_RELEASE_APPROVAL.evidence) {
+      copyFileSync(join(sourceEvidence, evidence.file), join(fixture, evidence.file));
+    }
+    writeFileSync(join(fixture, 'arbitrary-extra.json'), '{}', 'utf8');
+    assert(verifyRealExecutionReleaseApproval({ appVersion: '0.5.1', evidenceDir: fixture }).approved, 'unrelated files must grant no authority and must not alter the exact approved set');
+
+    writeFileSync(join(fixture, REAL_EXECUTION_RELEASE_APPROVAL.evidence[1].file), '{"scenario":2}', 'utf8');
+    const tampered = verifyRealExecutionReleaseApproval({ appVersion: '0.5.1', evidenceDir: fixture });
+    assert(!tampered.approved && tampered.reason.startsWith('approved_evidence_digest_mismatch:'), 'tampering an approved scenario must fail closed before semantic use');
+
+    const wrongVersion = verifyRealExecutionReleaseApproval({ appVersion: '0.5.2', evidenceDir: sourceEvidence });
+    assert(!wrongVersion.approved && wrongVersion.reason === 'release_version_not_approved:0.5.2', 'evidence approved for one app version must not unlock another version');
+
+    const arbitraryOnly = mkdtempSync(join(tmpdir(), 'realitywarden-arbitrary-evidence-'));
+    try {
+      for (let index = 0; index < 4; index += 1) writeFileSync(join(arbitraryOnly, `${index}.json`), '{}', 'utf8');
+      const arbitrary = verifyRealExecutionReleaseApproval({ appVersion: '0.5.1', evidenceDir: arbitraryOnly });
+      assert(!arbitrary.approved && arbitrary.evidenceCount === 0, 'four arbitrary JSON files must never satisfy the release approval');
+    } finally {
+      rmSync(arbitraryOnly, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   const tests: Array<[string, () => Promise<void>]> = [
     ['blocked command never reaches hardware', testBlockedNeverReachesHardware],
@@ -1582,6 +1619,7 @@ async function main() {
     ['jog-teach replay: blocked step emits zero subsequent frames', testTeachReplayStopsAfterBlockedStep],
     ['real NL command: explicit tokens only, never guesses', testRealCommandParserExplicitOnlyNeverGuesses],
     ['real NL command: out-of-range rejected downstream, never clamped', testRealCommandOutOfRangeRejectedDownstreamNeverClamped],
+    ['REAL release approval is version/scenario/digest bound', testRealExecutionReleaseApprovalIsVersionAndDigestBound],
     ['serial transport protocol behaves honestly', testSerialTransportProtocol],
     ['audit 1.1: raw transport send() refuses actuation frames', testRawSendRefusesActuationFrames],
     ['audit 1.1: adapter.execute requires the gate ticket', testAdapterExecuteRequiresGateTicket],

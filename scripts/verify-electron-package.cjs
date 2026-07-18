@@ -42,6 +42,7 @@ for (const required of [
   'package.json',
   'dist-electron/main.js',
   'dist-electron-runtime/lib/hardware/index.js',
+  'dist-electron-runtime/lib/hardware/RealExecutionReleaseApproval.js',
   '.next-build/BUILD_ID',
   'node_modules/next/dist/bin/next',
   'node_modules/pdfjs-dist/package.json',
@@ -111,6 +112,12 @@ const packagedSupport = fs.readFileSync(path.join(supportDir, 'SUPPORT.md'), 'ut
 assert(packagedSupport.includes('does not upload it') && packagedSupport.includes('REAL HARDWARE'), 'packaged support guide must retain privacy and hardware boundaries');
 const packagedSupportHtml = fs.readFileSync(path.join(supportDir, 'SUPPORT.html'), 'utf8');
 assert(packagedSupportHtml.includes('RealityWarden does not upload it') && packagedSupportHtml.includes('REAL HARDWARE boundary'), 'packaged in-app support page must retain privacy and hardware boundaries');
+const releaseApprovalRuntime = require(path.join(root, 'dist-electron-runtime', 'lib', 'hardware', 'RealExecutionReleaseApproval.js'));
+const packagedReleaseApproval = releaseApprovalRuntime.verifyRealExecutionReleaseApproval({
+  appVersion: packageJson.version,
+  evidenceDir: path.join(supportDir, 'acceptance', 'evidence')
+});
+assert(packagedReleaseApproval.approved && packagedReleaseApproval.evidenceCount === 4, `packaged REAL execution approval failed: ${packagedReleaseApproval.reason ?? 'unknown'}`);
 const packagedNotices = fs.readFileSync(path.join(supportDir, 'THIRD_PARTY_NOTICES.html'), 'utf8');
 assert(packagedNotices.includes('CycloneDX') && packagedNotices.includes('UR5e derived GLB') && packagedNotices.includes('TurtleBot3 Burger derived GLB'), 'packaged notices must cover the production dependency inventory and redistributed model assets');
 
@@ -137,5 +144,6 @@ console.log(`- serialport native binding(s): ${unpackedBindings.length}`);
 console.log(`- Firmware image(s) with valid sha256: ${firmwareImages.length}`);
 console.log(`- Marketplace distribution config: ${fs.existsSync(sourceMarketplaceDistribution) ? 'present and byte-exact' : 'not provisioned (development package)'}`);
 console.log('- Offline support guide and recovery references are present.');
+console.log(`- REAL execution release approval: ${packagedReleaseApproval.approvalId} (4/4 digest-bound scenarios).`);
 console.log('- Branded executable, installer, and uninstaller icon configuration is present.');
 console.log(`- Authenticode: ${authenticodeEvidence ? `Valid for EXE and installer; evidence ${path.basename(authenticodeEvidence.evidencePath)}` : 'not assessed (internal acceptance package)'}`);

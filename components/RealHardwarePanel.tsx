@@ -72,7 +72,7 @@ export interface HardwareBridge {
   /** Optional (older desktop builds): read-only probe / auto-detect. */
   probe?: (portPath: string) => Promise<HardwareProbeResult>;
   autoDetect?: () => Promise<HardwareAutoDetectResult>;
-  /** Real execution (product path): locked until acceptance evidence exists. */
+  /** Real execution (product path): locked until the version-bound release approval validates. */
   executionStatus?: () => Promise<HardwareExecutionLock>;
   firmwarePlan?: (portPath: string, request: unknown) => Promise<HardwareFirmwarePlanResult>;
   flashFirmware?: (portPath: string, request: unknown, expectedSha256: string, authorizationId: string, confirm: boolean) => Promise<HardwareFirmwareFlashResult>;
@@ -110,6 +110,9 @@ export interface HardwareExecutionLock {
   locked: boolean;
   reason?: string;
   evidenceCount?: number;
+  approvalId?: string;
+  profileId?: string;
+  approvalSource?: 'release_approval' | 'development_override';
 }
 
 export interface HardwareExecuteOutcome {
@@ -1034,16 +1037,21 @@ export function RealHardwarePanel({
                   {zh ? '真机执行' : 'REAL EXECUTION'}
                 </span>
                 {execLock?.locked === false ? (
-                  <span className="text-[11px] text-status-executed-soft">{zh ? `已解锁（验收证据 ${execLock.evidenceCount ?? 0}/4）` : `unlocked (evidence ${execLock.evidenceCount ?? 0}/4)`}</span>
+                  <span className="text-[11px] text-status-executed-soft" title={execLock.approvalId}>
+                    {execLock.approvalSource === 'development_override'
+                      ? (zh ? '源码开发台架旁路 · 明示启用' : 'source bench override · explicitly enabled')
+                      : (zh ? '已审版本 · 真机链可执行' : 'release approved · REAL chain executable')}
+                  </span>
                 ) : (
-                  <span className="text-[11px] text-status-warning">{zh ? `锁定中（验收证据 ${execLock?.evidenceCount ?? 0}/4）` : `locked (evidence ${execLock?.evidenceCount ?? 0}/4)`}</span>
+                  <span className="text-[11px] text-status-warning">{zh ? '发布批准无效 · 默认锁定' : 'release approval invalid · default locked'}</span>
                 )}
               </div>
               {execLock?.locked !== false ? (
                 <div className="rounded-[3px] border border-status-warning-edge bg-status-warning-surface px-2 py-1 text-[11px] leading-4 text-status-warning">
-                  {zh
-                    ? '完成四场景验收并把 4 份审计 JSON 存入 docs/acceptance/evidence/ 后自动解锁（操作卡：docs/acceptance/OPERATOR_CARD.md）。'
-                    : 'Unlocks automatically once the four acceptance audit JSON files exist in docs/acceptance/evidence/ (see docs/acceptance/OPERATOR_CARD.md).'}
+                  <div>{zh
+                    ? '此版本缺少或损坏了版本绑定的真机发布批准，执行保持锁定。请重新安装官方同版本构建；任意 JSON 或安装版环境变量都不能解锁。'
+                    : 'This build is missing or failed its version-bound REAL release approval. Reinstall the matching official build; arbitrary JSON files and packaged environment variables cannot unlock it.'}</div>
+                  {execLock?.reason && <div className="mt-1 break-all font-mono text-[10px] text-text-muted">{execLock.reason}</div>}
                 </div>
               ) : (
                 <>

@@ -87,6 +87,16 @@ authorization, re-enumerates the target, revalidates the paired image/order,
 and then delegates chip identification and writing to esptool-js. A changed,
 missing, expired, or non-ESP32-S3 target is rejected without fallback.
 
+REAL actuation availability is a release property, not an end-user filesystem
+ritual. The main process loads the compiled `RealExecutionReleaseApproval`
+authority and verifies the running app version, the exact reviewed reference
+profile, all four approved evidence SHA-256 values, and their allow/block/audit
+semantics. The packaged build carries those exact evidence files under the
+support resources; package verification runs the same authority against the
+installed layout. Four arbitrary JSON files grant nothing. The supervised
+`ORS_REAL_EXECUTION=enabled` bench override is accepted only in an unpackaged
+source checkout and is ignored by installed builds.
+
 ## Local Project Files
 
 Project files use the extension:

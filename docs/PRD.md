@@ -20,11 +20,15 @@ industrial-safety claim.
    confirm a five-minute, one-use authorization. Re-enumerate and reject any
    target, request, or image change before esptool identifies the ESP32-S3 and writes.
 4. Reconnect and require `diagnose` to verify the expected firmware version.
-5. Propose a single command, jog-teach sequence, or saved Action Manifest.
-6. Recompute validation and risk; require fresh sensor evidence and visible
+5. Verify the installed build's version-bound REAL release approval. The
+   approval is bound to this app version, the reviewed reference profile, and
+   the exact four owner-reviewed scenario digests; arbitrary JSON files and
+   packaged environment variables cannot unlock execution.
+6. Propose a single command, jog-teach sequence, or saved Action Manifest.
+7. Recompute validation and risk; require fresh sensor evidence and visible
    operator confirmation.
-7. Execute only through a private `HardwareExecutionGate` ticket.
-8. Report `hardwareSignalSent` truthfully and stop a sequence at the first
+8. Execute only through a private `HardwareExecutionGate` ticket.
+9. Report `hardwareSignalSent` truthfully and stop a sequence at the first
    blocked/failed/cancelled primitive with zero subsequent frames.
 
 The disconnected REAL workspace contains no virtual model or 3D simulation

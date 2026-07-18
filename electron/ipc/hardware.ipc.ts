@@ -1,6 +1,5 @@
 import { app, ipcMain } from 'electron';
 import { randomUUID } from 'node:crypto';
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { flashWithEsptoolJs } from '../hardware/esptoolFlasher';
 
@@ -10,9 +9,9 @@ import { flashWithEsptoolJs } from '../hardware/esptoolFlasher';
  * This is the ONLY main-process surface for the renderer's REAL HARDWARE
  * panel. Actuation exists here in exactly ONE form: executeRealAngle(), which
  * routes through the compiled HardwareExecutionGate chain and stays
- * real_execution_locked until the four-scenario acceptance evidence exists
- * (desktop regression enforces both properties). This file never hand-rolls
- * an actuation frame.
+ * real_execution_locked until the version-bound release approval validates
+ * the exact four owner-reviewed scenarios (desktop regression enforces both
+ * properties). This file never hand-rolls an actuation frame.
  *
  * The newline-JSON protocol client below mirrors the semantics of
  * `lib/hardware/SerialEsp32Transport` (id-matched responses, hard timeouts,
@@ -355,13 +354,16 @@ class HardwareConnection {
  * only path, so every invariant (blocked => zero frames, ticket enforcement,
  * default-block, honest audit) applies to UI execution identically.
  *
- * LOCK: execution stays disabled (real_execution_locked) until the
- * four-scenario acceptance evidence exists in docs/acceptance/evidence/
- * (>= 4 .json files) or ORS_REAL_EXECUTION=enabled is set explicitly for
- * bench work. Every call additionally requires confirm:true from the UI.
+ * LOCK: execution stays disabled (real_execution_locked) until the compiled
+ * release authority verifies the app version plus the exact, digest-bound
+ * four-scenario evidence. A supervised source checkout may use the explicit
+ * development override; packaged builds never accept that bypass. Every call
+ * additionally requires confirm:true from the UI.
  */
 const APP_ROOT = path.join(__dirname, '..', '..');
-const EVIDENCE_DIR = path.join(APP_ROOT, 'docs', 'acceptance', 'evidence');
+const RELEASE_EVIDENCE_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, 'support', 'acceptance', 'evidence')
+  : path.join(APP_ROOT, 'docs', 'acceptance', 'evidence');
 const PACKAGED_APP_ROOT = app.isPackaged ? path.join(process.resourcesPath, 'app.asar') : APP_ROOT;
 const FIRMWARE_RESOURCE_ROOT = app.isPackaged ? process.resourcesPath : APP_ROOT;
 const RUNTIME_LIB = path.join(PACKAGED_APP_ROOT, 'dist-electron-runtime', 'lib');
@@ -394,6 +396,12 @@ interface RuntimeFirmwareTargetAuthority {
     imageSha256: unknown;
     nowMs: number;
   }): { ok: true } | { ok: false; code: string; detail: string };
+}
+
+interface RuntimeRealExecutionReleaseAuthority {
+  verifyRealExecutionReleaseApproval(input: { appVersion: string; evidenceDir: string }):
+    | { approved: true; approvalId: string; profileId: string; evidenceCount: 4 }
+    | { approved: false; evidenceCount: number; reason: string };
 }
 
 interface FirmwareTargetAuthorization {
@@ -448,6 +456,19 @@ function loadFirmwareTargetAuthority(): RuntimeFirmwareTargetAuthority | { error
   } catch (error) {
     return {
       error: `firmware_target_authority_unavailable: rebuild the desktop runtime. Underlying: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+function loadRealExecutionReleaseAuthority(): RuntimeRealExecutionReleaseAuthority | { error: string } {
+  try {
+    // Electron consumes the compiled root authority; it never counts renderer-
+    // controlled files or duplicates release-approval semantics in main.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require(path.join(RUNTIME_LIB, 'hardware', 'RealExecutionReleaseApproval')) as RuntimeRealExecutionReleaseAuthority;
+  } catch (error) {
+    return {
+      error: `real_execution_release_authority_unavailable: rebuild the desktop runtime. Underlying: ${error instanceof Error ? error.message : String(error)}`
     };
   }
 }
@@ -581,24 +602,37 @@ async function flashGovernedFirmware(payload: {
   }
 }
 
-function evidenceCount(): number {
-  try {
-    return fs.readdirSync(EVIDENCE_DIR).filter((name) => name.endsWith('.json')).length;
-  } catch {
-    return 0;
-  }
-}
+function executionLock(): {
+  locked: boolean;
+  reason?: string;
+  evidenceCount: number;
+  approvalId?: string;
+  profileId?: string;
+  approvalSource?: 'release_approval' | 'development_override';
+} {
+  const authority = loadRealExecutionReleaseAuthority();
+  const approval = 'error' in authority
+    ? { approved: false as const, evidenceCount: 0, reason: authority.error }
+    : authority.verifyRealExecutionReleaseApproval({ appVersion: app.getVersion(), evidenceDir: RELEASE_EVIDENCE_DIR });
 
-function executionLock(): { locked: boolean; reason?: string; evidenceCount: number } {
-  const count = evidenceCount();
-  if (process.env.ORS_REAL_EXECUTION === 'enabled') {
-    return { locked: false, evidenceCount: count };
+  if (approval.approved) {
+    return {
+      locked: false,
+      evidenceCount: approval.evidenceCount,
+      approvalId: approval.approvalId,
+      profileId: approval.profileId,
+      approvalSource: 'release_approval'
+    };
   }
-  if (count >= 4) return { locked: false, evidenceCount: count };
+  if (!app.isPackaged && process.env.ORS_REAL_EXECUTION === 'enabled') {
+    return { locked: false, evidenceCount: approval.evidenceCount, approvalSource: 'development_override' };
+  }
   return {
     locked: true,
-    evidenceCount: count,
-    reason: `real_execution_locked: four-scenario acceptance evidence required (${count}/4 json files in docs/acceptance/evidence/). Run the acceptance per docs/acceptance/OPERATOR_CARD.md, or set ORS_REAL_EXECUTION=enabled for supervised bench work.`
+    evidenceCount: approval.evidenceCount,
+    reason: app.isPackaged
+      ? `real_execution_release_approval_invalid:${approval.reason}. Reinstall the official matching RealityWarden build; no execution bypass is accepted in packaged mode.`
+      : `real_execution_release_approval_invalid:${approval.reason}. Restore the exact reviewed evidence, or use ORS_REAL_EXECUTION=enabled only for supervised source bench work.`
   };
 }
 
