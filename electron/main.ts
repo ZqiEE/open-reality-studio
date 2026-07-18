@@ -117,6 +117,8 @@ interface RendererSmokeSnapshot {
   simulationBoundary: boolean;
   realHardwareBoundary: boolean;
   preloadBridge: boolean;
+  hardwareBridge: boolean;
+  realHardwarePanelReady: boolean;
   marketplaceBridge: boolean;
   marketplaceTrigger: boolean;
   offlineDegradation: boolean;
@@ -140,11 +142,13 @@ async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegrada
         simulationBoundary: bodyText.includes('SIMULATION ONLY') || bodyText.includes('Simulation Only'),
         realHardwareBoundary: Boolean(document.querySelector('[data-real-hardware-boundary]')) && bodyText.includes('REAL HARDWARE'),
         preloadBridge: typeof window.openReality === 'object',
+        hardwareBridge: typeof window.openReality?.hardware === 'object',
+        realHardwarePanelReady: Boolean(document.querySelector('[data-real-hardware-bridge-ready="true"]')),
         marketplaceBridge: typeof window.openReality?.marketplace === 'object',
         marketplaceTrigger: Boolean(document.querySelector('[data-marketplace-trigger]')),
         offlineDegradation: allText.includes('rule compiler (LLM offline)') || allText.includes('规则编译器（LLM 离线）')
       };
-      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary && snapshot.realHardwareBoundary && snapshot.preloadBridge && snapshot.marketplaceBridge && snapshot.marketplaceTrigger && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
+      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary && snapshot.realHardwareBoundary && snapshot.preloadBridge && snapshot.hardwareBridge && snapshot.realHardwarePanelReady && snapshot.marketplaceBridge && snapshot.marketplaceTrigger && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
     })()`, true) as RendererSmokeSnapshot;
     if (lastSnapshot.ready) return lastSnapshot;
     await new Promise((resolve) => setTimeout(resolve, 250));

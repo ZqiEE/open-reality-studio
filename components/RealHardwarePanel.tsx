@@ -186,7 +186,10 @@ export function RealHardwarePanel({
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollGeneration = useRef(0);
   const mounted = useRef(true);
-  const available = bridge() !== null;
+  // The server-rendered first frame cannot see Electron's preload bridge.
+  // Detect it after hydration so the desktop build cannot remain mislabeled
+  // as web mode for the lifetime of the panel.
+  const [available, setAvailable] = useState(false);
 
   const stopPolling = useCallback(() => {
     pollGeneration.current += 1;
@@ -198,6 +201,7 @@ export function RealHardwarePanel({
 
   useEffect(() => {
     mounted.current = true;
+    setAvailable(bridge() !== null);
     return () => {
       mounted.current = false;
       stopPolling();
@@ -727,7 +731,10 @@ export function RealHardwarePanel({
       : 'bg-[#5F6670]';
 
   return (
-    <div className="shrink-0 border-t-2 border-status-warning-edge bg-[#171310]">
+    <div
+      className="shrink-0 border-t-2 border-status-warning-edge bg-[#171310]"
+      data-real-hardware-bridge-ready={available ? 'true' : 'false'}
+    >
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
