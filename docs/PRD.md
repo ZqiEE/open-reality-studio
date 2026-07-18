@@ -44,7 +44,9 @@ workspace, Device Profile simulator, prompt-to-TaskDSL path, state inspector,
 timeline, and adapter-package tooling.
 
 Simulation never grants real-device authority, never silently replaces a REAL
-failure, and never claims that a physical outcome was verified.
+failure, and never claims that a physical outcome was verified. The modes are
+operationally exclusive: entering SIM LAB disconnects any REAL serial session,
+clears REAL telemetry, and removes all hardware controls from the lab surface.
 
 ## Non-negotiable Product Boundaries
 

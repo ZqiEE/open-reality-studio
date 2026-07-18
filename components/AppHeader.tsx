@@ -144,7 +144,20 @@ export function AppHeader(props: AppHeaderProps) {
         <div className="min-w-0 flex-1"><div className="text-[11px] font-bold uppercase tracking-wide text-text-muted">{t(language, 'app_project')}</div><div className="truncate text-[15px] font-semibold text-text-primary">{projectName}</div></div>
         <div className="flex h-8 shrink-0 border border-border" role="group" aria-label={language === 'zh' ? '工作区模式' : 'Workspace mode'}>
           <button title="REAL DEVICE" type="button" aria-pressed={props.workspaceMode === 'real'} onClick={() => props.onWorkspaceModeChange('real')} className={`px-2 text-[11px] font-bold ${props.workspaceMode === 'real' ? 'bg-status-warning-surface text-status-warning' : 'bg-surface-raised text-text-secondary'}`}>REAL</button>
-          <button title="Simulation Lab" type="button" aria-pressed={props.workspaceMode === 'simulation'} onClick={() => props.onWorkspaceModeChange('simulation')} className={`border-l border-border px-2 text-[11px] font-semibold ${props.workspaceMode === 'simulation' ? 'bg-[#0B2233] text-simulation' : 'bg-surface-raised text-text-secondary'}`}>SIM LAB</button>
+          <button
+            title={props.realHardwareConnected
+              ? (language === 'zh' ? '断开真实设备并进入仿真实验室' : 'Disconnect the REAL device and enter Simulation Lab')
+              : 'Simulation Lab'}
+            type="button"
+            aria-label={props.realHardwareConnected
+              ? (language === 'zh' ? '断开真实设备并进入仿真实验室' : 'Disconnect the REAL device and enter Simulation Lab')
+              : 'Simulation Lab'}
+            aria-pressed={props.workspaceMode === 'simulation'}
+            onClick={() => props.onWorkspaceModeChange('simulation')}
+            className={`border-l border-border px-2 text-[11px] font-semibold ${props.workspaceMode === 'simulation' ? 'bg-[#0B2233] text-simulation' : 'bg-surface-raised text-text-secondary'}`}
+          >
+            {props.realHardwareConnected ? (language === 'zh' ? '断开 → SIM' : 'DISCONNECT → SIM') : 'SIM LAB'}
+          </button>
         </div>
       </div>
       <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3">

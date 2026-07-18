@@ -134,8 +134,10 @@ open-loop feedback, never claimed as measured position.
 SIM LAB is entered explicitly for virtual assets, manual/profile review,
 protocol development, replay, and reproducible no-signal tests. It is useful
 without hardware, but it is not the product's default navigation and never
-proves that a physical scene is safe. Simulated runs are marked `[SIMULATION]`;
-real decisions are marked `real_hardware`.
+proves that a physical scene is safe. Entering SIM LAB disconnects any REAL
+serial session, clears REAL telemetry, and removes the hardware controls from
+the lab surface. Simulated runs are marked `[SIMULATION]`; real decisions are
+marked `real_hardware`.
 
 Simulation and hardware share capability/safety semantics but deliberately use separate execution interfaces; a generic simulation adapter cannot actuate hardware.
 

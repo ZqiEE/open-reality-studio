@@ -126,8 +126,8 @@ export function LabConfigurator({
         <section id="device-navigator-panel-devices" aria-labelledby="device-navigator-tab-devices" hidden={activeSection !== 'devices'} className={`${activeSection === 'devices' ? 'grid' : 'hidden'} custom-scrollbar min-h-0 flex-1 content-start gap-3 overflow-y-auto px-3 py-3`} role="tabpanel">
           <div className="rounded-[3px] border border-simulation/40 bg-[#0B2233] px-2 py-2 text-[11px] leading-4 text-[#BAE6FD]">
             {language === 'zh'
-              ? '先选一个仿真模型和测试用例，再从中央输入指令。结果用于理解动作与风险，不代表真实环境已安全。'
-              : 'Choose a simulation model and test case, then enter a command in the center. Results explain motion and risk; they do not prove the physical world is safe.'}
+              ? '仿真实验室没有真机控制。进入这里会断开任何 REAL 会话并清空真机遥测；结果只用于理解指令、动作与风险，不代表真实环境已安全。'
+              : 'Simulation Lab has no hardware controls. Entering it disconnects any REAL session and clears REAL telemetry; results explain commands, motion, and risk but never prove the physical world safe.'}
           </div>
           <div>
             <FieldLabel><span className="mr-1 text-simulation">1</span>{language === 'zh' ? '目标类型' : 'Target kind'}</FieldLabel>

@@ -167,7 +167,10 @@ async function waitForRendererSmoke(window: BrowserWindow, requireOfflineDegrada
         offlineDegradation: allText.includes('rule compiler (LLM offline)') || allText.includes('规则编译器（LLM 离线）')
       };
       const modeReady = ${requireOfflineDegradation ? 'snapshot.deviceNavigator && snapshot.commandDock && snapshot.runControls === 1 && snapshot.stopControls === 1 && snapshot.simulationBoundary && snapshot.simulationToolbarActions === 5 && snapshot.simulationFileActions === 2 && snapshot.marketplaceTrigger' : 'snapshot.realDeviceWorkspace && snapshot.realModeSelected && snapshot.realDeviceControl && snapshot.simulationToolbarActions === 0 && snapshot.simulationFileActions === 0 && !snapshot.marketplaceTrigger && snapshot.runControls === 0 && snapshot.stopControls === 0'};
-      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && modeReady && snapshot.realHardwareBoundary && (${requireOfflineDegradation ? 'true' : 'snapshot.realHardwarePrimary'}) && snapshot.preloadBridge && snapshot.hardwareBridge && snapshot.realHardwarePanelReady && snapshot.marketplaceBridge && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
+      const hardwareSurfaceReady = ${requireOfflineDegradation
+        ? '!snapshot.realHardwareBoundary && !snapshot.realHardwarePrimary && !snapshot.realHardwarePanelReady'
+        : 'snapshot.realHardwareBoundary && snapshot.realHardwarePrimary && snapshot.realHardwarePanelReady'};
+      return { ...snapshot, ready: snapshot.title === 'RealityWarden' && snapshot.appHeader && modeReady && hardwareSurfaceReady && snapshot.preloadBridge && snapshot.hardwareBridge && snapshot.marketplaceBridge && (${requireOfflineDegradation ? 'snapshot.offlineDegradation' : 'true'}) };
     })()`, true) as RendererSmokeSnapshot;
     if (lastSnapshot.ready) return lastSnapshot;
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -225,8 +228,8 @@ async function runInstalledCoreJourney(window: BrowserWindow) {
       realHardwareBoundary: Boolean(document.querySelector('[data-real-hardware-boundary]'))
     };
   })()`, true) as { auditSelected: boolean; hasBlockedEvidence: boolean; realHardwareBoundary: boolean };
-  if (!blockedEvidence.auditSelected || !blockedEvidence.hasBlockedEvidence || !blockedEvidence.realHardwareBoundary) throw new Error(`Installed blocked journey did not preserve evidence and hardware boundaries: ${JSON.stringify(blockedEvidence)}`);
-  return { safe_execution: 'passed', blocked_zero_motion_path: 'passed', audit_evidence_one_step: 'passed', real_hardware_boundary: 'passed' };
+  if (!blockedEvidence.auditSelected || !blockedEvidence.hasBlockedEvidence || blockedEvidence.realHardwareBoundary) throw new Error(`Installed blocked journey did not preserve evidence or the SIM-only surface: ${JSON.stringify(blockedEvidence)}`);
+  return { safe_execution: 'passed', blocked_zero_motion_path: 'passed', audit_evidence_one_step: 'passed', real_hardware_absent_in_simulation: 'passed' };
 }
 
 function enforceOfflineSmokeBoundary(window: BrowserWindow, localOrigin: string) {
@@ -367,8 +370,8 @@ async function captureDesignLayout(window: BrowserWindow, width: number, height:
     if (!workspace || workspace.width < 560) violations.push('workspace_min_width');
     if (!dock || dock.width < 520 || dock.x < (workspace?.x ?? 0) || dock.right > (workspace?.right ?? innerWidth)) violations.push('command_dock_bounds');
     if (realDeviceControl || simulationToolbarActions !== 5 || simulationFileActions !== 2) violations.push('simulation_toolbar_context');
-    if (!hardware || hardware.x < (sidebar?.x ?? innerWidth) || hardware.right > (sidebar?.right ?? 0) + 1) violations.push('real_hardware_bounds');
-    if (intersects(dock, sidebar) || intersects(dock, navigator) || intersects(dock, hardware)) violations.push('critical_overlap');
+    if (hardware) violations.push('real_hardware_visible_in_simulation');
+    if (intersects(dock, sidebar) || intersects(dock, navigator)) violations.push('critical_overlap');
     const clippedControls = Array.from(document.querySelectorAll('[data-component="AppHeader"] button, [data-component="AppHeader"] summary, [data-component="CommandDock"] button, [data-component="EvidenceSidebar"] [role="tab"]'))
       .filter((element) => element instanceof HTMLElement && element.getClientRects().length > 0 && element.scrollWidth > element.clientWidth + 1)
       .map((element) => ({ text: (element.textContent ?? '').trim().slice(0, 80), tag: element.tagName, className: element.className, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
@@ -450,6 +453,7 @@ async function runProductDesignAcceptance(window: BrowserWindow) {
       scaling.push(await captureDesignLayout(window, 1180, 720, 'en', scale));
     }
     await debug.sendCommand('Emulation.clearDeviceMetricsOverride');
+    await setWorkspaceMode(window, 'real');
     await debug.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'forced-colors', value: 'active' }] });
     await window.webContents.executeJavaScript(`document.activeElement instanceof HTMLElement && document.activeElement.blur()`, true);
     window.focus();

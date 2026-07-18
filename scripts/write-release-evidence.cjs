@@ -33,7 +33,7 @@ function validateDesignEvidence(evidence) {
   const layouts = Array.isArray(evidence.layouts) ? evidence.layouts : [];
   const realWorkspaceLayouts = Array.isArray(evidence.real_workspace_layouts) ? evidence.real_workspace_layouts : [];
   for (const contract of [[1440, 900, 'zh'], [1440, 900, 'en'], [1180, 720, 'zh'], [1180, 720, 'en']]) {
-    if (!layouts.some((item) => item?.viewport?.width === contract[0] && item?.viewport?.height === contract[1] && item?.language === contract[2] && item?.toolbar?.realDeviceControl === false && item?.toolbar?.simulationToolbarActions === 5 && item?.toolbar?.simulationFileActions === 2 && item?.violations?.length === 0)) throw new Error(`Product-design viewport evidence missing: ${contract.join('x')}`);
+    if (!layouts.some((item) => item?.viewport?.width === contract[0] && item?.viewport?.height === contract[1] && item?.language === contract[2] && item?.hardware === null && item?.toolbar?.realDeviceControl === false && item?.toolbar?.simulationToolbarActions === 5 && item?.toolbar?.simulationFileActions === 2 && item?.violations?.length === 0)) throw new Error(`Product-design viewport evidence missing or REAL hardware leaked into SIM LAB: ${contract.join('x')}`);
     if (!realWorkspaceLayouts.some((item) => item?.mode === 'real' && item?.viewport?.width === contract[0] && item?.viewport?.height === contract[1] && item?.language === contract[2] && item?.toolbar?.realDeviceControl === true && item?.toolbar?.simulationToolbarActions === 0 && item?.toolbar?.simulationFileActions === 0 && item?.toolbar?.hardwareFocused === true && item?.workspaceState?.disconnectedOnboarding === true && item?.workspaceState?.realTwinStage === false && item?.workspaceState?.canvasCount === 0 && item?.violations?.length === 0)) throw new Error(`REAL-workspace viewport evidence missing: ${contract.join('x')}`);
   }
   const scales = new Set((Array.isArray(evidence.scaling) ? evidence.scaling : []).map((item) => item?.requestedScale));
@@ -168,7 +168,7 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString(), opti
       {
         id: 'packaged-first-run-renderer-smoke',
         status: 'passed',
-        evidence: 'Packaged renderer loaded AppHeader, DeviceNavigator, CommandDock, one Run/Stop pair, simulation and REAL HARDWARE boundaries, and preload bridge'
+        evidence: 'Packaged renderer loaded a REAL-only hardware task rail, a hardware-free SIM LAB with one Run/Stop pair, and the preload bridge'
       },
       {
         id: 'windows-install-lifecycle',

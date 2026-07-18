@@ -84,9 +84,6 @@ export function EvidenceSidebar({
         {inspector}
       </div>
 
-      <div data-real-hardware-boundary data-real-hardware-primary="false" aria-label={language === 'zh' ? '独立真实硬件边界' : 'Independent real-hardware boundary'} className="shrink-0 border-t-4 border-real-hardware [border-image:repeating-linear-gradient(135deg,var(--color-real-hardware)_0_10px,#090A0C_10px_20px)_1]">
-        {hardware}
-      </div>
     </aside>
   );
 }
