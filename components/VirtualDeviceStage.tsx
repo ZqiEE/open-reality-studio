@@ -132,7 +132,7 @@ export function VirtualDeviceStage({
             is a safety stamp matching the Runtime Governor boundary label. */}
         <div className="pointer-events-none absolute left-3 top-3 z-20 flex max-w-[42%] flex-col items-start gap-1">
           <div className="rounded-[3px] border border-[#FACC15]/20 bg-black/30 px-2 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-status-warning/75 backdrop-blur-sm">
-            {realHardwareTelemetry?.connected ? 'Simulation Workspace · REAL Mirror Read-only' : 'Airgapped · Simulation Only'}
+            {realHardwareTelemetry?.connected ? 'SIMULATION · REAL MIRROR SEPARATE' : 'SIMULATION · NO HARDWARE SIGNAL'}
           </div>
           {realHardwareTelemetry?.connected && (
             <div className="w-[min(280px,100%)] border-2 border-status-warning-edge bg-black/95 px-2 py-1.5 font-mono text-[10px] leading-4 text-status-warning [box-shadow:inset_0_0_0_1px_#FACC15]">
@@ -145,6 +145,11 @@ export function VirtualDeviceStage({
               </div>
               <div className="normal-case tracking-normal text-[#FDE68A]">
                 {language === 'zh' ? '\u5b9e\u65f6\u8ddd\u79bb' : 'Live distance'}: {realHardwareTelemetry.distanceCm === null ? (language === 'zh' ? '\u5f53\u524d\u65e0\u8bfb\u6570' : 'no current reading') : `${realHardwareTelemetry.distanceCm.toFixed(1)} cm`}
+              </div>
+              <div className="mt-1 border-t border-status-warning-edge pt-1 normal-case tracking-normal text-[#FDE68A]">
+                {language === 'zh'
+                  ? '\u8fd9\u662f\u5df2\u8fde\u63a5\u7684\u53c2\u8003\u4f3a\u670d\u5668\u56de\u663e\uff0c\u4e0d\u4f1a\u81ea\u52a8\u5bf9\u5e94\u5de6\u4fa7\u4efb\u610f\u4eff\u771f\u6a21\u578b\u3002'
+                  : 'Connected reference-servo mirror; it does not automatically map to the selected simulation model.'}
               </div>
             </div>
           )}
@@ -196,12 +201,6 @@ export function VirtualDeviceStage({
             </div>
           </div>
         )}
-        {compactSingleDeviceView && (
-          <div className="pointer-events-none absolute left-1/2 top-3 z-10 max-w-[50%] -translate-x-1/2 rounded-[3px] border border-white/5 bg-black/26 px-2.5 py-1 text-[11px] leading-4 text-[#9AA3AF] backdrop-blur-md">
-            <div>{t(language, 'workspace_drop_hint')}</div>
-            <div className="text-[#7E8791]">{t(language, 'workspace_drag_hint')}</div>
-          </div>
-        )}
         {/* Consolidated focus panel (UI audit A1/A2/B4): the former centered
             strip duplicated the device name and collided with this panel below
             ~1500px viewport width. Solid panel styling so it does not read as
@@ -221,35 +220,40 @@ export function VirtualDeviceStage({
             </div>
           </div>
         )}
-        <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setForbiddenZoneEditing((value) => !value)}
-            disabled={!selectedWorkspaceDevice || !onForbiddenZonesChange}
-            className={`border px-2 py-1 text-[11px] font-semibold ${forbiddenZoneEditing ? 'border-danger bg-status-blocked-surface text-status-blocked-soft' : 'border-border-strong bg-black/45 text-text-primary'} disabled:opacity-40`}
-          >
-            {forbiddenZoneEditing ? (language === 'zh' ? '完成禁区编辑' : 'Finish zone edit') : (language === 'zh' ? '编辑禁区' : 'Edit forbidden zones')}
-          </button>
-          {onRemoveSelectedDevice && selectedWorkspaceDevice && (
+        <details className="pointer-events-auto absolute right-3 top-3 z-20 w-[150px] border border-border-strong bg-black/70 text-[11px] text-text-primary backdrop-blur-md">
+          <summary className="cursor-pointer select-none px-2 py-1.5 font-semibold">
+            {language === 'zh' ? '工作区工具' : 'Workspace tools'}
+          </summary>
+          <div className="grid gap-1 border-t border-border-panel p-1.5">
             <button
               type="button"
-              onClick={onRemoveSelectedDevice}
-              title={language === 'zh' ? `移除当前设备：${displayName}` : `Remove selected device: ${displayName}`}
-              className="rounded-[3px] border border-status-blocked-edge bg-black/45 px-2 py-1 text-[11px] font-semibold text-status-blocked-soft backdrop-blur-md hover:bg-status-blocked-surface"
+              onClick={() => setForbiddenZoneEditing((value) => !value)}
+              disabled={!selectedWorkspaceDevice || !onForbiddenZonesChange}
+              className={`border px-2 py-1 text-left font-semibold ${forbiddenZoneEditing ? 'border-danger bg-status-blocked-surface text-status-blocked-soft' : 'border-border-strong bg-black/45 text-text-primary'} disabled:opacity-40`}
             >
-              {language === 'zh' ? '移除设备' : 'Remove device'}
+              {forbiddenZoneEditing ? (language === 'zh' ? '完成禁区编辑' : 'Finish zone edit') : (language === 'zh' ? '编辑禁区' : 'Edit forbidden zones')}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => onExpandedChange?.(!expanded)}
-            className="rounded-[3px] border border-white/10 bg-black/45 px-2 py-1 text-[11px] font-semibold text-[#DDE6EF] backdrop-blur-md hover:bg-black/60"
-          >
-            {expanded
-              ? (language === 'zh' ? '还原工作区' : 'Restore workspace')
-              : (language === 'zh' ? '放大工作区' : 'Expand workspace')}
-          </button>
-        </div>
+            {onRemoveSelectedDevice && selectedWorkspaceDevice && (
+              <button
+                type="button"
+                onClick={onRemoveSelectedDevice}
+                title={language === 'zh' ? `移除当前仿真模型：${displayName}` : `Remove selected simulation model: ${displayName}`}
+                className="rounded-[3px] border border-status-blocked-edge bg-black/45 px-2 py-1 text-left font-semibold text-status-blocked-soft hover:bg-status-blocked-surface"
+              >
+                {language === 'zh' ? '移除仿真模型' : 'Remove model'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onExpandedChange?.(!expanded)}
+              className="rounded-[3px] border border-white/10 bg-black/45 px-2 py-1 text-left font-semibold text-[#DDE6EF] hover:bg-black/60"
+            >
+              {expanded
+                ? (language === 'zh' ? '还原工作区' : 'Restore workspace')
+                : (language === 'zh' ? '放大工作区' : 'Expand workspace')}
+            </button>
+          </div>
+        </details>
         {forbiddenZoneEditing && (
           <div className="pointer-events-auto absolute right-3 top-14 z-20 w-[280px] border border-danger bg-status-blocked-surface/95 p-2 text-[12px] text-text-primary">
             <div className="font-semibold text-status-blocked-soft">{language === 'zh' ? '禁区可视化编辑' : 'Forbidden-zone visual editor'}</div>

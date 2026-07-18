@@ -20,19 +20,10 @@ export function EvidenceSidebar({
   evidence,
   inspector,
   hardware,
-  evidenceKey,
-  selectionKey
+  evidenceKey
 }: EvidenceSidebarProps) {
   const [activeTab, setActiveTab] = useState<EvidenceTab>('evidence');
-  const previousSelection = useRef(selectionKey);
   const previousEvidence = useRef(evidenceKey);
-
-  useEffect(() => {
-    if (selectionKey !== previousSelection.current) {
-      previousSelection.current = selectionKey;
-      setActiveTab('inspector');
-    }
-  }, [selectionKey]);
 
   useEffect(() => {
     if (evidenceKey && evidenceKey !== previousEvidence.current) {
@@ -42,11 +33,11 @@ export function EvidenceSidebar({
   }, [evidenceKey]);
 
   const labels = language === 'zh'
-    ? { evidence: '审计与决策', inspector: '设备检查器' }
-    : { evidence: 'Audit & Governor', inspector: 'Device Inspector' };
+    ? { evidence: '运行裁决', inspector: '仿真模型详情' }
+    : { evidence: 'Run Decision', inspector: 'Simulation Details' };
 
   return (
-    <aside data-component="EvidenceSidebar" className="flex h-full w-[360px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface">
+    <aside data-component="EvidenceSidebar" className="flex h-full w-[320px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface xl:w-[360px]">
       <div className="grid h-10 shrink-0 grid-cols-2 border-b border-border bg-surface p-1" role="tablist" aria-label={language === 'zh' ? '证据侧栏' : 'Evidence sidebar'}>
         {(['evidence', 'inspector'] as EvidenceTab[]).map((tab, index, tabs) => {
           const selected = activeTab === tab;
@@ -76,7 +67,7 @@ export function EvidenceSidebar({
         {inspector}
       </div>
 
-      <div data-real-hardware-boundary className="shrink-0 border-t-4 border-real-hardware [border-image:repeating-linear-gradient(135deg,var(--color-real-hardware)_0_10px,#090A0C_10px_20px)_1]">
+      <div data-real-hardware-boundary aria-label={language === 'zh' ? '独立真实硬件边界' : 'Independent real-hardware boundary'} className="shrink-0 border-t-4 border-real-hardware [border-image:repeating-linear-gradient(135deg,var(--color-real-hardware)_0_10px,#090A0C_10px_20px)_1]">
         {hardware}
       </div>
     </aside>

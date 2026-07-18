@@ -93,10 +93,13 @@ export function LabConfigurator({
   }, [assetQuery, deviceAssets, deviceType]);
 
   return (
-    <aside data-component="DeviceNavigator" className="flex h-full w-[240px] shrink-0 flex-col overflow-hidden border-r border-border bg-surface xl:w-[280px]">
+    <aside data-component="DeviceNavigator" aria-label={language === 'zh' ? '安全预演设置' : 'Safe rehearsal setup'} className="flex h-full w-[240px] shrink-0 flex-col overflow-hidden border-r border-border bg-surface xl:w-[280px]">
       <div className="flex h-full min-h-0 flex-col">
-        <header className="flex h-10 flex-none items-center border-b border-border px-3">
-          <div className="rw-text-title text-text-primary">{language === 'zh' ? '设备导航' : 'Device Navigator'}</div>
+        <header className="flex min-h-[52px] flex-none flex-col justify-center border-b border-border px-3">
+          <div className="rw-text-title text-text-primary">{language === 'zh' ? '安全预演' : 'Safe Rehearsal'}</div>
+          <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.13em] text-simulation">
+            {language === 'zh' ? '仅仿真 · 不发送硬件信号' : 'Simulation only · no hardware signal'}
+          </div>
         </header>
 
         <div className="grid h-10 flex-none grid-cols-2 border-b border-border bg-surface p-1" role="tablist" aria-label={language === 'zh' ? '左侧导航' : 'Left navigation'}>
@@ -113,14 +116,21 @@ export function LabConfigurator({
               onKeyDown={(event) => handleRovingTabKey(event, index, sections.length, (nextIndex) => setActiveSection(sections[nextIndex]))}
               className={`border px-2 text-[13px] font-semibold ${activeSection === section ? 'border-border-strong bg-surface-raised text-text-primary' : 'border-transparent text-text-secondary hover:bg-surface-raised hover:text-text-primary'}`}
             >
-              {section === 'devices' ? t(language, 'devices') : t(language, 'asset_library')}
+              {section === 'devices'
+                ? (language === 'zh' ? '设置' : 'Setup')
+                : (language === 'zh' ? '仿真模型库' : 'Model Library')}
             </button>
           ))}
         </div>
 
         <section id="device-navigator-panel-devices" aria-labelledby="device-navigator-tab-devices" hidden={activeSection !== 'devices'} className={`${activeSection === 'devices' ? 'grid' : 'hidden'} custom-scrollbar min-h-0 flex-1 content-start gap-3 overflow-y-auto px-3 py-3`} role="tabpanel">
+          <div className="rounded-[3px] border border-simulation/40 bg-[#0B2233] px-2 py-2 text-[11px] leading-4 text-[#BAE6FD]">
+            {language === 'zh'
+              ? '先选一个仿真模型和测试用例，再从中央输入指令。结果用于理解动作与风险，不代表真实环境已安全。'
+              : 'Choose a simulation model and test case, then enter a command in the center. Results explain motion and risk; they do not prove the physical world is safe.'}
+          </div>
           <div>
-            <FieldLabel>{t(language, 'device_type')}</FieldLabel>
+            <FieldLabel><span className="mr-1 text-simulation">1</span>{language === 'zh' ? '目标类型' : 'Target kind'}</FieldLabel>
             <div className="relative">
               <select value={deviceType} onChange={(event) => onDeviceTypeChange(event.target.value as DeviceType)} className={selectClassName}>
                 {deviceTypes.map((type) => (
@@ -132,7 +142,7 @@ export function LabConfigurator({
           </div>
 
           <div>
-            <FieldLabel>{t(language, 'device_profile')}</FieldLabel>
+            <FieldLabel><span className="mr-1 text-simulation">2</span>{language === 'zh' ? '仿真模型' : 'Simulation model'}</FieldLabel>
             <div className="relative">
               <select value={selectedProfileId} onChange={(event) => onProfileChange(event.target.value)} className={selectClassName}>
                 {profiles.map((profile) => (
@@ -144,7 +154,7 @@ export function LabConfigurator({
           </div>
 
           <div>
-            <FieldLabel>{t(language, 'scenario')}</FieldLabel>
+            <FieldLabel><span className="mr-1 text-simulation">3</span>{language === 'zh' ? '测试用例' : 'Test case'}</FieldLabel>
             <div className="relative">
               <select value={scenarios.length > 0 ? selectedScenarioId : '__coming_soon__'} onChange={(event) => onScenarioChange(event.target.value)} disabled={scenarios.length === 0} className={`${selectClassName} disabled:cursor-not-allowed disabled:opacity-60`}>
                 {scenarios.length === 0 ? (
@@ -161,7 +171,7 @@ export function LabConfigurator({
               not operational - one summary line, details on demand. */}
           <details>
             <summary className="flex cursor-pointer select-none items-center justify-between text-[11px] font-bold uppercase tracking-wide text-text-secondary hover:text-text-primary">
-              <span>{t(language, 'public_alpha_support')}</span>
+              <span>{language === 'zh' ? '仿真支持范围' : 'Simulation support'}</span>
               <span className={`ml-2 rounded-[3px] border px-1.5 py-0.5 font-bold normal-case ${selectedDeviceRunnable ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>
                 {selectedDeviceRunnable ? t(language, 'support_supported') : t(language, 'support_coming_soon')}
               </span>
