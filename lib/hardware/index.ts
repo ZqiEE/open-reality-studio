@@ -60,3 +60,24 @@ export type { TeachActionManifest, TeachExecutionEvidence } from './TeachMode';
 export { visibleRealHardwareTelemetry } from './RealHardwareTelemetry';
 export { parseRealNaturalCommand, REAL_COMMAND_MAX_STEPS } from './RealCommandParser';
 export type { RealCommandParseResult, RealCommandRejectReason } from './RealCommandParser';
+export {
+  extractServoAngleTrack,
+  SERVO_TWIN_PROFILE_ID,
+  SERVO_TWIN_COMMAND,
+  SERVO_ANGLE_MIN_DEG,
+  SERVO_ANGLE_MAX_DEG,
+  BRIDGE_MIN_STEPS,
+  BRIDGE_MAX_STEPS
+} from './ServoTwinAngleTrack';
+export type { BridgeExtractResult, BridgeRejectReason, BridgeSimulationInput } from './ServoTwinAngleTrack';
+export { simulateServoTrack, SERVO_TWIN_DEVICE_META } from './ServoTwinSimulation';
+export type { ServoTwinResult, ServoTwinCompleted, ServoTwinBlocked, ServoTwinOptions } from './ServoTwinSimulation';
+export { prepareRealProposalFromIntent, extractManifestAngles } from './ReferenceServoPreflight';
+export type { RealProposalResult, RealProposalReady, RealProposalRejected, BridgeStage, PrepareProposalOptions } from './ReferenceServoPreflight';
+export type { ManifestAngleResult } from './ReferenceServoPreflight';
+export { formatReferenceServoPreflight } from './ReferenceServoPreflightView';
+export type { ReferenceServoPreflightView } from './ReferenceServoPreflightView';
+export { buildReferenceServoPreflightDecision, recordReferenceServoPreflightDecision } from './ReferenceServoPreflightAudit';
+export type { ReferenceServoPreflightDecision } from './ReferenceServoPreflightAudit';
+export { parseServoIntent, SERVO_INTENT_MAX_STEPS } from './ServoIntentParser';
+export type { ServoIntentResult } from './ServoIntentParser';

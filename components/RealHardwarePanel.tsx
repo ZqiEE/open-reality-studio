@@ -29,6 +29,13 @@ import {
   waypointAfterJog
 } from '@/lib/hardware/TeachMode';
 import { parseRealNaturalCommand } from '@/lib/hardware/RealCommandParser';
+import { parseServoIntent } from '@/lib/hardware/ServoIntentParser';
+import { prepareRealProposalFromIntent, extractManifestAngles } from '@/lib/hardware/ReferenceServoPreflight';
+import type { RealProposalResult } from '@/lib/hardware/ReferenceServoPreflight';
+import { formatReferenceServoPreflight } from '@/lib/hardware/ReferenceServoPreflightView';
+import { recordReferenceServoPreflightDecision } from '@/lib/hardware/ReferenceServoPreflightAudit';
+import { RuntimeAuditLog } from '@/lib/runtime/RuntimeAuditLog';
+import type { RuntimeAuditEntry } from '@/lib/runtime/RuntimeAuditLog';
 
 export interface HardwareBridgeResult {
   ok: boolean;
@@ -167,6 +174,9 @@ export function RealHardwarePanel({
   const [execOutcome, setExecOutcome] = useState<HardwareExecuteOutcome | null>(null);
   const [nlText, setNlText] = useState('');
   const [nlFeedback, setNlFeedback] = useState<string | null>(null);
+  const [previewResult, setPreviewResult] = useState<RealProposalResult | null>(null);
+  const preflightAuditLogRef = useRef<RuntimeAuditLog | null>(null);
+  const [preflightReceipts, setPreflightReceipts] = useState<RuntimeAuditEntry[]>([]);
   const [lastRequestedAngle, setLastRequestedAngle] = useState<number | null>(null);
   const [lastCommandAngle, setLastCommandAngle] = useState<number | null>(null);
   const [waypoints, setWaypoints] = useState<number[]>([]);
@@ -597,15 +607,36 @@ export function RealHardwarePanel({
    * and runs every primitive through HardwareActionSequenceRunner (new sensor
    * generation + HardwareExecutionGate per step, zero frames after a block).
    */
-  const nlParse = useMemo(
-    () => (nlText.trim().length > 0 ? parseRealNaturalCommand(nlText) : null),
-    [nlText]
-  );
+  const nlParse = useMemo(() => {
+    const text = nlText.trim();
+    if (text.length === 0) return null;
+    // Layer 1: exact rule parser (explicit angles). Layer 2: deterministic
+    // vocabulary (named positions / sequences). Neither guesses; if both refuse
+    // the whole command is rejected. Whatever they yield is still an UNTRUSTED
+    // proposal that must pass the reference-servo preflight before execution.
+    const strict = parseRealNaturalCommand(text);
+    if (strict.ok) return { ok: true as const, angles: strict.angles };
+    const intent = parseServoIntent(text);
+    if (intent.ok) return { ok: true as const, angles: intent.angles };
+    return { ok: false as const, detail: intent.detail };
+  }, [nlText]);
 
   const executeNaturalCommand = useCallback(async () => {
     setNlFeedback(null);
     if (!nlParse || !nlParse.ok) return;
     const displayName = nlText.trim().slice(0, 60) || 'real nl command';
+    // Preflight this REAL-panel intent through the reviewed 1-DOF reference
+    // twin before actuation. A block yields no proposal and never reaches the
+    // gate. This is local to the reference rig, not the generic left workspace,
+    // and adds no IPC or execution channel.
+    const preflight = prepareRealProposalFromIntent(nlParse.angles, {
+      actionId: 'real_nl_command',
+      displayName
+    });
+    if (!preflight.ok) {
+      setNlFeedback(`reference-servo preflight ${preflight.stage} blocked: ${preflight.reason}`);
+      return;
+    }
     const checked = validateActionManifest(
       buildTeachManifest('real_nl_command', displayName, nlParse.angles),
       REAL_SERVO_TEACH_DEVICE_META,
@@ -620,6 +651,53 @@ export function RealHardwarePanel({
     }
     await replayTeachAction(checked.manifest);
   }, [nlParse, nlText, replayTeachAction]);
+
+  const runReferenceServoPreflight = useCallback(() => {
+    // Hardware-local dry run through the reviewed 1-DOF reference twin.
+    // Nothing here reaches hardware or consumes the generic left simulation.
+    setNlFeedback(null);
+    if (!nlParse || !nlParse.ok) {
+      setPreviewResult(null);
+      return;
+    }
+    const displayName = nlText.trim().slice(0, 60) || 'real nl command';
+    const result = prepareRealProposalFromIntent(nlParse.angles, {
+      actionId: 'real_nl_command',
+      displayName
+    });
+    setPreviewResult(result);
+    // Receipt: record this no-signal preflight into an audit log. It goes
+    // through decision(), which enforces the no-signal invariant, so every
+    // receipt provably shows hardwareSignalSent=false.
+    if (!preflightAuditLogRef.current) preflightAuditLogRef.current = new RuntimeAuditLog();
+    recordReferenceServoPreflightDecision(preflightAuditLogRef.current, result, { intent: nlText });
+    setPreflightReceipts(preflightAuditLogRef.current.list());
+  }, [nlParse, nlText]);
+
+  const preview = previewResult ? formatReferenceServoPreflight(previewResult, zh) : null;
+
+  const preflightAndReplayTeach = useCallback(async (manifest: ActionManifest) => {
+    // Saved teach actions use the same hardware-local preflight before replay.
+    // A blocked preflight never reaches the real execution gate.
+    setNlFeedback(null);
+    const extracted = extractManifestAngles(manifest);
+    if (!extracted.ok) {
+      setTeachFeedback(zh ? `参考伺服器预检拦截：${extracted.reason}` : `Reference-servo preflight blocked: ${extracted.reason}`);
+      return;
+    }
+    const result = prepareRealProposalFromIntent(extracted.angles, {
+      actionId: 'teach_replay',
+      displayName: manifest.action_id
+    });
+    setPreviewResult(result);
+    if (!preflightAuditLogRef.current) preflightAuditLogRef.current = new RuntimeAuditLog();
+    recordReferenceServoPreflightDecision(preflightAuditLogRef.current, result, { intent: `teach:${manifest.action_id}` });
+    setPreflightReceipts(preflightAuditLogRef.current.list());
+    if (!result.ok) {
+      return;
+    }
+    await replayTeachAction(manifest);
+  }, [replayTeachAction, zh]);
 
   // Advice shown to the operator: structured probe advice wins; otherwise the
   // last raw error is classified on the fly so no failure is ever unexplained.
@@ -914,8 +992,8 @@ export function RealHardwarePanel({
                     </div>
                     <input
                       value={nlText}
-                      onChange={(event) => setNlText(event.target.value)}
-                      placeholder={zh ? '例：转到45度，再归零' : 'e.g. turn to 45 degrees, then back to zero'}
+                      onChange={(event) => { setNlText(event.target.value); setPreviewResult(null); }}
+                      placeholder={zh ? '例：转到45度；左边，再归零；居中' : 'e.g. 45 degrees; left then home; center'}
                       className="h-7 w-full rounded-[3px] border border-border-panel bg-[#0B0C0E] px-2 text-[12px] text-text-primary"
                       aria-label={zh ? '自然语言真机指令' : 'Natural-language real command'}
                     />
@@ -938,16 +1016,45 @@ export function RealHardwarePanel({
                     {nlFeedback && <div className="text-[11px] leading-4 text-status-warning">{nlFeedback}</div>}
                     <button
                       type="button"
+                      onClick={() => runReferenceServoPreflight()}
+                      disabled={executing || !nlParse || !nlParse.ok}
+                      className="h-7 self-start rounded-[3px] border border-status-warning-edge px-2 text-[12px] font-semibold text-status-warning hover:bg-status-warning-surface disabled:opacity-40"
+                    >
+                      {zh ? '参考伺服器预检（不发信号）' : 'Reference-servo preflight (no signal)'}
+                    </button>
+                    {preview && (
+                      <div
+                        className={`rounded-[3px] border px-2 py-1 text-[11px] leading-4 ${preview.ok ? 'border-status-executed-edge text-status-executed-soft' : 'border-status-blocked-edge text-status-blocked-soft'}`}
+                        aria-label={zh ? '参考伺服器预检结果' : 'Reference-servo preflight result'}
+                      >
+                        <div className="font-semibold">{preview.headline}</div>
+                        <div className="font-mono text-text-muted">{preview.detail}</div>
+                      </div>
+                    )}
+                    {preflightReceipts.length > 0 && (
+                      <div className="flex flex-col gap-0.5 rounded-[3px] border border-border-panel bg-[#0B0C0E] px-2 py-1" aria-label={zh ? '预检回执（未发信号）' : 'Preflight receipts (no signal sent)'}>
+                        <div className="text-[10px] font-semibold text-text-muted">
+                          {zh ? `参考伺服器预检回执 · ${preflightReceipts.length} 条 · 全部 hardwareSignalSent=false` : `Reference-servo preflight receipts · ${preflightReceipts.length} · all hardwareSignalSent=false`}
+                        </div>
+                        {preflightReceipts.slice(-4).map((entry) => (
+                          <div key={entry.id} className={`font-mono text-[10px] leading-4 ${entry.level === 'warn' ? 'text-status-blocked-soft' : 'text-status-executed-soft'}`}>
+                            {entry.code}: {entry.message}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      type="button"
                       onClick={() => void executeNaturalCommand()}
-                      disabled={executing || !execConfirmed || !nlParse || !nlParse.ok}
+                      disabled={executing || !execConfirmed || !nlParse || !nlParse.ok || !previewResult?.ok}
                       className="h-7 self-start rounded-[3px] border border-status-blocked-edge px-2 text-[12px] font-semibold text-status-blocked-soft hover:bg-status-blocked-surface disabled:opacity-40"
                     >
                       {executing ? (zh ? '执行中…' : 'Executing…') : (zh ? '通过安全门执行解析序列' : 'Execute parsed sequence via gate')}
                     </button>
                     <div className="text-[10px] leading-4 text-text-muted">
                       {zh
-                        ? '确定性规则解析（非 LLM）：只认显式角度（如 45°/45度/归零），解析不了即整条拒绝，绝不猜测；越界角度由验证器与安全门拒绝，绝不钳制。'
-                        : 'Deterministic rule parser (not an LLM): only explicit angles ("45", "45 degrees", "back to zero") count; unparseable text is rejected as a whole, never guessed. Out-of-range angles are rejected downstream, never clamped.'}
+                        ? '确定性理解（非 LLM）：显式角度 + 受控词表（左/中/右/归零、偏左偏右、“X 再 Y”序列）；词表外整条拒绝，绝不猜测；越界角度由验证器与安全门拒绝，绝不钳制。理解结果只是提案，须先通过参考伺服器预检。这不是左侧通用仿真工作区。'
+                        : 'Deterministic understanding (not an LLM): explicit angles plus a controlled vocabulary (left/center/right/home, half-left/right, "X then Y" sequences); anything outside it is rejected as a whole, never guessed. Out-of-range angles are rejected downstream, never clamped. The result is only a proposal and must pass the reference-servo preflight. This is not the generic simulation workspace on the left.'}
                     </div>
                   </div>
                   <div className="mt-1 flex flex-col gap-2 border-t border-status-warning-edge pt-2">
@@ -1042,7 +1149,7 @@ export function RealHardwarePanel({
                             <span className="min-w-0 flex-1 truncate text-text-primary">{manifest.action_id} &middot; {manifest.steps.length} {zh ? '\u6b65' : 'steps'}</span>
                             <button
                               type="button"
-                              onClick={() => void replayTeachAction(manifest)}
+                              onClick={() => void preflightAndReplayTeach(manifest)}
                               disabled={executing || !execConfirmed}
                               className="h-7 rounded-[3px] border border-status-blocked-edge px-2 font-semibold text-status-blocked-soft hover:bg-status-blocked-surface disabled:opacity-40"
                             >

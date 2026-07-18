@@ -64,6 +64,15 @@ export interface AdapterCommand {
   speed?: string;
   force?: string;
   source_step_id: string;
+  /**
+   * Honest scalar joint angle in degrees for 1-DOF digital-twin devices only
+   * (e.g. the ESP32 + SG90 servo twin). Multi-DOF / 3D devices NEVER set this;
+   * they speak target_position (Vec3). The simulation-to-real bridge requires
+   * this field on every command and structurally rejects any run that lacks it,
+   * so a 3D pose can never be projected onto a servo angle. Not authoritative:
+   * downstream validateActionManifest and the hardware gate revalidate range.
+   */
+  target_angle_deg?: number;
 }
 
 export interface OperationalDryRunReport {
