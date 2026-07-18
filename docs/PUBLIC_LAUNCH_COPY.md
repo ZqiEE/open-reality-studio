@@ -1,4 +1,4 @@
-# Public Launch Copy — v0.5.0 Public Alpha
+# Public Launch Copy — v0.5.1 Public Alpha
 
 Use these drafts for public posts. Keep the boundary explicit: the main
 workbench is simulation-first; one ESP32 reference rig has a separate,
@@ -9,7 +9,7 @@ certified safety product.
 
 AI should not touch the physical world directly.
 
-RealityWarden v0.5.0 Public Alpha is a local desktop runtime for Physical AI:
+RealityWarden v0.5.1 Public Alpha is a local desktop runtime for Physical AI:
 
 - natural-language and custom actions
 - capability and safety governance
@@ -24,7 +24,7 @@ sensor-gated, operator-confirmed, and visibly marked REAL HARDWARE.
 https://github.com/ZqiEE/open-reality-studio
 ## Technical post
 
-RealityWarden v0.5.0 routes supported intent through a local Runtime Kernel,
+RealityWarden v0.5.1 routes supported intent through a local Runtime Kernel,
 World Model, Safety Governor, TaskDSL, AdapterPlan, and audit trail before
 dispatch.
 
@@ -44,7 +44,7 @@ https://github.com/ZqiEE/open-reality-studio
 
 ## Chinese short intro
 
-RealityWarden v0.5.0 Public Alpha 是一个 simulation-first 的 Physical AI 桌面运行时。
+RealityWarden v0.5.1 Public Alpha 是一个 simulation-first 的 Physical AI 桌面运行时。
 
 它把自然语言/自定义动作送入设备能力检查、安全治理、TaskDSL、3D 仿真、回放和审计，而不是让 AI 直接控制设备。主工作流无需硬件；文档中的 ESP32 + SG90 + HC-SR04 参考台架拥有独立的 REAL HARDWARE 危险边界，必须经过证据锁、逐次人工确认、传感器互锁和私有 ticket 安全门。
 

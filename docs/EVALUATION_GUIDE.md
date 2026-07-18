@@ -1,6 +1,6 @@
 # Evaluation Guide
 
-This guide is for the current `v0.5.0 Public Alpha`.
+This guide is for the current `v0.5.1 Public Alpha`.
 
 Use it when you want a clean first evaluation of the product without guessing which prompts or device paths are actually supported.
 

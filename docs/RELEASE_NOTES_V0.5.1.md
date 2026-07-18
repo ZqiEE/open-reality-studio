@@ -1,6 +1,6 @@
-# RealityWarden v0.5.0 Public Alpha Release Notes
+# RealityWarden v0.5.1 Public Alpha Release Notes
 
-RealityWarden v0.5.0 is a software-complete Public Alpha release candidate for
+RealityWarden v0.5.1 is a software-complete Public Alpha release candidate for
 simulation-first Physical AI workflows and one explicitly gated ESP32 reference
 rig. It does not claim general hardware compatibility, verified physical motion,
 industrial safety certification, or production readiness.
@@ -56,7 +56,7 @@ recorded as `command_acknowledged_open_loop` with
 
 - all three TypeScript projects pass type checking;
 - Next.js production build passes;
-- real-hardware safety invariants: **46/46**;
+- real-hardware safety invariants: **48/48**;
 - virtual serial loopback acceptance: **5/5**;
 - malicious/manual-import, second-gate, and action-install coverage: **21/21**;
 - Desktop and Conformance source-contract checks pass;
@@ -67,7 +67,7 @@ recorded as `command_acknowledged_open_loop` with
 Expected Windows artifact:
 
 ```text
-release/RealityWarden-0.5.0-Setup.exe
+release/RealityWarden-0.5.1-Setup.exe
 ```
 
 ## Known limitations

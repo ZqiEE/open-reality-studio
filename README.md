@@ -55,7 +55,7 @@ If Physical AI becomes locked inside a few closed stacks, fewer companies can pa
 
 RealityWarden is designed for the opposite direction: more devices, more adapters, more Reality Assets, more integration work, more deployment work, and a wider developer ecosystem around AI-controlled physical systems.
 
-**Current status — v0.5.0 Public Alpha**
+**Current status — v0.5.1 Public Alpha**
 
 - Public Alpha
 - the main simulation workbench never touches hardware

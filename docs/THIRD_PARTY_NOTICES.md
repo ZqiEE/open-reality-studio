@@ -2,7 +2,7 @@
 
 This file lists third-party software and model assets redistributed with RealityWarden. It does not grant a license to RealityWarden itself. Package coverage is generated from the npm production-dependency CycloneDX inventory and bound to the repository lockfile.
 
-Lockfile SHA-256: `9f3f97c61f2c3b03865853e1f88ee522b248e4a9442aef90b28cf2b506e8e238`
+Lockfile SHA-256: `c9e333ad495c3cbe0a6681d7ac97b68426eacbc73593f4698b97245ded74da17`
 
 ## Redistributed model assets
 

@@ -1,4 +1,4 @@
-# RealityWarden v0.5.0 Public Alpha Release Readiness
+# RealityWarden v0.5.1 Public Alpha Release Readiness
 
 This report records software and packaging readiness. It does not create a tag,
 push a branch, sign binaries, publish a release, or claim production readiness.
@@ -7,7 +7,7 @@ push a branch, sign binaries, publish a release, or claim production readiness.
 
 Status: **software release candidate ready**
 
-The v0.5.0 source, documentation, package contract, automated safety gates, and
+The v0.5.1 source, documentation, package contract, automated safety gates, and
 versioned Windows installer are aligned. The packaged executable passed the
 production smoke path. Physical reference-kit testing is optional field
 evidence, not a development or release-engineering prerequisite.
@@ -24,7 +24,7 @@ evidence, not a development or release-engineering prerequisite.
 
 ### Safety and product evidence — pass
 
-- real-hardware invariant suite: **46/46**;
+- real-hardware invariant suite: **48/48**;
 - virtual-loopback scenarios: **5/5**;
 - manual-import malicious-input, second-gate, and explicit action-install suite: **21/21**;
 - blocked commands prove zero signal with `hardwareSignalSent:false` and
@@ -61,7 +61,7 @@ node lib/conformance/runConformance.js
 npm run verify
 npm run desktop:pack
 npm run desktop:pack:production
-npm run marketplace:live:verify -- --distribution marketplace/distribution.json --out release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json
+npm run marketplace:live:verify -- --distribution marketplace/distribution.json --out release/RealityWarden-0.5.1-Marketplace-Live-Evidence.json
 npm run release:supply-chain
 npm run release:prepare-public
 ```
@@ -92,31 +92,31 @@ the installed application payload and uninstall registration must be removed.
 Expected artifact:
 
 ```text
-release/RealityWarden-0.5.0-Setup.exe
-release/RealityWarden-0.5.0-Startup-Acceptance.json
-release/RealityWarden-0.5.0-Startup-Acceptance.json.sha256
-release/RealityWarden-0.5.0-Design-Acceptance.json
-release/RealityWarden-0.5.0-Design-Acceptance.json.sha256
-release/RealityWarden-0.5.0-Install-Lifecycle.json
-release/RealityWarden-0.5.0-Install-Lifecycle.json.sha256
-release/RealityWarden-0.5.0-Release-Evidence.json
-release/RealityWarden-0.5.0-Release-Evidence.json.sha256
+release/RealityWarden-0.5.1-Setup.exe
+release/RealityWarden-0.5.1-Startup-Acceptance.json
+release/RealityWarden-0.5.1-Startup-Acceptance.json.sha256
+release/RealityWarden-0.5.1-Design-Acceptance.json
+release/RealityWarden-0.5.1-Design-Acceptance.json.sha256
+release/RealityWarden-0.5.1-Install-Lifecycle.json
+release/RealityWarden-0.5.1-Install-Lifecycle.json.sha256
+release/RealityWarden-0.5.1-Release-Evidence.json
+release/RealityWarden-0.5.1-Release-Evidence.json.sha256
 # production mode only:
-release/RealityWarden-0.5.0-Authenticode-Evidence.json
-release/RealityWarden-0.5.0-Authenticode-Evidence.json.sha256
-release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json
-release/RealityWarden-0.5.0-Marketplace-Live-Evidence.json.sha256
-release/RealityWarden-0.5.0-SBOM.cdx.json
-release/RealityWarden-0.5.0-SBOM.cdx.json.sha256
-release/RealityWarden-0.5.0-Supply-Chain-Evidence.json
-release/RealityWarden-0.5.0-Supply-Chain-Evidence.json.sha256
-release/RealityWarden-0.5.0-Setup.exe.sha256
-release/RealityWarden-0.5.0-EULA.txt
-release/RealityWarden-0.5.0-EULA.txt.sha256
-release/RealityWarden-0.5.0-Privacy-Notice.txt
-release/RealityWarden-0.5.0-Privacy-Notice.txt.sha256
-release/RealityWarden-0.5.0-Public-Release-Manifest.json
-release/RealityWarden-0.5.0-Public-Release-Manifest.json.sha256
+release/RealityWarden-0.5.1-Authenticode-Evidence.json
+release/RealityWarden-0.5.1-Authenticode-Evidence.json.sha256
+release/RealityWarden-0.5.1-Marketplace-Live-Evidence.json
+release/RealityWarden-0.5.1-Marketplace-Live-Evidence.json.sha256
+release/RealityWarden-0.5.1-SBOM.cdx.json
+release/RealityWarden-0.5.1-SBOM.cdx.json.sha256
+release/RealityWarden-0.5.1-Supply-Chain-Evidence.json
+release/RealityWarden-0.5.1-Supply-Chain-Evidence.json.sha256
+release/RealityWarden-0.5.1-Setup.exe.sha256
+release/RealityWarden-0.5.1-EULA.txt
+release/RealityWarden-0.5.1-EULA.txt.sha256
+release/RealityWarden-0.5.1-Privacy-Notice.txt
+release/RealityWarden-0.5.1-Privacy-Notice.txt.sha256
+release/RealityWarden-0.5.1-Public-Release-Manifest.json
+release/RealityWarden-0.5.1-Public-Release-Manifest.json.sha256
 ```
 
 The schema-v6 release evidence manifest is emitted only after package
@@ -153,7 +153,7 @@ final gate emits an exclusive installer checksum, versioned EULA and privacy
 notice with companion checksums, and a checksummed public-release manifest
 listing the exact upload set. It performs no tag, push, or upload itself.
 
-Verified local artifact record (2026-07-15):
+Last fully verified local artifact record (v0.5.0, 2026-07-15; retained as historical evidence, not claimed for v0.5.1):
 
 - size: `186503174` bytes (`177.86 MiB`);
 - SHA256: `B7B826906E3F78A4F1232870E540CDD69CE8C89CA210D8730506F4C0EDD78C3C`;
