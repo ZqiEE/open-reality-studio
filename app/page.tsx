@@ -1108,6 +1108,118 @@ function WorkspaceDeviceStrip({
   );
 }
 
+/**
+ * The refusal card — the product's hero moment, not an error toast.
+ *
+ * POSITIONING.md: "it refuses, and shows you the evidence". A refusal is the
+ * gate working as designed, so this card is written as a positive outcome and
+ * always answers three questions with no dead end (v0.6 exit criterion "every
+ * state has a plain-language explanation; a blocked user is told what happened
+ * and what to do next"):
+ *
+ *   1. WHAT was refused — the exact intent and the target it was aimed at
+ *   2. WHY — the gate's plain-language reason plus the machine reason code
+ *   3. WHAT NEXT — export the receipt (the deliverable), or rewrite the
+ *      command; the evidence chain is pointed at, never hidden
+ *
+ * Deliberately NOT a red error surface: it keeps the blocked semantic tokens
+ * (owner decision — colours unchanged this round) but drops the error voice,
+ * the alarm iconography, and the "something went wrong" framing.
+ *
+ * Placed directly under CommandDock so the narrative reads intent -> gate in
+ * one column. Step 4 of the landing plan lifts this into RunStateBar.
+ */
+function RefusalCard({
+  language,
+  prompt,
+  targetLabel,
+  reason,
+  reasonCode,
+  blockedReasons,
+  canExportReceipt,
+  safeRewritePrompt,
+  onExportReceipt,
+  onUseSafeRewrite
+}: {
+  language: UiLanguage;
+  prompt: string;
+  targetLabel: string;
+  reason: string;
+  reasonCode: string | null;
+  blockedReasons: string[];
+  canExportReceipt: boolean;
+  safeRewritePrompt: string | null;
+  onExportReceipt: () => void;
+  onUseSafeRewrite: (prompt: string) => void;
+}) {
+  const zh = language === 'zh';
+  return (
+    <section
+      data-refusal-card
+      aria-live="polite"
+      className="border border-status-blocked-edge bg-status-blocked-surface px-3 py-2.5"
+    >
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="border border-status-blocked-edge px-2 py-0.5 text-[12px] font-bold uppercase tracking-wide text-status-blocked-soft">
+          {zh ? '已拦截' : 'REFUSED'}
+        </span>
+        <span className="text-[13px] font-semibold text-text-primary">
+          {zh ? '门按预期工作了 —— 这条指令没有到达执行器。' : 'The gate did its job — this command never reached the actuator.'}
+        </span>
+      </div>
+
+      <dl className="mt-2 grid gap-x-4 gap-y-1.5 text-[12px] md:grid-cols-[auto_1fr]">
+        <dt className="font-bold uppercase tracking-wide text-text-secondary">{zh ? '拦了什么' : 'What was refused'}</dt>
+        <dd className="min-w-0 text-text-primary">
+          <span className="font-mono">{prompt || (zh ? '（空指令）' : '(empty command)')}</span>
+          <span className="text-text-secondary">{zh ? ' · 目标：' : ' · target: '}{targetLabel}</span>
+        </dd>
+
+        <dt className="font-bold uppercase tracking-wide text-text-secondary">{zh ? '为什么' : 'Why'}</dt>
+        <dd className="min-w-0 text-text-primary">
+          {reason}
+          {blockedReasons.length > 0 && (
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-text-secondary">
+              {blockedReasons.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          )}
+          {reasonCode && <div className="mt-1 font-mono text-[11px] text-text-muted">{reasonCode}</div>}
+        </dd>
+
+        <dt className="font-bold uppercase tracking-wide text-text-secondary">{zh ? '下一步' : 'What next'}</dt>
+        <dd className="min-w-0 text-text-secondary">
+          {zh
+            ? '这次拒绝已经计入审计记录，可以直接导出为回执交给客户、保险公司或监管方。完整的六步证据链在右栏 Runtime Governor 里。'
+            : 'This refusal is already in the audit record. Export it as a receipt to hand to a customer, insurer, or regulator. The full six-step evidence chain is in the Runtime Governor on the right.'}
+        </dd>
+      </dl>
+
+      <div className="mt-2.5 flex flex-wrap gap-2">
+        <button
+          type="button"
+          data-refusal-export-receipt
+          disabled={!canExportReceipt}
+          onClick={onExportReceipt}
+          className="h-8 border border-accent bg-accent px-3 text-[13px] font-semibold text-[#061018] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {zh ? '导出审计回执' : 'Export Receipt'}
+        </button>
+        {safeRewritePrompt && (
+          <button
+            type="button"
+            data-refusal-safe-rewrite
+            onClick={() => onUseSafeRewrite(safeRewritePrompt)}
+            className="h-8 border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary"
+            title={safeRewritePrompt}
+          >
+            {zh ? '换一条安全指令' : 'Try a safe command'}
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function FirstRunGuide({
   language,
   quickStartPaths,
@@ -2484,11 +2596,11 @@ export default function Home() {
             : localRuntimeSession.status === 'proposed_plan'
               ? 'proposed_plan'
               : 'failed';
-      const noticeSeverity = localRuntimeSession.status === 'blocked'
-        ? 'error'
-        : localRuntimeSession.status === 'unsupported' || localRuntimeSession.status === 'not_runnable'
-          ? 'warning'
-          : 'warning';
+      // A refusal is the gate working, not a failure of the product. It is
+      // never raised at 'error' severity — the RefusalCard below CommandDock
+      // carries the explanation and the receipt entry. Genuine runtime errors
+      // keep 'error'.
+      const noticeSeverity = 'warning';
       if (runtimeKernelResult.taskDsl) {
         setRunPreviewTask({ profileId: runProfile.id, prompt: runPrompt, task: runtimeKernelResult.taskDsl });
       }
@@ -2606,7 +2718,9 @@ export default function Home() {
             };
             setLivePlaybackEvents((events) => events.some((item) => item.event_id === blockedPlaybackEvent.event_id) ? events : [...events, blockedPlaybackEvent]);
           }
-          prependLog(`[ERROR] Blocked before adapter dispatch: ${event.message}`);
+          // [GATE], not [ERROR]: the console must read a refusal as a governed
+          // decision, and the [ERROR] prefix is what paints the line red.
+          prependLog(`[GATE] Refused before adapter dispatch: ${event.message}`);
           setCommandStatus({
             kind: 'blocked',
             message: noticeMessage(language, `已阻止：${event.message}`, `Blocked: ${event.message}`)
@@ -3304,6 +3418,20 @@ export default function Home() {
                       onRun={runScenario}
                       onStop={stopRun}
                     />
+                    {runState.phase === 'blocked' && (
+                      <RefusalCard
+                        language={language}
+                        prompt={runtimeDecisionContext?.prompt ?? prompt.trim()}
+                        targetLabel={runtimeDecisionContext?.targetDeviceLabel ?? currentRunTargetLabel}
+                        reason={runtimeDecision?.userFacingMessage ?? runState.command.message}
+                        reasonCode={runtimeDecision?.reason ?? null}
+                        blockedReasons={labReport?.safety_report?.blocked_reasons ?? []}
+                        canExportReceipt={Boolean(labReport)}
+                        safeRewritePrompt={currentRunStarterPrompts[0] ?? null}
+                        onExportReceipt={() => void exportCurrentAuditReceipt()}
+                        onUseSafeRewrite={handlePromptChange}
+                      />
+                    )}
                   </div>
                 </div>
               </>

@@ -1,0 +1,25 @@
+ui: make refusal a showable outcome, not an error
+
+首屏叙事重排第 2 步(docs/首屏叙事重排-落地方案.md §3-2/§5-2):门段正向化。
+
+新增 RefusalCard,挂在 CommandDock 正下方,由第 1 步的单一运行状态
+(runState.phase === 'blocked')驱动,固定回答三个问题:拦了什么(原始
+指令 + 目标设备)、为什么(门的人话理由 + 机器 reason code + safety_report
+的 blocked_reasons)、下一步。卡上直接给「导出审计回执」主按钮与「换一条
+安全指令」次按钮——拒绝是产品本身,回执是交付物,不留死胡同(v0.6 出口
+标准 d)。已确认编译阶段被拒也有 labReport(buildLocalRuntimeDecisionLabReport
+带 runtime_audit_log),回执导出不是空按钮。
+
+去掉拒绝的「报错声音」(所有者决定:本轮不动颜色 token,只改文案与版式):
+- 门控决策的 notice severity 由条件式 'error' 改为无条件 'warning';
+- 适配器分发前的拦截日志 [ERROR] → [GATE],该前缀正是控制台染红的开关。
+真正的运行时异常仍保留 'error'。
+
+conformance 仅收紧未放宽,新增 5 条:RefusalCard 必须存在且由单一运行
+状态驱动、三问文案必须齐全(防止未来退化成一个状态词)、回执入口必须
+在卡上、拦截不得以 error severity 或 [ERROR] 前缀出现、拦截必须记为
+[GATE] 决策。SIM LAB 未改动。
+
+验证:tsc(根/next/electron)、eslint、test:conformance、test:desktop、
+test:accessibility、test:virtual-lab 全绿;完整 npm run verify 于
+Windows 本机执行。
