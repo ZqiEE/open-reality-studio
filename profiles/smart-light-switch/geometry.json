@@ -1,0 +1,16 @@
+{
+  "table": { "width": 2, "depth": 2, "height": 0.05 },
+  "robot": { "base_position": [0, 0, 0], "arm_segments": [0.3, 0.3], "gripper_size": 0.1 },
+  "objects": {
+    "red_cube": { "position": [-0.4, 0.1, 0], "size": 0.15 },
+    "blue_cube": { "position": [0.4, 0.1, 0], "size": 0.15 },
+    "glass_cup": { "position": [0, 0.1, 0.5], "radius": 0.05, "height": 0.15 }
+  },
+  "zones": {
+    "office": { "position": [0, 0.04, 0], "size": [1.4, 1.0] },
+    "operator_station": { "position": [0.7, 0.04, 0.45], "size": [0.5, 0.4] }
+  },
+  "workspace": { "x_min": 0, "x_max": 1, "y_min": 0, "y_max": 1, "z_min": 0, "z_max": 1 },
+  "camera": { "position": [1.6, 1.6, 1.8], "target": [0, 0, 0] },
+  "stage": { "layout": "smart_light" }
+}

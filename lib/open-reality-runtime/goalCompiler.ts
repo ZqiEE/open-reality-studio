@@ -72,25 +72,25 @@ export function compileGoal(input: Pick<OpenRealityRuntimeInput, 'userPrompt' | 
   if (!normalized || includesAny(normalized, ['do it', 'start', '帮我弄一个', '帮我弄一下', '执行一个'])) {
     return buildResult('ambiguous_action', input.targetDeviceId, normalized);
   }
-  if (includesAny(normalized, ['throw', '扔', '抛', 'off the table', 'outside table', '桌面外'])) {
+  if (includesAny(normalized, ['throw', 'toss', 'push it off', 'push off the table', 'knock off', '扔', '抛', 'off the table', 'outside table', '桌面外'])) {
     return buildResult('throw_object', input.targetDeviceId, normalized);
   }
   if (includesAny(normalized, ['smash', 'crush', '砸', '破坏'])) {
     return buildResult('destructive_action', input.targetDeviceId, normalized);
   }
-  if (includesAny(normalized, ['turn on', 'switch on', '打开', '开灯'])) {
+  if (includesAny(normalized, ['turn on', 'switch on', 'light on', 'lamp on', 'power on', 'turn the light on', '打开', '开灯'])) {
     return buildResult('turn_on', input.targetDeviceId, normalized);
   }
-  if (includesAny(normalized, ['turn off', 'switch off', '关闭', '关灯'])) {
+  if (includesAny(normalized, ['turn off', 'switch off', 'turn it off', 'shut off', 'light off', 'lamp off', 'power off', '关闭', '关灯'])) {
     return buildResult('turn_off', input.targetDeviceId, normalized);
   }
-  if (includesAny(normalized, ['blue light', 'red light', 'green light', 'set the light to', '改成蓝色', '改成红色', '改成绿色'])) {
+  if (includesAny(normalized, ['blue light', 'red light', 'green light', 'set the light to', 'make it blue', 'make it red', 'make it green', 'change color', 'change the color', '改成蓝色', '改成红色', '改成绿色'])) {
     return buildResult('set_color', input.targetDeviceId, normalized);
   }
-  if (includesAny(normalized, ['brighter', 'brighten', '调亮', '更亮', 'dim', 'dimmer', '调暗', '更暗'])) {
+  if (includesAny(normalized, ['brighter', 'brighten', 'dim', 'dimmer', 'set brightness', 'set the brightness', 'brightness to', '调亮', '更亮', '调暗', '更暗'])) {
     return buildResult('set_brightness', input.targetDeviceId, normalized);
   }
-  if (includesAny(normalized, ['take a photo', 'take a picture', 'capture snapshot', 'capture a frame', 'snapshot', '拍一张照片', '拍照', '截图', '捕获画面'])) {
+  if (includesAny(normalized, ['take a photo', 'take a picture', 'capture snapshot', 'capture a frame', 'capture the area', 'grab a frame', 'photograph', 'snapshot', '拍一张照片', '拍照', '截图', '捕获画面'])) {
     return buildResult('capture_image', input.targetDeviceId, normalized);
   }
   if (includesAny(normalized, ['scan current area', 'scan area', '扫描当前区域', '扫描区域'])) {
@@ -99,13 +99,13 @@ export function compileGoal(input: Pick<OpenRealityRuntimeInput, 'userPrompt' | 
   if (includesAny(normalized, ['read camera status', 'read sensor state', 'camera state', '读取摄像头状态', '读取状态', '查看摄像头状态'])) {
     return buildResult('read_state', input.targetDeviceId, normalized);
   }
-  if (includesAny(normalized, ['return home', '回到原点', '回到初始位置'])) {
+  if (includesAny(normalized, ['return home', 'return to home', 'go home', 'reset position', 'home position', '回到原点', '回到初始位置', '归位'])) {
     return buildResult('return_home', input.targetDeviceId, normalized);
   }
   if (includesAny(normalized, ['stop', '停止'])) {
     return buildResult('stop', input.targetDeviceId, normalized);
   }
-  if (includesAny(normalized, ['put', 'place', 'move the', '抓取', '放到', '放在', '把'])) {
+  if (includesAny(normalized, ['put', 'place', 'move the', 'pick up', 'grab', 'drop', 'relocate', '抓取', '放到', '放在', '把'])) {
     return buildResult(
       includesAny(normalized, ['precise', 'precisely', '精准']) ? 'precision_place' : 'pick_and_place',
       input.targetDeviceId,

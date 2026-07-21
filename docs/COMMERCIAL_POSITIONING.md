@@ -1,13 +1,17 @@
 # Commercial Positioning
 
-RealityWarden is a local safety-governance runtime for Physical AI: the audited
-boundary between natural-language or human intent and real hardware.
+> Positioning is locked — see `POSITIONING.md` (2026-07-21). This file
+> covers the commercial layer only: buyer, pain, wedge, monetization.
+
+RealityWarden is the **black box and gatekeeper for AI-driven machines**: a
+neutral, evidence-grade safety gateway between AI intent and real actuators.
+Its commercial value is a single, sharp capability — **proving why a physical
+command was allowed, blocked, or never sent**, in a form a third party
+(customer, insurer, regulator, auditor) will accept.
 
 It is not a generic website, a cloud dashboard, a robot-arm animation, or a
-promise that arbitrary equipment is AI-ready. Its commercial value is making
-the path from intent to physical action inspectable, bounded, and reusable
-without allowing a model, imported manual, Marketplace package, or operator
-input to grant itself execution authority.
+promise that arbitrary equipment is AI-ready. No model, imported manual,
+Marketplace package, or operator input can grant itself execution authority.
 
 Current Public Alpha boundary:
 
@@ -17,96 +21,87 @@ Current Public Alpha boundary:
 - no arbitrary/customer hardware execution
 - no production deployment or certified industrial-safety claim
 
-## Target customers
+## The buyer
 
-The strongest early customers are technical teams that already have hardware
-downstream risk:
+The initial buyer is not a broad consumer. It is **the person responsible
+for proving why a physical command was allowed, blocked, or never sent** —
+usually at:
 
-1. robotics and embodied-AI teams adding natural-language task layers
-2. systems integrators onboarding customer devices and reusable actions
-3. industrial automation teams evaluating governed AI assistance
-4. edge-AI startups that need local execution and audit boundaries
-5. applied labs that need reproducible allow/block evidence
+1. embodied-AI / robotics startups facing customer PoCs, investor diligence,
+   or EU-market deployment (first target: they have fresh funding, fast
+   decisions, and an acute proof burden)
+2. systems integrators who carry liability for AI-driven equipment at
+   customer sites
+3. applied labs that need reproducible allow/block evidence
+4. later: insurers and auditors as receipt consumers, not first customers
 
-The initial buyer is not a broad consumer. It is the person responsible for
-proving why a physical command was allowed, blocked, or never sent.
+## The pain (one, not six)
 
-## Pain points
+> "Our demo works, but we cannot deploy: the customer / insurer / regulator
+> is asking for proof of safety, and nobody on our team can produce it."
 
-1. Natural-language intent is not runnable device control.
-2. Device integrations are fragmented across scripts, serial tools, and opaque
-   adapter glue.
-3. Missing/stale sensor evidence and partial failures are often hidden.
-4. Teams cannot reliably show what the model proposed, what rules recomputed,
-   and whether a signal actually reached the wire.
-5. Onboarding firmware, profiles, actions, and manuals requires specialist
-   tooling that ordinary operators do not have.
-6. Simulation demos are frequently mistaken for physical proof.
+Everything else the product does (fragmented integrations, hidden partial
+failures, sim-vs-real confusion) is real but subordinate: they are reasons
+the proof is impossible today, and the receipt is the deliverable that
+resolves them. Market timing: EU AI Act high-risk logging/oversight
+obligations (from Aug 2026), insurers beginning to underwrite AI-driven
+machines, and record robotics funding all converge on this exact proof
+burden. See `COMPLIANCE_MAPPING.md`.
 
 ## Product wedge
 
-The first credible wedge is a governed reference-device workflow that a maker
-can use without an IDE:
+The wedge is the **receipt**: a one-click, signed, human- and
+machine-readable audit report of every AI proposal, decision, refusal,
+operator confirmation, and honest hardware-delivery outcome
+(`hardwareSignalSent`). The reference-rig workflow (diagnose → flash
+approved firmware → governed commands → visible refusals → honest audit)
+is the two-minute living proof that the receipt describes reality.
 
-1. diagnose and flash an approved prebuilt firmware image
-2. connect the reviewed reference rig
-3. issue deterministic natural-language or jog-teach commands
-4. block on unsafe distance, missing evidence, or out-of-range proposals
-5. preserve an honest per-decision audit
-
-SIM LAB supports that business by reviewing declarative assets, reproducing
+SIM LAB supports the business by reviewing declarative assets, reproducing
 policy outcomes, and developing protocols without hardware. It is valuable,
-but it is not the headline product and it never substitutes for physical
-acceptance.
+but it is not the headline and never substitutes for physical acceptance.
 
 ## Why this is not just a servo demo
 
 The reference servo is the smallest affordable proof that the governance
-architecture reaches reality. The extensible product assets are the strict
-device profile, Action Manifest, ticketed execution gate, sensor-generation
-model, transport contract, audit vocabulary, firmware onboarding, and
-malicious-input tests. New devices must reuse and tighten those boundaries;
-they may not add a bypass.
+architecture reaches reality. The durable commercial assets are: the audit
+vocabulary and receipt format (standard-setting position), the compounding
+rule/policy library, the strict device profile + Action Manifest + ticketed
+gate + sensor-generation model + transport contract, and the
+malicious-input test surface. New devices must reuse and tighten those
+boundaries; they may not add a bypass.
 
-## What the current alpha can do
+Competitive note: control-layer safety (3Laws), network security (Claroty),
+IT-side agent governance (Noma), and ship-time certification (NVIDIA
+Halos + TÜV/UL) each answer a different question and are welded to their
+vendor's stack or scope. The intent-level gate with third-party-grade
+receipts, neutral across brands/chips/models, is the open seat. The judge
+cannot be the athlete.
 
-1. diagnose, connect, command, jog-teach, replay, and govern the documented
-   reference rig
-2. flash only reviewed digest-paired firmware inputs and verify after reconnect
-3. stop multi-step hardware actions after the first blocked primitive
-4. show current distance and honest open-loop last-command feedback
-5. run separate virtual workflows for supported SIM LAB device profiles
-6. review declarative manual and Marketplace proposals without granting real
-   authority
+## Monetization path (receipt-led)
 
-## What the current alpha cannot do
-
-1. execute arbitrary or customer hardware
-2. claim a measured servo position from an open-loop command acknowledgement
-3. claim production deployment readiness or certified industrial safety
-4. support every device family shown in the asset library
-5. replace a robotics simulator, PLC engineering suite, or device controller
-6. guarantee arbitrary natural-language understanding
-
-## Monetization path
-
-1. paid reference-kit onboarding and governed workflow pilots
-2. customer-specific declarative device/profile/action onboarding
-3. adapter SDK and verification support for integrators
-4. enterprise policy, audit, evidence-retention, and deployment governance
+1. design-partner pilots: governed workflow + receipt export in a real
+   PoC/evaluation (paid pilot or LOI-first)
+2. per-deployment licensing: policy profiles, evidence retention, receipt
+   export (per seat / per device / per policy)
+3. customer-specific declarative device/profile/action onboarding
+4. adapter SDK and verification support for integrators (chapter two)
 5. curated declarative asset distribution after trust operations mature
+   (chapter two)
 
-The defensible wedge is not “chat with your robot.” It is reducing the cost and
-risk of proving that intent became—or did not become—a physical signal through
-one inspectable control boundary.
+The defensible wedge is not "chat with your robot." It is reducing the cost
+and risk of proving that intent became — or did not become — a physical
+signal through one inspectable, neutral control boundary.
 
 ## Honest current positioning
 
 Use this statement:
 
-> RealityWarden is a REAL-first Physical AI safety runtime in Public Alpha. It
-> governs one documented reference rig today and includes a visibly separate
-> zero-signal Simulation Lab for asset review and reproducible testing.
+> RealityWarden is a REAL-first Physical AI safety runtime in Public Alpha.
+> It governs one documented reference rig today, records every decision with
+> honest delivery evidence, and includes a visibly separate zero-signal
+> Simulation Lab for asset review and reproducible testing.
 
 Do not claim production readiness, certified safety, arbitrary hardware
-support, or a universal multi-device operating system.
+support, or a universal multi-device operating system. An evidence layer
+that overclaims is worthless — honesty about limits is part of the product.

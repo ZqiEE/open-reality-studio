@@ -14,7 +14,7 @@ import {
 const copy = {
   en: {
     title: 'Reality Asset Catalog',
-    subtitle: 'Device ecosystem packages',
+    subtitle: 'Declarative device assets · simulation only',
     capabilities: 'capabilities',
     adapter: 'adapter',
     safety: 'safety',
@@ -32,7 +32,7 @@ const copy = {
   },
   zh: {
     title: '现实资产目录',
-    subtitle: '设备生态资产包',
+    subtitle: '声明式设备资产 · 仅仿真',
     capabilities: '能力',
     adapter: '适配器',
     safety: '安全',

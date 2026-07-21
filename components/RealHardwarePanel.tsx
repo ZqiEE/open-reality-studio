@@ -1279,6 +1279,13 @@ export function RealHardwarePanel({
                     {typeof execOutcome.distanceCm === 'number' ? ` · ${execOutcome.distanceCm.toFixed(1)} cm` : ''}
                   </div>
                   <div className="break-all">{execOutcome.reason ?? execOutcome.error ?? execOutcome.detail}</div>
+                  {execOutcome.status === 'blocked' && (
+                    <div className="mt-1 border-t border-status-blocked-edge pt-1 font-sans font-semibold">
+                      {zh
+                        ? '拦截 = 安全门按设计工作，不是故障。这条拒绝已连同证据记入会话审计，可导出为防篡改回执。'
+                        : 'Blocked = the safety gate working as designed, not a malfunction. This refusal and its evidence are in the session audit and exportable as a tamper-evident receipt.'}
+                    </div>
+                  )}
                   {execOutcome.executionEvidence === 'command_acknowledged_open_loop' && (
                     <div className="mt-1 border-t border-status-executed-edge pt-1 font-sans font-semibold">
                       {zh

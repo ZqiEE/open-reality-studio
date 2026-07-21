@@ -19,6 +19,15 @@ natural-language commands on real hardware in under 15 minutes — no Arduino
 IDE, no firmware knowledge, no YAML — and at no point along that journey is a
 single safety guarantee weaker than it is in today's simulation.
 
+**Owner update (2026-07-21, positioning locked):** the near-term buyer,
+pain, and narrative order are governed by `POSITIONING.md` (single source of
+truth). Buyer today is the person responsible for proving why a physical
+command was allowed, blocked, or never sent; the lead is the gate and the
+**receipt** ("it refuses, and shows you the evidence"). "For everyone" above
+is the long-term destination — makers and the ESP32 rig are the on-ramp and
+the living proof, not the market. The ecosystem (open protocol, Adapter SDK,
+Marketplace) is real but chapter two.
+
 **Owner correction (2026-07-18):** "simulation-first" describes the safety
 pipeline and historical lab capability, not the permanent primary desktop
 navigation. The default product shell is REAL-device-first. Simulation remains

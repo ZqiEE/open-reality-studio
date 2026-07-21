@@ -56,6 +56,27 @@ export function RealDeviceWorkspace({
                   ? '接好参考设备后，在右侧点击“自动检测”。系统只读扫描串口：已有固件则诊断并连接；空白或无响应的新板则进入受控首次烧录。'
                   : 'Plug in the reference device, then choose Auto-detect on the right. RealityWarden scans ports read-only: existing firmware is diagnosed and connected; a blank or unresponsive board enters governed first flash.'}
               </p>
+              <div data-product-story className="mt-4 flex items-stretch gap-0 border border-border bg-surface text-[12px]" aria-label={zh ? '产品主线：意图、安全门、结果与回执' : 'Product story: intent, gate, outcome and receipt'}>
+                {[
+                  { k: zh ? '意图' : 'INTENT', v: zh ? '自然语言或已存动作' : 'language or saved action' },
+                  { k: zh ? '安全门' : 'GATE', v: zh ? '能力·边界·新鲜证据' : 'capability · bounds · evidence' },
+                  { k: zh ? '结果' : 'OUTCOME', v: zh ? '执行，或给出证据的拒绝' : 'executed, or refused with evidence' },
+                  { k: zh ? '回执' : 'RECEIPT', v: zh ? '防篡改，可交第三方' : 'tamper-evident, third-party verifiable' }
+                ].map((stage, index) => (
+                  <div key={stage.k} className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2">
+                    {index > 0 && <span aria-hidden className="shrink-0 text-text-muted">→</span>}
+                    <div className="min-w-0">
+                      <div className="font-mono text-[11px] font-bold tracking-[0.08em] text-status-warning">{stage.k}</div>
+                      <div className="truncate text-[11px] leading-4 text-text-secondary">{stage.v}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] leading-4 text-text-muted">
+                {zh
+                  ? '拒绝不是故障：该拦的拦下来、并留下证据，正是本产品存在的理由。每次会话都可导出防篡改审计回执。'
+                  : 'A refusal is not a failure: blocking what must be blocked — with evidence — is the point of this product. Every session can export a tamper-evident audit receipt.'}
+              </p>
               <div data-supported-real-rig className="mt-4 border border-status-warning-edge bg-status-warning-surface px-3 py-2 text-[12px] leading-5">
                 <div className="font-semibold text-status-warning">{zh ? '当前唯一已审真机台架' : 'ONLY REVIEWED REAL RIG'}</div>
                 <div className="font-mono text-text-primary">ESP32-S3 + SG90 + HC-SR04</div>
@@ -66,11 +87,12 @@ export function RealDeviceWorkspace({
                 </div>
                 <div className="text-text-muted">{zh ? '其他开发板、引脚或传感器配置当前不属于可执行产品范围。' : 'Other boards, pins, or sensor configurations are outside the current executable product scope.'}</div>
               </div>
-              <ol className="mt-6 grid grid-cols-3 gap-3" aria-label={zh ? '真实设备连接步骤' : 'Real-device connection steps'}>
+              <ol className="mt-6 grid grid-cols-4 gap-3" aria-label={zh ? '真实设备连接步骤' : 'Real-device connection steps'}>
                 {[
                   zh ? '插入参考设备' : 'Plug in reference rig',
                   zh ? '点击自动检测' : 'Choose Auto-detect',
                   zh ? '连接或准备首次烧录' : 'Connect or prepare first flash',
+                  zh ? '门控执行，导出回执' : 'Execute via gate, export receipt',
                 ].map((label, index) => (
                   <li key={label} className="border border-border bg-surface px-3 py-3 text-[12px] text-text-secondary">
                     <span className="mr-2 font-mono font-bold text-status-warning">{index + 1}</span>{label}

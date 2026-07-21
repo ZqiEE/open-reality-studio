@@ -13,6 +13,8 @@ import { RealHardwarePanel } from '@/components/RealHardwarePanel';
 import { RealDeviceWorkspace } from '@/components/RealDeviceWorkspace';
 import { EvidenceSidebar } from '@/components/EvidenceSidebar';
 import { AppHeader } from '@/components/AppHeader';
+import { exportAuditReceiptFiles } from '@/lib/export/exportAuditReceipt';
+import packageJson from '@/package.json';
 import { MarketplaceManager } from '@/components/MarketplaceManager';
 import { ManualImportWizard } from '@/components/ManualImportWizard';
 import { OperatorNotice } from '@/components/OperatorNotice';
@@ -195,6 +197,70 @@ interface WorkspaceIssue {
 interface CommandTerminalStatus {
   kind: 'ready' | 'running' | 'completed' | 'blocked' | 'ask_human' | 'proposed_plan' | 'coming_soon' | 'failed';
   message: string;
+}
+
+/**
+ * Single authoritative run-state vocabulary — one run, one set of words.
+ *
+ * Before this existed the same run was described three times by three
+ * independently-derived expressions: CommandDock read `commandStatus.kind`,
+ * AppHeader re-derived its own `result` from `labReport.result` plus
+ * `replayPlaying`, and the right rail keyed evidence off a third ad-hoc
+ * expression. They could disagree — a command refused during compilation
+ * never produces a lab report, so the header still read "idle" while the AI
+ * terminal read "BLOCKED". A gateway product cannot show two answers to
+ * "was it allowed?".
+ *
+ * `deriveRunState` below is now the only place a run is turned into a phase.
+ * CommandDock, AppHeader and the evidence rail consume its projections and
+ * MUST NOT recompute their own.
+ */
+type RunPhase =
+  | 'idle'
+  | 'gated'
+  | 'executed'
+  | 'blocked'
+  | 'awaiting_human'
+  | 'unsupported'
+  | 'failed';
+
+interface AuthoritativeRunState {
+  /** The one phase every surface renders. */
+  phase: RunPhase;
+  /** A run is in flight (drives the disabled Run control). */
+  active: boolean;
+  /** Projection consumed by CommandDock's primary badge. */
+  command: CommandTerminalStatus;
+  /** Projection consumed by the AppHeader status badge. */
+  headerResult: RunPhase;
+  /** Projection consumed by the right evidence rail's remount identity. */
+  evidenceKey: string | null;
+}
+
+function deriveRunState(input: {
+  command: CommandTerminalStatus;
+  running: boolean;
+  replayPlaying: boolean;
+  evidencePrompt: string | null;
+  labRunId: string | null;
+}): AuthoritativeRunState {
+  // A terminal verdict always outranks "still draining" playback: a refusal
+  // must never be overwritten by a replay that is still winding down.
+  const phase: RunPhase =
+    input.command.kind === 'blocked' ? 'blocked'
+      : input.command.kind === 'failed' ? 'failed'
+        : input.command.kind === 'coming_soon' ? 'unsupported'
+          : input.command.kind === 'ask_human' || input.command.kind === 'proposed_plan' ? 'awaiting_human'
+            : input.command.kind === 'completed' ? 'executed'
+              : input.command.kind === 'running' || input.running || input.replayPlaying ? 'gated'
+                : 'idle';
+  return {
+    phase,
+    active: input.running,
+    command: input.command,
+    headerResult: phase,
+    evidenceKey: input.evidencePrompt ?? input.labRunId ?? (input.running ? 'gated' : null)
+  };
 }
 
 interface QuickStartPath {
@@ -1057,64 +1123,64 @@ function FirstRunGuide({
   const copy = language === 'zh'
     ? {
         headline: 'AI 不应该直接触碰现实。',
-        subtitle: 'RealityWarden 是 AI Agent 与真实世界设备之间的安全与责任层。',
-        eyebrow: 'Simulation-first Public Alpha',
-        boundary: '当前不会执行真实设备命令',
+        subtitle: 'RealityWarden 是 AI 与真实执行器之间的举证型安全网关：每个动作都过门、可拒绝、有回执。',
+        eyebrow: 'REAL-first Public Alpha',
+        boundary: '真机执行仅限已审参考台 · 逐次人工确认',
         trySimulation: '试运行仿真',
         exploreAssets: '查看 Reality Assets',
         gateLeft: 'AI 意图',
-        gateCenter: 'Safety Gate',
-        gateRight: '受控物理动作',
-        chips: ['Simulation-first', 'Safety-Governed', 'Accountable Physical AI'],
+        gateCenter: '安全门',
+        gateRight: '结果 + 回执',
+        chips: ['REAL-first', 'Safety-Governed', 'Receipted Physical AI'],
         pipelineTitle: 'Runtime Decision Pipeline',
-        pipelineSubtitle: '自然语言命令先经过目标、能力、世界状态、仿真与安全检查。',
+        pipelineSubtitle: '自然语言命令先经过目标、能力、世界状态与新鲜传感器证据检查。',
         prompt: '“Move the red cube to the safe zone.”',
         decisionSafe: 'SAFE TO SIMULATE',
-        decisionBlocked: 'BLOCKED - real execution disabled by default',
+        decisionBlocked: 'BLOCKED · 拒绝连同证据写入审计',
         assetTitle: 'Abstracting hardware into safe boundaries.',
         assetSubtitle: 'Reality Assets 在任何 AI 动作运行前描述设备能力、安全边界、适配器模式和示例指令。',
-        auditTitle: 'Every decision should be reviewable.',
-        auditSubtitle: '记录用户请求、检查内容、允许或拦截原因，以及后续发生了什么。',
-        ecosystemTitle: 'Built for controlled Physical AI deployment.',
-        ecosystemSubtitle: 'AI 编程让代码更便宜，但现实部署、维护、安全审查和责任追踪仍然需要人。',
+        auditTitle: 'Every decision leaves a receipt.',
+        auditSubtitle: '记录请求、检查、放行或拦截原因与信号证据，随时导出防篡改审计回执。',
+        ecosystemTitle: 'Built for teams that must prove safety.',
+        ecosystemSubtitle: '当客户、保险或审计方索要安全证明时，你交出的不是承诺，而是可独立校验的回执。',
         advancedTitle: 'Developer / Advanced',
         advancedSubtitle: '导入、验证、目录和开发者工具被收进高级区域，不污染首屏主路径。',
         dismiss: '进入工作台'
       }
     : {
         headline: 'AI should not touch reality directly.',
-        subtitle: 'RealityWarden is the safety and accountability layer between AI agents and real-world devices.',
-        eyebrow: 'Simulation-first Public Alpha',
-        boundary: 'Real device execution is not enabled yet',
+        subtitle: 'RealityWarden is the evidence-grade safety gateway between AI intent and real actuators: every action gated, refusable, and receipted.',
+        eyebrow: 'REAL-first Public Alpha',
+        boundary: 'Real execution: reviewed reference rig only · per-run operator confirmation',
         trySimulation: 'Try Simulation',
         exploreAssets: 'Explore Reality Assets',
         gateLeft: 'AI Intent',
         gateCenter: 'Safety Gate',
-        gateRight: 'Controlled Physical Action',
-        chips: ['Simulation-first', 'Safety-Governed', 'Accountable Physical AI'],
+        gateRight: 'Outcome + Receipt',
+        chips: ['REAL-first', 'Safety-Governed', 'Receipted Physical AI'],
         pipelineTitle: 'Runtime Decision Pipeline',
-        pipelineSubtitle: 'A natural-language command is checked against goals, capabilities, world state, simulation, and safety.',
+        pipelineSubtitle: 'A natural-language command is checked against goals, capabilities, world state, and fresh sensor evidence.',
         prompt: '“Move the red cube to the safe zone.”',
         decisionSafe: 'SAFE TO SIMULATE',
-        decisionBlocked: 'BLOCKED - real execution disabled by default',
+        decisionBlocked: 'BLOCKED · refusal recorded with evidence',
         assetTitle: 'Abstracting hardware into safe boundaries.',
         assetSubtitle: 'Reality Assets describe device capabilities, safety notes, adapter boundaries, and example prompts before any AI action can run.',
-        auditTitle: 'Every decision should be reviewable.',
-        auditSubtitle: 'Open Reality records what was requested, what was checked, why it was allowed or blocked, and what happened next.',
-        ecosystemTitle: 'Built for controlled Physical AI deployment.',
-        ecosystemSubtitle: 'AI programming makes code cheaper. Real-world deployment, maintenance, safety review, and accountability still need people.',
+        auditTitle: 'Every decision leaves a receipt.',
+        auditSubtitle: 'What was requested, what was checked, why it was allowed or blocked, and honest signal evidence — exportable as a tamper-evident audit receipt.',
+        ecosystemTitle: 'Built for teams that must prove safety.',
+        ecosystemSubtitle: 'When a customer, insurer, or auditor asks for proof, you hand them an independently verifiable receipt — not a promise.',
         advancedTitle: 'Developer / Advanced',
         advancedSubtitle: 'Import, validation, catalog, and developer-kit entry points stay available without polluting the first-run path.',
         dismiss: 'Enter Workbench'
       };
-  const pipeline = ['Goal Parsing', 'Device Capability Check', 'World State Validation', 'Simulation-first Check', 'Safety Governor', 'Runtime Decision'];
+  const pipeline = ['Goal Parsing', 'Device Capability Check', 'World State Validation', 'Fresh Evidence Check', 'Safety Governor', 'Decision + Receipt'];
   const assetCards = [
     ['Robot Arm', 'pick / place', 'Simulation Only'],
     ['Smart Light', 'power / color', 'Simulation Only'],
     ['Camera Sensor', 'capture / read', 'Read Only'],
     ['Imported Asset', 'validate / inspect', 'Real disabled']
   ];
-  const roles = ['Asset Authors', 'Adapter Engineers', 'Deployment Operators', 'Maintenance Providers', 'Safety Reviewers'];
+  const roles = ['Customers', 'Insurers', 'Auditors', 'Integrators', 'Safety Reviewers'];
   return (
     <section className="custom-scrollbar max-h-full overflow-y-auto border border-[#27272A] bg-black/92 p-6 text-white backdrop-blur-xl">
       <div className="grid gap-8 xl:grid-cols-[1.1fr_.9fr]">
@@ -2913,6 +2979,21 @@ export default function Home() {
     }
   }, [labReport, language, showNotice]);
 
+  const exportCurrentAuditReceipt = useCallback(() => {
+    if (!labReport) return;
+    try {
+      const receipt = exportAuditReceiptFiles(labReport.lab_run_id, labReport.runtime_audit_log, {
+        appVersion: packageJson.version,
+        deviceProfileId: labReport.device_profile,
+        operator: null,
+        note: `lab_run ${labReport.lab_run_id}: ${labReport.prompt}`
+      });
+      showNotice('success', noticeMessage(language, `审计回执已导出（防篡改哈希 ${receipt.integrity.contentHash.slice(0, 12)}…）。`, `Audit receipt exported (tamper-evident hash ${receipt.integrity.contentHash.slice(0, 12)}…).`));
+    } catch (error) {
+      showNotice('error', noticeMessage(language, `审计回执导出失败：${error instanceof Error ? error.message : localUnknownError(language)}`, `Audit receipt export failed: ${error instanceof Error ? error.message : localUnknownError(language)}`));
+    }
+  }, [labReport, language, showNotice]);
+
   const handleNoticeAction = useCallback((action: OperatorNoticeAction) => {
     setOperatorNotice(null);
     if (action === 'discard_autosave') {
@@ -3082,6 +3163,16 @@ export default function Home() {
     };
   }, [effectiveSelectedProfile, labReport?.result, prompt, replayPlaying, runPreviewTask, selectedScenario.mode, selectedWorkspaceDeviceId, semanticWorkspaceDevices]);
 
+  // The single authoritative run state. Every surface below subscribes to a
+  // projection of this value; none of them derives its own run words.
+  const runState = useMemo(() => deriveRunState({
+    command: commandStatus,
+    running,
+    replayPlaying,
+    evidencePrompt: runtimeDecisionContext?.prompt ?? null,
+    labRunId: labReport?.lab_run_id ?? null
+  }), [commandStatus, labReport?.lab_run_id, replayPlaying, running, runtimeDecisionContext?.prompt]);
+
   const focusRealHardware = () => {
     const panel = document.querySelector<HTMLElement>('[data-real-hardware-panel]');
     panel?.focus();
@@ -3097,7 +3188,7 @@ export default function Home() {
         projectName={projectName}
         preflight={workspaceBlocked ? 'blocked' : workspaceWarnings > 0 ? 'warning' : 'passed'}
         warningCount={workspaceWarnings}
-        result={labReport?.result === 'blocked' ? 'blocked' : replayPlaying ? 'running' : labReport?.result === 'pass' ? 'executed' : 'idle'}
+        result={runState.headerResult}
         customActionCount={customActions.length}
         hasReport={Boolean(labReport)}
         onNew={newProject}
@@ -3116,6 +3207,7 @@ export default function Home() {
         onFocusRealHardware={focusRealHardware}
         onWorkspaceModeChange={setWorkspaceMode}
         onExportReport={() => void exportCurrentLabReport()}
+        onExportReceipt={() => void exportCurrentAuditReceipt()}
         onExportAdapter={() => void exportDeploymentConfig()}
         onLanguageChange={handleLanguageChange}
       />
@@ -3198,8 +3290,8 @@ export default function Home() {
                     <CommandDock
                       language={language}
                       prompt={prompt}
-                      running={running}
-                      status={commandStatus}
+                      running={runState.active}
+                      status={runState.command}
                       runTargetLabel={currentRunTargetLabel}
                       runTargetRunnable={currentRunTargetRunnable}
                       runTargetDeviceType={effectiveSelectedProfile.deviceMeta.device_type}
@@ -3257,7 +3349,7 @@ export default function Home() {
           language={language}
           workspaceMode={workspaceMode}
           selectionKey={selectedWorkspaceDeviceId}
-          evidenceKey={runtimeDecisionContext?.prompt ?? labReport?.lab_run_id ?? (running ? 'running' : null)}
+          evidenceKey={runState.evidenceKey}
           evidence={(
             <div className="flex h-full min-h-0 flex-col overflow-hidden">
               <div className={`${runtimeDecision ? 'h-[44%] min-h-[280px]' : 'h-[104px]'} shrink-0 overflow-hidden`}>
@@ -3289,6 +3381,7 @@ export default function Home() {
                   selectedSnapshot={selectedSnapshot}
                   onSnapshotSelect={selectSnapshot}
                   onExportLabReport={() => void exportCurrentLabReport()}
+              onExportReceipt={() => void exportCurrentAuditReceipt()}
                 />
               </div>
             </div>
@@ -3313,6 +3406,7 @@ export default function Home() {
               selectedSnapshot={selectedSnapshot}
               onSnapshotSelect={selectSnapshot}
               onExportLabReport={() => void exportCurrentLabReport()}
+              onExportReceipt={() => void exportCurrentAuditReceipt()}
             />
           )}
           hardware={(

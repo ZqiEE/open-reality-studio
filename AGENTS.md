@@ -2,6 +2,8 @@
 
 你接手的是一个**接近成品**的桌面产品:自然语言/自定义动作 → 安全治理管线 → 3D 仿真或真实硬件(ESP32-S3 + SG90 舵机 + HC-SR04)。技术栈:Next.js + Electron + Three.js + TypeScript,本地 LLM 编译器(Ollama,离线回退规则引擎)。
 
+**产品定位（2026-07-21 定死,唯一权威源 `docs/POSITIONING.md`）**:RealityWarden = AI 驱动机器的"黑匣子 + 门卫"——AI 与真实执行器之间的中立举证型安全网关,每个动作过门、可拒绝、有回执,回执可交给监管/保险/客户。开发优先级由一个问题决定:**"AI 想干什么、允许了吗、证据呢?"** 强化"门"和"回执"的工作优先;生态/市场/新设备族是第二章(见 `docs/ROADMAP.md` v0.6/v0.7)。
+
 ## 先读什么(按序,5 分钟)
 
 1. `STATUS.md` — 当前状态、已完成清单、路线图。这是唯一权威进度源。
@@ -62,6 +64,12 @@ npm run verify                           # 全量(慢,提交前跑一次)
 4. **v0.3.0 发布收口 ✅**:版本、发布说明、试用/评估文档与路线图已对齐；`RealityWarden-0.3.0-Setup.exe` 已通过包内容、版本资源与安装态 smoke。
 5. **v0.4 传感器 polling/subscription ✅**:每个真实硬件基元动作前取得新一代传感器证据；读失败立即清空证据，设备时钟倒退/冻结显式锁存；多步动作首个 blocked/failed/cancelled 后零后续帧。
 6. **v0.4 三设备参考 recipe ✅**:Robot Arm / Smart Light / Camera Sensor recipe 经同一 Manifest validator 与仿真安全链；智能灯 typed value 不再丢参，跨设备/无策略参数默认拒绝；Action Composer 可载入匹配 recipe。
-7. **v0.5 手册/PDF simulation-only 闭环 ✅**:File 菜单导入文本层 PDF/Markdown/文本，本地 Ollama 只生成不可信草案；来源对照/JSON/原始输出、语义几何预览、首次人工复核与 Virtual Lab 二次启用门齐全。DeviceProfile 和生成资产固定 simulator-only，模板不扩大能力，篡改/孤儿记录加载时显式拒绝。下一步优先做成品化文档、安装包验包、可访问性与错误恢复，再做手册动作显式安装审阅。
+7. **【当前最高优先级】v0.6 "回执"里程碑（2026-07-21 定位定死后的英雄功能）**:
+   a) 一键导出签名审计报告(时间范围内全部提案/决策/规则触发/拒绝/人工确认/`hardwareSignalSent`,PDF 人读 + JSON 机读,内容哈希防篡改);
+   b) 首屏叙事重排为"意图 → 门 → 结果 + 回执",拒绝是可展示的正向状态而非报错;
+   c) 审计记录 schema 冻结(只允许增量扩展),供外部消费方对接;
+   d) 易用/透明打磨:安装到发出受治理命令 <5 分钟、每个状态有人话解释、无死胡同(被拦截时说清发生了什么和下一步)。
+   验收:新用户不读文档即可完成"受治理命令 + 触发一次拒绝 + 导出签名报告"。
+8. **v0.5 手册/PDF simulation-only 闭环 ✅**:File 菜单导入文本层 PDF/Markdown/文本，本地 Ollama 只生成不可信草案；来源对照/JSON/原始输出、语义几何预览、首次人工复核与 Virtual Lab 二次启用门齐全。DeviceProfile 和生成资产固定 simulator-only，模板不扩大能力，篡改/孤儿记录加载时显式拒绝。下一步优先做成品化文档、安装包验包、可访问性与错误恢复，再做手册动作显式安装审阅。
 
 git:提交按功能单元、message 说明验证结果;所有者本机负责 push。

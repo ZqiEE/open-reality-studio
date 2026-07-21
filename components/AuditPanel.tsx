@@ -10,6 +10,7 @@ import type { DeviceAsset } from '@/lib/assets/DeviceAsset';
 import { localizeCapability, localizeCategory, localizeDeviceType, localizeDisplayName, localizeFidelity, localizeMetadataValue, localizeProfileName, localizeScenarioName, t as ti } from '@/lib/i18n';
 import type { UiLanguage } from './LabConfigurator';
 import { StatusPill } from './StatusPill';
+import { DecisionStream } from './DecisionStream';
 
 interface AuditPanelProps {
   view?: 'all' | 'evidence' | 'inspector';
@@ -30,6 +31,7 @@ interface AuditPanelProps {
   selectedSnapshot: TimelineStateSnapshot | null;
   onSnapshotSelect: (snapshot: TimelineStateSnapshot | null) => void;
   onExportLabReport: () => void;
+  onExportReceipt?: () => void;
 }
 
 interface WorkspaceDeviceRecord {
@@ -1036,7 +1038,8 @@ export function AuditPanel({
   safetyReport,
   selectedSnapshot,
   onSnapshotSelect,
-  onExportLabReport
+  onExportLabReport,
+  onExportReceipt
 }: AuditPanelProps) {
   const t = text[language];
   const hasRun = Boolean(labReport);
@@ -1097,6 +1100,14 @@ export function AuditPanel({
           </div>
         )}
       </section>
+
+      <AuditSection
+        title={language === 'zh' ? '裁决流' : 'Decision Stream'}
+        summary={`${labReport?.runtime_audit_log.length ?? 0} ${language === 'zh' ? '条裁决' : 'verdicts'}`}
+        forceOpen={hasRun}
+      >
+        <DecisionStream language={language} entries={labReport?.runtime_audit_log ?? []} onExportReceipt={onExportReceipt} />
+      </AuditSection>
 
       <AuditSection title={t.taskPlan} summary={`${labReport?.task_dsl.steps.length ?? 0} ${t.stepCount}`} defaultOpen>
         <TaskPlanView language={language} taskDsl={labReport?.task_dsl} />

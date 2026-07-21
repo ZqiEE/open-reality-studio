@@ -4,15 +4,21 @@ This script is for a real software screen recording of the current Public Alpha.
 
 ## Core Message
 
-RealityWarden shows how a natural-language goal from an AI model can be routed through a universal software runtime before it becomes a physical action.
+The demo answers one question on real hardware: **what did the AI intend,
+was it allowed, and where is the proof?** A plain-English goal is gated,
+refused when unsafe, and receipted — you watch one command reach a real
+servo, then watch the next one get blocked with an honest, exportable record.
+The refusal and its receipt are the product.
 
-It does not build robots or chips.
+RealityWarden is the black box and gatekeeper for AI-driven machines: a
+neutral, evidence-grade safety gateway between AI intent and real actuators.
+It builds no robot, no chip, and no model.
 
-It demonstrates the software boundary that can help robots, robot arms, smart
-devices, sensors, lab equipment, factory systems, electronic toys, and future
-physical devices become AI-controllable through reviewed profiles, capability
-checks, live evidence, safety decisions, a ticketed hardware gate, and honest
-audit logs.
+The same software boundary — reviewed profiles, capability checks, live
+evidence, safety decisions, a ticketed hardware gate, and honest audit logs —
+is what lets more devices become governable later. That ecosystem (open
+protocol, adapters, marketplace) is chapter two; the gate and the receipt
+lead.
 
 Current boundary: REAL-device-first, one documented ESP32 reference rig only.
 SIM LAB remains a separately selected zero-signal tool and is never a fallback
@@ -47,11 +53,19 @@ RealityWarden validates, checks live evidence, gates, and audits every command.
 9. End on this statement:
 
 ```text
-RealityWarden = a safety-governed runtime for AI-controlled physical devices.
+RealityWarden = the black box and gatekeeper for AI-driven machines: every action gated, refusable, receipted.
 REAL-first Public Alpha. One governed reference rig. Simulation stays separate.
 ```
 
 ## Suggested On-Screen Captions
+
+```text
+It refuses — and shows you the evidence.
+```
+
+```text
+A per-action receipt a regulator, insurer, or customer will accept.
+```
 
 ```text
 Physical AI should not be locked inside one brand.

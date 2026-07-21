@@ -40,3 +40,6 @@ marketplace/distribution.json
 /release-inputs/legal/manifest.json
 /release-inputs/legal/PRODUCT_EULA.txt
 /release-inputs/legal/PRIVACY_NOTICE.txt
+.tmp-tests/
+
+_to_delete/

@@ -1,127 +1,109 @@
-# Open Reality Positioning
+# RealityWarden Positioning — FINAL (locked 2026-07-21)
+
+> This document is the single source of truth for product positioning.
+> Every public surface (README, launch copy, UI copy, pitch material) must
+> agree with it. Changes require an explicit owner decision recorded here.
 
 ## One-line Position
 
-RealityWarden is a REAL-first AI-to-Action safety runtime that governs the
-boundary between intent and physical hardware.
+**RealityWarden is the black box and gatekeeper for AI-driven machines: a
+neutral, evidence-grade safety gateway between AI intent and real actuators.
+Every action is gated, refusable, and receipted — with evidence you can hand
+to a regulator, an insurer, or a customer.**
 
-## What Open Reality Is
+一句话（中文）：**AI 与真实执行器之间的中立举证型安全网关——每个动作都过门、
+可拒绝、有回执，回执可交给监管、保险公司和客户。**
 
-Open Reality is not a robot brand.
+## The Pain We Solve (the only one)
 
-Open Reality is not a chip platform.
+Embodied-AI and robotics teams can make the demo work, but get stuck at the
+deployment door, because customers, insurers, and regulators do not ask
+"what can it do?" — they ask:
 
-Open Reality is not a closed device stack.
+> **"What did the AI intend at that moment? Who approved it? Where is the
+> record that unsafe requests were refused?"**
 
-Open Reality is a common runtime layer between AI models and physical devices.
+Today, nobody in the stack can answer that question with evidence.
+RealityWarden exists to answer exactly that question, and nothing else.
 
-An AI model or human gives an intent. RealityWarden treats it as an untrusted
-proposal, validates capability and bounds, checks current evidence, applies
-safety policy, requires explicit authorization, and audits whether any hardware
-signal was actually sent.
+Why the pain is real now (2026):
 
-## Why This Exists
+- EU AI Act high-risk obligations (automatic logging, human oversight,
+  traceability) take effect from August 2026.
+- Insurers (Axis, Relm, Marsh) have started underwriting AI-driven machines
+  and need per-action decision records to price risk.
+- VLA/LLM-driven robots are being deployed faster than anyone can prove
+  they are safe; academic work (SafeVLA, VLSA) confirms an independent
+  safety layer between model and actuator is an open, unsolved need.
 
-Physical AI should be open, safer, and not locked inside one brand.
+## Who Buys
 
-If every robotics or hardware company builds its own closed AI stack, the physical world becomes fragmented. Fewer companies can participate. More value gets captured by a small number of closed ecosystems.
+The buyer is **the person responsible for proving why a physical command was
+allowed, blocked, or never sent**:
 
-Open Reality is designed for the opposite direction:
+1. embodied-AI / robotics startups facing customer PoCs, investor diligence,
+   or EU deployment
+2. systems integrators who carry liability for AI-driven equipment at
+   customer sites
+3. later: insurers and auditors who consume the receipts
 
-- more devices
-- more Reality Assets
-- more adapters
-- more simulation packs
-- more integration work
-- more deployment work
-- more monitoring work
-- more safety and audit workflows
-- more companies entering Physical AI
+Makers and educators are an on-ramp and a living proof, not the market.
 
-## Device Scope
+## Competitive Map (why this position is open)
 
-Many modern physical systems already have some combination of chips, controllers, sensors, motors, actuators, or hardware interfaces.
+| Layer | Players | They answer | They cannot answer |
+| --- | --- | --- | --- |
+| Control-signal safety | 3Laws (CBF runtime) | "Will it collide?" | What the AI intended; whether it should run |
+| Network/IT security | Claroty, Alias Robotics | "Was it hacked?" | Whether a legitimate request is dangerous |
+| Agent governance (IT) | Noma Security | "What are our AI agents doing?" | Physical gating + hardware-level receipts |
+| Certification | NVIDIA Halos + TÜV/UL | "Was it compliant at ship time?" | Runtime, per-action evidence |
+| **Intent-level gate + evidence layer** | **open — RealityWarden** | **"What did the AI want, was it allowed, and where is the proof?"** | — |
 
-That does not make them automatically AI-controllable.
+Structural reasons giants cannot take this seat:
 
-Open Reality is designed to describe and route AI workflows for many categories of future devices, including:
+- **NVIDIA Halos is welded to NVIDIA hardware (IGX).** It is a moat around
+  their chips, not a neutral layer, and it will never serve the long tail of
+  existing machines with no NVIDIA silicon.
+- **Google's robot-constitution work is welded to Gemini.** A model vendor
+  cannot credibly referee its own model — the proposer must have zero
+  execution authority (our invariant 5).
+- **Cloud vendors ship plumbing (MCP + MQTT), not accountability.**
 
-- robots
-- robot arms
-- sensors
-- smart devices
-- electronic toys
-- lab equipment
-- factory systems
-- cameras
-- smart home hardware
-- mobile robots
-- drones as future simulation-only assets until a reviewed real boundary exists
-- future Physical AI systems
+The judge cannot be the athlete. Neutrality — no robot brand, no chip, no
+model of our own — is the position, and it is only credible for an
+independent layer.
 
-A device should become visible through a Reality Asset, not through a hardcoded brand-specific path.
+## Moat (what compounds)
 
-## Core Runtime Path
+1. **Receipt format first-mover**: whoever defines the de-facto standard for
+   "AI physical-action audit receipts" becomes the default counterparty for
+   insurers and auditors.
+2. **Rule library compounding**: every deployment's safety rules and block
+   policies are reusable; the 10th customer costs a fraction of the 1st.
+3. **Compliance mapping asset**: six invariants mapped to EU AI Act
+   Art. 12/14 and machine-safety practice (see `COMPLIANCE_MAPPING.md`).
+4. **Invariants proven in code**: blocked commands structurally cannot reach
+   the wire; honest `hardwareSignalSent`; refusal receipts. A weekend clone
+   can copy the demo, not the proof surface.
 
-```text
-Natural-language goal from an AI model
--> Open Reality Runtime
--> Reality Asset
--> capability contract
--> world-state grounding
--> action plan
--> simulation or dry run
--> safety decision
--> adapter plan
--> audit log
--> physical-device boundary
-```
+## What RealityWarden Is Not (unchanged, non-negotiable)
 
-## Freedom and Limits
+- not a robot brand, chip platform, or model vendor
+- not production-certified industrial safety (no such claim, ever, until
+  earned)
+- not a general hardware-control platform in the current Public Alpha
+- simulation never substitutes for physical proof
 
-AI can be flexible at the goal level.
+## Narrative Order (what leads, what follows)
 
-Physical execution must remain bounded by real-world limits.
-
-Open Reality separates those two layers:
-
-- AI can describe what should happen.
-- Reality Assets describe what a device can do.
-- Capability contracts describe what is allowed.
-- World state describes the current environment.
-- Simulation and dry run help evaluate the action path.
-- Safety decisions allow, correct, ask for human approval, reject, or block.
-- Audit logs preserve the decision path.
-
-This lets AI become more useful in the physical world without treating natural language as direct permission to act.
-
-## Ecosystem Direction
-
-The long-term ecosystem is built around shared boundaries:
-
-- hardware companies expose devices as Reality Assets
-- developers build adapters
-- simulator builders create simulation packs
-- safety teams define rules
-- integrators build deployment workflows
-- service teams build monitoring and maintenance workflows
-- auditors and operators review decision logs
-
-The goal is not one brand owning the whole Physical AI stack.
-
-The goal is a common software layer that helps more hardware companies and developers participate.
-
-## Current Boundary
-
-RealityWarden Public Alpha is REAL-first for one documented ESP32 reference
-rig. SIM LAB is a visibly separate zero-signal mode for virtual assets and
-reproducible tests.
-
-It does not claim production hardware readiness or certified industrial safety.
-
-No public asset, imported manual, model, or generic adapter can grant itself
-real-device authority.
+1. **Lead**: the gate + the receipt ("it refuses, and shows you the
+   evidence")
+2. **Proof**: the ESP32 reference rig — the cheapest way to watch a refusal
+   happen on real hardware in 2 minutes
+3. **Deferred**: open protocol, Adapter SDK, Marketplace — real, but chapter
+   two. They widen the moat only after the evidence layer has customers.
 
 ## Guiding Rule
 
-AI should not touch reality directly.
+AI should not touch reality directly — and when it tries, there must be a
+record.

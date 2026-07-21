@@ -120,7 +120,11 @@ interface AppHeaderProps extends FileMenuProps {
   projectName: string;
   preflight: 'passed' | 'warning' | 'blocked';
   warningCount: number;
-  result: 'idle' | 'running' | 'executed' | 'blocked';
+  /**
+   * Run phase supplied by the single authoritative run state in app/page.tsx.
+   * The header renders this value and derives no run words of its own.
+   */
+  result: 'idle' | 'gated' | 'executed' | 'blocked' | 'awaiting_human' | 'unsupported' | 'failed';
   customActionCount: number;
   hasReport: boolean;
   onQuickStart: () => void;
@@ -129,6 +133,7 @@ interface AppHeaderProps extends FileMenuProps {
   onFocusRealHardware: () => void;
   onWorkspaceModeChange: (mode: 'real' | 'simulation') => void;
   onExportReport: () => void;
+  onExportReceipt: () => void;
   onExportAdapter: () => void;
   onLanguageChange: (language: UiLanguage) => void;
 }
@@ -136,27 +141,41 @@ interface AppHeaderProps extends FileMenuProps {
 export function AppHeader(props: AppHeaderProps) {
   const { language, projectName, result, customActionCount, hasReport } = props;
   const realMode = props.workspaceMode === 'real';
-  const resultClass = result === 'blocked' ? 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft' : result === 'running' ? 'border-status-running-edge bg-status-warning-surface text-status-running' : result === 'executed' ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-border bg-surface-raised text-text-secondary';
-  const resultText = result === 'blocked' ? t(language, 'status_safety_blocked') : result === 'running' ? t(language, 'status_playing_motion') : result === 'executed' ? t(language, 'status_executed') : t(language, 'status_idle');
+  const resultClass = result === 'blocked' || result === 'failed'
+    ? 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft'
+    : result === 'gated'
+      ? 'border-status-running-edge bg-status-warning-surface text-status-running'
+      : result === 'executed'
+        ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft'
+        : result === 'awaiting_human' || result === 'unsupported'
+          ? 'border-status-warning-edge bg-status-warning-surface text-status-warning'
+          : 'border-border bg-surface-raised text-text-secondary';
+  const resultText = result === 'blocked' ? t(language, 'status_safety_blocked')
+    : result === 'failed' ? t(language, 'command_failed')
+      : result === 'gated' ? t(language, 'status_playing_motion')
+        : result === 'executed' ? t(language, 'status_executed')
+          : result === 'awaiting_human' ? t(language, 'command_ask_human')
+            : result === 'unsupported' ? t(language, 'command_coming_soon')
+              : t(language, 'status_idle');
   return (
     <header data-component="AppHeader" className="flex h-12 w-full shrink-0 select-none items-center border-b border-border bg-surface">
       <div className="flex h-full w-[240px] shrink-0 items-center gap-2 border-r border-border px-3 xl:w-[280px]">
         <div className="min-w-0 flex-1"><div className="text-[11px] font-bold uppercase tracking-wide text-text-muted">{t(language, 'app_project')}</div><div className="truncate text-[15px] font-semibold text-text-primary">{projectName}</div></div>
-        <div className="flex h-8 shrink-0 border border-border" role="group" aria-label={language === 'zh' ? '工作区模式' : 'Workspace mode'}>
-          <button title="REAL DEVICE" type="button" aria-pressed={props.workspaceMode === 'real'} onClick={() => props.onWorkspaceModeChange('real')} className={`px-2 text-[11px] font-bold ${props.workspaceMode === 'real' ? 'bg-status-warning-surface text-status-warning' : 'bg-surface-raised text-text-secondary'}`}>REAL</button>
+        <div className="flex h-8 shrink-0 border border-border" role="group" aria-label={language === 'zh' ? '门的运行方式' : 'How to run the gate'}>
+          <button title={language === 'zh' ? '真机 · REAL DEVICE' : 'REAL DEVICE'} type="button" aria-pressed={props.workspaceMode === 'real'} onClick={() => props.onWorkspaceModeChange('real')} className={`px-2 text-[11px] font-bold ${props.workspaceMode === 'real' ? 'bg-status-warning-surface text-status-warning' : 'bg-surface-raised text-text-secondary'}`}>{language === 'zh' ? '真机' : 'REAL'}</button>
           <button
             title={props.realHardwareConnected
-              ? (language === 'zh' ? '断开真实设备并进入仿真实验室' : 'Disconnect the REAL device and enter Simulation Lab')
-              : 'Simulation Lab'}
+              ? (language === 'zh' ? '断开真实设备并进入预演（不发硬件信号）' : 'Disconnect the REAL device and enter dry run (no hardware signal)')
+              : (language === 'zh' ? '预演 · 不发硬件信号' : 'Dry run · no hardware signal')}
             type="button"
             aria-label={props.realHardwareConnected
-              ? (language === 'zh' ? '断开真实设备并进入仿真实验室' : 'Disconnect the REAL device and enter Simulation Lab')
-              : 'Simulation Lab'}
+              ? (language === 'zh' ? '断开真实设备并进入预演（不发硬件信号）' : 'Disconnect the REAL device and enter dry run (no hardware signal)')
+              : (language === 'zh' ? '预演 · 不发硬件信号' : 'Dry run · no hardware signal')}
             aria-pressed={props.workspaceMode === 'simulation'}
             onClick={() => props.onWorkspaceModeChange('simulation')}
             className={`border-l border-border px-2 text-[11px] font-semibold ${props.workspaceMode === 'simulation' ? 'bg-[#0B2233] text-simulation' : 'bg-surface-raised text-text-secondary'}`}
           >
-            {props.realHardwareConnected ? (language === 'zh' ? '断开 → SIM' : 'DISCONNECT → SIM') : 'SIM LAB'}
+            {props.realHardwareConnected ? (language === 'zh' ? '断开 → 预演' : 'DISCONNECT → DRY RUN') : (language === 'zh' ? '预演' : 'DRY RUN')}
           </button>
         </div>
       </div>
@@ -173,7 +192,7 @@ export function AppHeader(props: AppHeaderProps) {
             <>
               <button data-simulation-toolbar-action="quick-start" type="button" onClick={props.onQuickStart} className="h-8 shrink-0 whitespace-nowrap border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_quick_start')}</button>
               <button data-simulation-toolbar-action="actions" data-action-composer-trigger type="button" onClick={props.onActions} className="h-8 shrink-0 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary">{language === 'zh' ? '自定义动作' : 'Actions'}{customActionCount ? ` (${customActionCount})` : ''}</button>
-              <button data-simulation-toolbar-action="marketplace" data-marketplace-trigger type="button" onClick={props.onMarketplace} className="h-8 shrink-0 whitespace-nowrap border border-status-warning-edge bg-status-warning-surface px-3 text-[13px] font-semibold text-status-warning">Marketplace</button>
+              <button data-simulation-toolbar-action="marketplace" data-marketplace-trigger type="button" title={language === 'zh' ? '仅声明式仿真资产；生态是路线图第二章，不授予任何真机权限' : 'Declarative simulation assets only; the ecosystem is chapter two of the roadmap and grants no real-device authority'} onClick={props.onMarketplace} className="h-8 shrink-0 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-secondary hover:text-text-primary">Marketplace</button>
             </>
           )}
         </nav>
@@ -188,6 +207,7 @@ export function AppHeader(props: AppHeaderProps) {
               <span className={`h-7 shrink-0 border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${resultClass}`}>{resultText}</span>
               <span className="h-6 w-px shrink-0 bg-border" />
               <button data-simulation-toolbar-action="export-report" type="button" onClick={props.onExportReport} disabled={!hasReport} className="h-8 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary disabled:opacity-40">{t(language, 'app_export_report')}</button>
+              <button data-simulation-toolbar-action="export-receipt" type="button" title={language === 'zh' ? '导出防篡改的审计回执（JSON + Markdown + 可打印 HTML）' : 'Export a tamper-evident audit receipt (JSON + Markdown + printable HTML)'} onClick={props.onExportReceipt} disabled={!hasReport} className="h-8 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary disabled:opacity-40">{language === 'zh' ? '导出审计回执' : 'Export Receipt'}</button>
               <button data-simulation-toolbar-action="export-adapter" type="button" onClick={props.onExportAdapter} className="h-8 whitespace-nowrap border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_export_adapter_package')}</button>
             </>
           )}
