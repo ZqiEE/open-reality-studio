@@ -1,77 +1,72 @@
-# ROS 2 reference setup and Shadow runbook
+# ROS 2 reference setup
 
-## Supported reference environment
+Reference environment:
 
-- Ubuntu 24.04
-- ROS 2 Jazzy
-- Python from the sourced ROS environment with `rclpy`
-- `control_msgs`, `trajectory_msgs`, `sensor_msgs`, and `std_msgs`
-- a `FollowJointTrajectory` action server
+- Ubuntu 24.04;
+- ROS 2 Jazzy;
+- sourced Python environment with rclpy;
+- `control_msgs`, `trajectory_msgs`, `sensor_msgs`, and `std_msgs`;
+- a `control_msgs/action/FollowJointTrajectory` server.
 
-Do not begin with an unknown or production robot. Use an isolated domain,
-simulator, or powered-down controller first. Keep the independent E-Stop and
-certified safety system available.
+This is experimental, not safety-rated, and not hard real-time. Begin with an
+isolated domain and simulator or powered-down controller. Keep independent
+safety controls available.
 
 ## Preflight
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=42
-rlsok ros2 doctor
-rlsok ros2 inspect
-npm run test:ros2-reference
+npm run rlsok -- ros2 doctor
+npm run rlsok -- ros2 inspect
+npm run ros2:test
 ```
 
-Confirm topic names, joint order, radians, controller action name, proposer
-identity, exact device allowlist, clock synchronization, and fresh
-`/joint_states`. `doctor` is diagnostic; it does not certify safety.
+Confirm exact topic/action names, joint order, radians, device allowlist,
+proposer identity, clock synchronization, and fresh JointState.
 
-## Shadow first
-
-The release must have `deployment.mode: shadow` and a matching Shadow release
-record:
+## Shadow
 
 ```bash
-rlsok ros2 shadow \
-  --release examples/ros2-releasegate-demo/release.shadow.yaml \
+npm run rlsok -- ros2 shadow \
+  --release examples/ros2-reference/release.shadow.yaml \
   --device arm-01 \
   --proposer planner@example.test \
-  --evidence evidence/ros2-shadow.json
+  --evidence evidence/shadow.json
 ```
 
-Publish proposals and verify:
+Publish proposals using `examples/ros2-reference/proposal.json`. Verify all
+decisions have `hardwareSignalSent: false`, goal count remains zero, and
+malformed, duplicate, mismatched, stale, and unknown input blocks.
 
-- policy decisions appear in the evidence bundle;
-- `hardwareSignalSent` is false;
-- `controllerGoalCount` remains zero;
-- no goal appears on the controller action server;
-- malformed, duplicate, mismatched, stale, and unknown identities fail closed.
-
-## Restricted reference Run
-
-Only after reviewing Shadow evidence, create an independently approved
-`canary` or `released` ExecSpec. Run requires an exact, repeated release ID:
-
-Run also fails closed unless `ROS_SECURITY_ENABLE=true` and
-`ROS_SECURITY_STRATEGY=Enforce` are visible to the sidecar.
+## SROS2
 
 ```bash
-rlsok ros2 run \
+export ROS_SECURITY_KEYSTORE=/secure/path/rlsok_keystore
+export ROS_SECURITY_ENABLE=true
+export ROS_SECURITY_STRATEGY=Enforce
+```
+
+Review `docs/SECURITY.md` and the reference policy before Run.
+
+## Reference Run
+
+Create a separately approved canary/released ExecSpec from reviewed Shadow
+evidence. Run requires its exact release ID:
+
+```bash
+npm run rlsok -- ros2 run \
   --release release.canary.yaml \
   --device arm-01 \
   --proposer planner@example.test \
-  --allow-reference-run ros2-canary-001 \
-  --evidence evidence/ros2-run.json
+  --allow-reference-run <exact-release-id> \
+  --evidence evidence/reference-run.json
 ```
 
-Use reduced speed/force limits in the certified controller and one supervised
-test trajectory. Revoke the release through the hosting Core integration and
-verify both the cancellation evidence and independent observation of the
-robot. The standalone CLI does not provide a remote revocation service.
+Use a supervised, low-energy test. Compare RLSOK cancellation evidence with
+controller logs and physical observation; evidence of a request is not proof
+that motion stopped.
 
-## Stop conditions
-
-Stop and investigate on clock skew, stale/missing state, discovery changes,
-unexpected nodes, SROS2 permissive mode, controller rejection, cancellation
-ambiguity, evidence verification failure, or any motion not matching the
-reviewed proposal.
+Stop on clock skew, discovery changes, SROS2 permissive mode, stale state,
+controller rejection, cancellation ambiguity, or evidence verification
+failure.

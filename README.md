@@ -1,155 +1,115 @@
 # RLSOK
 
-Release control for executable robot policies.
+RLSOK ReleaseGate is a release-control and execution-gating system for learned robot policies.
+It binds an approved model, action contract, robot/controller
+identity, runtime policy, deployment scope, and evidence into one ExecSpec.
+Only an eligible, unchanged release can obtain a short-lived execution permit.
 
-**Only RLSOK releases reach the robot.**
+The supported path is:
 
-RLSOK is the next product phase of RealityWarden ReleaseGate. RLSOK binds model
-artifacts, action contracts, robot and controller profiles, runtime policies,
-approval identities, and test evidence into one executable release. Modified,
-expired, revoked, unapproved, or incorrectly bound releases are blocked before
-they reach the designated robot controller.
+```text
+ExecSpec → check → release/approval → permit → Execution Gate
+         → ROS 2 Reference Gateway → evidence → revoke/inspect
+```
 
-RLSOK means **Release OK**: an admission result for a particular executable
-release and target. It is not a functional-safety certification, an E-Stop, a
-safety PLC, a certified robot controller, or a guarantee that robot motion is
-safe. It does not train models, plan motion, perceive the environment, provide
-hard real-time control, or claim to prevent every accident.
+Shadow is the default. Reference Run is experimental and requires an exact
+release-ID confirmation, SROS2 enforcement, an available controller action
+server, fresh JointState, and a canary or released ExecSpec.
 
-## What is implemented
+## Safety boundary
 
-| Capability | Status |
-| --- | --- |
-| Headless ReleaseGate Core | Implemented |
-| Strict ExecSpec, ActionContract and RobotProfile schemas | Implemented |
-| Release approval, expiry, revocation and binding checks | Implemented |
-| Fail-closed Execution Gate and single-use action-bound permits | Implemented |
-| Shadow Mode | Implemented |
-| Canonical hashing and tamper-evident Evidence chains | Implemented |
-| ROS 2 gateway interface contract | Implemented |
-| ROS 2 Jazzy/rclpy Shadow and restricted trajectory gateway | Experimental reference implementation |
-| SROS2 deny-by-default deployment policy | Reference configuration; deployment validation required |
-| Functional-safety rating or production certification | No |
+RLSOK is not functional-safety software, a motion planner, a hard real-time
+controller, an E-stop, a safety PLC, or a certified robot controller.
+Independent safety systems and controller limits remain mandatory.
 
-The ROS 2 reference gateway establishes a live graph through one untrusted
-Python/rclpy sidecar when ROS 2 is installed. It is not production-certified,
-safety-rated, or hard realtime. This repository's phase 3 host lacked `rclpy`,
-so live DDS/SROS2/robot validation is not claimed.
+Proposal sources and the Python ROS process are untrusted. TypeScript Core owns
+release resolution, policy, permits, dispatch eligibility, revocation, and
+evidence. Blocked decisions and Shadow observations cannot dispatch.
 
-## Quick start
+## Install
 
-Requirements: Node.js 22.12 or newer and npm 10.5.1 or newer.
+Requirements: Node.js 22.12+ and npm 10.5+.
 
 ```bash
 npm install
-npm run rlsok -- build --model model.json --action-contract action.json \
-  --robot-profile robot.json --runtime-policy policy.json \
-  --evidence evidence.json --out release.json
-npm run rlsok -- check release.json
-npm run rlsok -- diff previous-release.json release.json
-npm run rlsok -- verify-evidence evidence-bundle.json
-npm run rlsok -- ros2 doctor
-```
-
-The compatibility command `rw` invokes the same CLI implementation:
-
-```bash
-npm run rw -- check release.json
-```
-
-For an installed binary, the intended spelling is `rlsok build`, `rlsok check`,
-`rlsok diff`, and `rlsok verify-evidence`.
-
-Run the headless core checks with:
-
-```bash
 npm run build
-npm run test:releasegate
-npm run test:ros2-reference
+npm test
 ```
 
-Inspect the headless daemon composition boundary with:
+## ExecSpec
+
+A complete example is
+[`examples/ros2-reference/release.shadow.yaml`](examples/ros2-reference/release.shadow.yaml).
+Its essential identity is:
+
+```yaml
+apiVersion: realitywarden.io/v1alpha1
+kind: ExecutablePolicy
+metadata:
+  releaseId: ros2-shadow-demo-001
+actionContract:
+  representation: trajectory
+deployment:
+  allowedDeviceIds: [arm-01]
+  mode: shadow
+```
+
+The published `realitywarden.io` schema identifier is retained only so existing
+ExecSpecs and evidence remain verifiable.
 
 ```bash
-npm run daemon
+npm run rlsok -- check examples/ros2-reference/release.shadow.yaml
 ```
 
-The repository supplies the UI-free `ReleaseGateDaemon` composition root, but
-does not ship a preconfigured network transport or robot adapter. A deployment
-must embed it with an explicit Execution Gate, adapter, and supervised transport.
-
-## Execution model
-
-```text
-Policy / VLA / Agent
-        ↓
-Action Proposal
-        ↓
-Release Resolver
-        ↓
-Execution Gate
-        ↓
-Adapter
-        ↓
-Robot Controller
-```
-
-```text
-Model + ActionContract + RobotProfile + RuntimePolicy + Evidence
-                              ↓
-                           ExecSpec
-                              ↓
-                      Release Approval
-```
-
-Proposal sources are untrusted and have no execution authority. This includes
-models, agents, network messages, and the retained natural-language compiler
-example. An allowed action must still match its approved release, action hash,
-fresh robot state, runtime policy, and one-time permit.
-
-## Optional development tools and compatibility
-
-The existing Next.js/Electron desktop is retained as an **optional development
-and visualization tool**, not the default RLSOK product:
+## Shadow quick start
 
 ```bash
-npm run lab
-npm run lab:build
+npm run rlsok -- ros2 shadow \
+  --release examples/ros2-reference/release.shadow.yaml \
+  --device arm-01 \
+  --proposer planner@example.test \
+  --evidence evidence/shadow.json
 ```
 
-The ESP32 rig is a reference execution adapter used to exercise fail-closed
-hardware invariants. It is not the primary product target.
+Shadow records decisions and always reports zero controller goals.
 
-Marketplace and Manual Import are not RLSOK product features. Their public UI
-has been removed; limited internal code remains only where stable project-file,
-release-tooling, or diagnostic compatibility still depends on it.
+## Reference Run
 
-Historical identifiers remain intentionally compatible:
-
-- `RealityWarden` in already published formats and records
-- the `rw` command
-- `realitywarden.io` schema API versions
-- existing evidence/release IDs, package names, and import paths
-
-## Security boundary
-
-The trusted boundary is the strict schema, release state machine, resolver,
-Execution Gate, opaque permit registry, and evidence verifier. Missing, stale,
-future, invalid, or mismatched state fails closed. Out-of-bounds actions are
-rejected rather than clamped. A blocked decision cannot dispatch an adapter
-call, and evidence records whether a hardware signal was actually sent.
-
-See [product positioning](./docs/PRODUCT_POSITIONING.md),
-[security boundary](./docs/SECURITY_BOUNDARY.md), and
-[contributing](./CONTRIBUTING.md).
-
-## Validation
+Reference Run may move a robot. Use an isolated, supervised environment with
+independent safety controls:
 
 ```bash
-npm run typecheck
-npm run build
-npm run test:releasegate
-npm run verify
+export ROS_SECURITY_ENABLE=true
+export ROS_SECURITY_STRATEGY=Enforce
+npm run rlsok -- ros2 run \
+  --release release.canary.yaml \
+  --device arm-01 \
+  --proposer planner@example.test \
+  --allow-reference-run <exact-release-id> \
+  --evidence evidence/reference-run.json
 ```
 
-RLSOK by RealityWarden.
+## Evidence
+
+```bash
+npm run rlsok -- verify-evidence evidence/shadow.json
+```
+
+Evidence is canonicalized and hash-chained. Signal state distinguishes
+not-sent from attempted/unconfirmed dispatch; controller acceptance does not
+prove physical motion.
+
+## ROS 2 status and validation
+
+The ROS 2 reference implementation is tested at the contract and process-boundary level.
+Live DDS, SROS2, controller and physical-robot validation require an appropriate ROS 2 environment and are not claimed unless actually completed.
+
+Current automated validation covers release identity, approval invalidation,
+single-use bound permits, fail-closed decisions, Shadow zero-dispatch,
+revocation refresh, cancellation evidence, ROS message/action contracts, and
+transport boundaries.
+
+See [architecture](docs/ARCHITECTURE.md), [CLI reference](docs/CLI.md),
+[ROS 2 setup](docs/ROS2_REFERENCE_SETUP.md),
+[security](docs/SECURITY.md), and the
+[design-partner guide](docs/DESIGN_PARTNER_GUIDE.md).
