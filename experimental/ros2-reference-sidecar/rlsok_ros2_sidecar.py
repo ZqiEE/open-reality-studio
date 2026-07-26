@@ -235,7 +235,7 @@ def main() -> int:
                 elif operation == "shutdown":
                     result = {"closed": True}
                 else:
-                    raise ValueError("unsupported_operation")
+                    raise ValueError("unknown_operation")
                 emit({"id": request.get("id"), "ok": True, "result": result})
                 if operation == "shutdown":
                     break
