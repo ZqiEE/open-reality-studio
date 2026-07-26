@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Illustrative input for ROS 2 Jazzy policy generation; sign outside Git. -->
+<policy version="0.2.0">
+  <enclaves>
+    <enclave path="/rlsok/reference_gateway">
+      <profiles>
+        <profile ns="/" node="rlsok_reference_gateway">
+          <topics subscribe="ALLOW">
+            <topic>rlsok/action_proposals</topic>
+            <topic>joint_states</topic>
+          </topics>
+          <actions call="ALLOW">
+            <action>joint_trajectory_controller/follow_joint_trajectory</action>
+          </actions>
+        </profile>
+      </profiles>
+    </enclave>
+    <enclave path="/rlsok/design_partner_proposer">
+      <profiles>
+        <profile ns="/" node="design_partner_proposer">
+          <topics publish="ALLOW">
+            <topic>rlsok/action_proposals</topic>
+          </topics>
+        </profile>
+      </profiles>
+    </enclave>
+  </enclaves>
+</policy>

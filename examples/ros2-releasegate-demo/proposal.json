@@ -1,0 +1,23 @@
+{
+  "proposalId": "demo-proposal-001",
+  "releaseId": "ros2-shadow-demo-001",
+  "deviceId": "arm-01",
+  "proposerIdentity": "planner@example.test",
+  "actionRepresentation": "trajectory",
+  "actionPayload": {
+    "representation": "trajectory",
+    "jointNames": ["joint_a", "joint_b"],
+    "points": [
+      {
+        "positions": [0.1, -0.1],
+        "velocities": [0.0, 0.0],
+        "timeFromStartMs": 500
+      }
+    ],
+    "units": {
+      "position": "radian",
+      "velocity": "radian_per_second"
+    }
+  },
+  "createdAt": "2026-07-26T12:00:00.000Z"
+}

@@ -27,11 +27,14 @@ hard real-time control, or claim to prevent every accident.
 | Shadow Mode | Implemented |
 | Canonical hashing and tamper-evident Evidence chains | Implemented |
 | ROS 2 gateway interface contract | Implemented |
-| Live ROS 2 / DDS / SROS 2 network integration | Not implemented |
+| ROS 2 Jazzy/rclpy Shadow and restricted trajectory gateway | Experimental reference implementation |
+| SROS2 deny-by-default deployment policy | Reference configuration; deployment validation required |
 | Functional-safety rating or production certification | No |
 
-The ROS 2 package is an interface boundary with in-memory reference adapters.
-It does not establish a live DDS graph or provide SROS 2 deployment.
+The ROS 2 reference gateway establishes a live graph through one untrusted
+Python/rclpy sidecar when ROS 2 is installed. It is not production-certified,
+safety-rated, or hard realtime. This repository's phase 3 host lacked `rclpy`,
+so live DDS/SROS2/robot validation is not claimed.
 
 ## Quick start
 
@@ -45,6 +48,7 @@ npm run rlsok -- build --model model.json --action-contract action.json \
 npm run rlsok -- check release.json
 npm run rlsok -- diff previous-release.json release.json
 npm run rlsok -- verify-evidence evidence-bundle.json
+npm run rlsok -- ros2 doctor
 ```
 
 The compatibility command `rw` invokes the same CLI implementation:
@@ -61,6 +65,7 @@ Run the headless core checks with:
 ```bash
 npm run build
 npm run test:releasegate
+npm run test:ros2-reference
 ```
 
 Inspect the headless daemon composition boundary with:
