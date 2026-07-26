@@ -11,14 +11,13 @@
     "rlsok": "scripts/run-rlsok.cjs"
   },
   "scripts": {
-    "start": "node scripts/run-rlsok.cjs --help",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:releasegate && npm run ros2:test",
     "verify": "npm run build && npm test",
     "rlsok": "node scripts/run-rlsok.cjs",
-    "test:releasegate": "node scripts/run-releasegate-tests.cjs",
-    "ros2:test": "node scripts/run-ros2-reference-tests.cjs"
+    "test:releasegate": "node scripts/run-rlsok.cjs --test tests/releasegate/releaseGate.test.ts",
+    "ros2:test": "node scripts/run-rlsok.cjs --test tests/ros2-reference/ros2Reference.test.ts"
   },
   "dependencies": {
     "js-yaml": "^4.3.0",

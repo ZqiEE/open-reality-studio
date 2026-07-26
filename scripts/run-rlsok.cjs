@@ -6,7 +6,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const output = path.join(root, '.tmp-rlsok-cli');
+const output = path.join(root, '.tmp-rlsok');
+const isTest = process.argv[2] === '--test';
+const sourceEntry = isTest ? process.argv[3] : 'apps/cli/rlsok.ts';
+if (!sourceEntry || path.extname(sourceEntry) !== '.ts') {
+  throw new Error('test runner requires a TypeScript entry path');
+}
+const runtimeArgs = isTest ? process.argv.slice(4) : process.argv.slice(2);
+const compiledEntry = path.join(output, sourceEntry.replace(/\.ts$/, '.js'));
 
 if (fs.existsSync(output)) fs.rmSync(output, { recursive: true, force: true });
 try {
@@ -29,7 +36,7 @@ try {
   );
   const result = spawnSync(
     process.execPath,
-    [path.join(output, 'apps', 'cli', 'rlsok.js'), ...process.argv.slice(2)],
+    [compiledEntry, ...runtimeArgs],
     { cwd: root, stdio: 'inherit' }
   );
   if (result.error) throw result.error;
