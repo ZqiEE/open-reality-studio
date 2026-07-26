@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import type { ActionManifest } from '../../lib/action-manifest/ActionManifest';
 import { sha256, canonicalJson } from '../evidence';
 
 const rangeSchema = z.object({
@@ -48,34 +47,4 @@ export type ActionContract = z.infer<typeof actionContractSchema>;
 
 export function hashActionContract(contract: ActionContract): string {
   return sha256(canonicalJson(actionContractSchema.parse(contract)));
-}
-
-/**
- * Compatibility bridge only. Legacy manifests remain untrusted proposals and
- * gain no execution authority from conversion.
- */
-export class LegacyActionManifestAdapter {
-  static toActionContract(manifest: ActionManifest): ActionContract {
-    const jointSteps = manifest.steps.filter((step) => step.action === 'move_to_angle');
-    const dimension = Math.max(1, jointSteps.length);
-    return actionContractSchema.parse({
-      apiVersion: 'realitywarden.io/v1alpha1',
-      kind: 'ActionContract',
-      metadata: {
-        name: manifest.action_id,
-        version: String(manifest.manifest_version)
-      },
-      representation: 'trajectory',
-      dimension,
-      jointOrder: Array.from({ length: dimension }, (_, index) => `legacy_joint_${index + 1}`),
-      units: { position: 'degree', velocity: 'degree_per_second' },
-      parameterRanges: { angle: { min: 0, max: 180 } },
-      requiredState: [],
-      executionMode: manifest.steps.length > 1 ? 'sequence' : 'single',
-      constraints: [
-        'legacy_manifest_untrusted',
-        `legacy_device_type:${manifest.device_type}`
-      ]
-    });
-  }
 }

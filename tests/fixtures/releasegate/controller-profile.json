@@ -1,4 +1,0 @@
-{
-  "controllerType": "joint_trajectory_controller",
-  "compatibleRepresentations": ["joint_position", "trajectory"]
-}

@@ -1,8 +1,0 @@
-{
-  "apiVersion": "realitywarden.io/v1alpha1",
-  "kind": "RobotProfile",
-  "profileId": "test-arm-01",
-  "urdfSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "jointOrder": ["joint_1", "joint_2"],
-  "controllerTypes": ["joint_trajectory_controller"]
-}

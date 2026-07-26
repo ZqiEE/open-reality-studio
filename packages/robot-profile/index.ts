@@ -15,22 +15,3 @@ export type RobotProfile = z.infer<typeof robotProfileSchema>;
 export function hashRobotProfile(profile: RobotProfile): string {
   return sha256(canonicalJson(robotProfileSchema.parse(profile)));
 }
-
-/** Compatibility adapter; it does not approve or authorize the legacy asset. */
-export class LegacyDeviceManifestAdapter {
-  static toRobotProfile(input: {
-    id: string;
-    joints?: string[];
-    controllerType: string;
-    urdfSha256: string;
-  }): RobotProfile {
-    return robotProfileSchema.parse({
-      apiVersion: 'realitywarden.io/v1alpha1',
-      kind: 'RobotProfile',
-      profileId: input.id,
-      urdfSha256: input.urdfSha256,
-      jointOrder: input.joints ?? [],
-      controllerTypes: [input.controllerType]
-    });
-  }
-}
