@@ -3,7 +3,7 @@
 Date: 2026-07-26
 
 Branch: `refactor/rlsok-product-cleanup`
-Validated commit before this report: `a1bcf8594b2fc7ef0b931b528e9708b3e8a9b637`
+Validated implementation commit: `5001bbc`
 
 ## Outcome
 
@@ -59,6 +59,8 @@ Phase 3:
 3. `a7f495f` docs: add ROS 2 design partner reference pack
 4. `058447b` fix: recheck revocation at ROS 2 dispatch
 5. `a1bcf85` test: update ROS 2 release status assertion
+6. `a64c410` docs: record RLSOK phase 3 validation
+7. `5001bbc` fix: require SROS2 enforcement before reference run
 
 ## Architecture and safety properties
 
@@ -107,7 +109,8 @@ Passed:
 - `npm run test:releasegate` — 11 categories;
 - `npm run test:ros2-reference` — 6 categories;
 - demo ExecSpec via `rlsok check` — `PASS`;
-- `npm run verify` — complete historical matrix, exit 0, including:
+- `npm run verify` — complete historical matrix rerun on `5001bbc`, exit 0,
+  including:
   - conformance, desktop, support, accessibility, assets, release and launch
     closure;
   - protocol, SDK/ecosystem, governance, onboarding, runtime/compiler,
