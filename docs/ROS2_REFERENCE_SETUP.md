@@ -1,31 +1,40 @@
 # ROS 2 reference setup
 
-Reference environment:
-
-- Ubuntu 24.04;
-- ROS 2 Jazzy;
-- sourced Python environment with rclpy;
-- `control_msgs`, `trajectory_msgs`, `sensor_msgs`, and `std_msgs`;
-- a `control_msgs/action/FollowJointTrajectory` server.
-
-This is experimental, not safety-rated, and not hard real-time. Begin with an
-isolated domain and simulator or powered-down controller. Keep independent
-safety controls available.
-
-## Preflight
+Use Ubuntu 24.04 with ROS 2 Jazzy, `rclpy`, `control_msgs`, `sensor_msgs`,
+`std_msgs`, and `trajectory_msgs`. Source the ROS environment before invoking
+RLSOK.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=42
+npm install
 npm run rlsok -- ros2 doctor
-npm run rlsok -- ros2 inspect
-npm run ros2:test
+npm run rlsok -- ros2 inspect examples/ros2-reference/release.shadow.yaml
 ```
 
-Confirm exact topic/action names, joint order, radians, device allowlist,
-proposer identity, clock synchronization, and fresh JointState.
+Doctor must report the expected RMW implementation, domain, topics, controller
+action, joint-state status, action-server status, and SROS2 state. Missing ROS
+imports return exit code 2.
+
+## SROS2
+
+Generate signed deployment artifacts from the deny-by-default reference policy
+at `examples/ros2-reference/sros2/policy.xml`, then set:
+
+```bash
+export ROS_SECURITY_KEYSTORE=/secure/path/rlsok_keystore
+export ROS_SECURITY_ENABLE=true
+export ROS_SECURITY_STRATEGY=Enforce
+```
+
+The gateway needs only proposal-topic subscription, joint-state subscription,
+and action-client access to
+`/joint_trajectory_controller/follow_joint_trajectory`.
 
 ## Shadow
+
+Start a `JointState` publisher and a proposal publisher in the selected ROS
+domain, then run:
 
 ```bash
 npm run rlsok -- ros2 shadow \
@@ -35,24 +44,16 @@ npm run rlsok -- ros2 shadow \
   --evidence evidence/shadow.json
 ```
 
-Publish proposals using `examples/ros2-reference/proposal.json`. Verify all
-decisions have `hardwareSignalSent: false`, goal count remains zero, and
-malformed, duplicate, mismatched, stale, and unknown input blocks.
-
-## SROS2
-
-```bash
-export ROS_SECURITY_KEYSTORE=/secure/path/rlsok_keystore
-export ROS_SECURITY_ENABLE=true
-export ROS_SECURITY_STRATEGY=Enforce
-```
-
-Review `docs/SECURITY.md` and the reference policy before Run.
+Publish JSON proposal envelopes on `/rlsok/action_proposals` as
+`std_msgs/msg/String`. The envelope must contain a unique proposal ID, the exact
+release/device/proposer identity, a trajectory action, and a current timestamp.
+Shadow must keep the controller goal count at zero.
 
 ## Reference Run
 
-Create a separately approved canary/released ExecSpec from reviewed Shadow
-evidence. Run requires its exact release ID:
+Reference Run can command motion. Use a separately approved canary or released
+ExecSpec, an available `FollowJointTrajectory` server, SROS2 Enforce, a
+supervised low-energy environment, and independent safety controls.
 
 ```bash
 npm run rlsok -- ros2 run \
@@ -63,10 +64,6 @@ npm run rlsok -- ros2 run \
   --evidence evidence/reference-run.json
 ```
 
-Use a supervised, low-energy test. Compare RLSOK cancellation evidence with
-controller logs and physical observation; evidence of a request is not proof
-that motion stopped.
-
-Stop on clock skew, discovery changes, SROS2 permissive mode, stale state,
-controller rejection, cancellation ambiguity, or evidence verification
-failure.
+Stop on stale state, clock skew, discovery changes, SROS2 permissive mode,
+controller rejection, timeout, cancellation ambiguity, or evidence verification
+failure. A cancellation request is not proof that physical motion stopped.
