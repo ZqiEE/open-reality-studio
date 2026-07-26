@@ -9,7 +9,7 @@ export function StartupFailureView({ error, reset, reload, language = 'en' }: { 
   const detail = [error.message, error.digest ? `digest: ${error.digest}` : '', error.stack ?? ''].filter(Boolean).join('\n');
   return (
     <main className="rw-launch-shell rw-startup-failure" data-component="StartupFailureView" data-startup-state="fatal_error">
-      <div className="rw-startup-brand">RealityWarden Desktop</div>
+      <div className="rw-startup-brand">RLSOK ReleaseGate</div>
       <div className="rw-startup-status" role="alert" aria-live="assertive" aria-atomic="true">
         <h1>{language === 'zh' ? '应用界面无法加载' : 'Application interface could not load'}</h1>
       </div>

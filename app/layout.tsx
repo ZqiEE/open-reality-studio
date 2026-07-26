@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'RealityWarden',
-  description: 'Virtual lab software for building, simulating, testing, debugging, and validating AI-controlled devices before touching real hardware.'
+  title: 'RLSOK ReleaseGate',
+  description: 'Release control for executable robot policies.'
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

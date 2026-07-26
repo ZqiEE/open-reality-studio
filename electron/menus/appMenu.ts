@@ -9,7 +9,7 @@ type MenuAction =
   | 'export:labReport'
   | 'export:deploymentPackage'
   | 'run:preflight'
-  | 'run:virtualLab'
+  | 'run:gatedCommand'
   | 'run:stop'
   | 'run:replay'
   | 'view:toggleExplorer'
@@ -31,8 +31,8 @@ export function createAppMenu(support: SupportActions) {
         { label: 'Save Project', accelerator: 'CmdOrCtrl+S', click: () => send('project:save') },
         { label: 'Save Project As', accelerator: 'CmdOrCtrl+Shift+S', click: () => send('project:saveAs') },
         { type: 'separator' },
-        { label: 'Export Simulation Lab Report', click: () => send('export:labReport') },
-        { label: 'Export Simulation Adapter Package', click: () => send('export:deploymentPackage') },
+        { label: 'Export Run Report', click: () => send('export:labReport') },
+        { label: 'Export Adapter Package', click: () => send('export:deploymentPackage') },
         { type: 'separator' },
         { label: 'Exit', role: 'quit' }
       ]
@@ -40,10 +40,10 @@ export function createAppMenu(support: SupportActions) {
     {
       label: 'Simulation',
       submenu: [
-        { label: 'Run Simulation Preflight', accelerator: 'F6', click: () => send('run:preflight') },
-        { label: 'Enter and Run Simulation Lab', accelerator: 'F5', click: () => send('run:virtualLab') },
+        { label: 'Run Preflight Checks', accelerator: 'F6', click: () => send('run:preflight') },
+        { label: 'Run Governed Command', accelerator: 'F5', click: () => send('run:gatedCommand') },
         { label: 'Stop Simulation', accelerator: 'Shift+F5', click: () => send('run:stop') },
-        { label: 'Replay Simulation', accelerator: 'CmdOrCtrl+R', click: () => send('run:replay') }
+        { label: 'Replay Last Run', accelerator: 'CmdOrCtrl+R', click: () => send('run:replay') }
       ]
     },
     {
@@ -64,7 +64,7 @@ export function createAppMenu(support: SupportActions) {
         { label: 'Third-Party Notices', click: () => void support.openThirdPartyNotices() },
         { label: 'Export Local Diagnostic Bundle…', click: () => void support.exportDiagnostics() },
         { type: 'separator' },
-        { label: 'About RealityWarden', click: () => void support.showAbout() }
+        { label: 'About RLSOK', click: () => void support.showAbout() }
       ]
     }
   ]));

@@ -1,105 +1,49 @@
-# Contributing to RealityWarden
+# Contributing to RLSOK
 
-RealityWarden is a simulation-first desktop runtime for Physical AI workflows. It lets AI-driven tasks pass through device descriptions, capability checks, safety decisions, simulation, and audit trails before any future adapter boundary.
+RLSOK is release control for executable robot policies. Contributions should
+strengthen the answer to three questions: what action was proposed, was its
+release admitted, and what evidence proves the result?
 
-## What a Reality Asset Is
+## Contribution priorities
 
-A Reality Asset is a descriptive package for a physical or simulated device. It can describe a robot, drone, lab device, smart device, factory sensor, or other Physical AI system.
+- strict, versioned ExecSpec, ActionContract and RobotProfile schemas;
+- release approval, expiry, revocation and target binding;
+- fail-closed Execution Gate behavior and no-bypass adapter contracts;
+- truthful, tamper-evident evidence;
+- ROS 2 interface boundaries and reference adapters;
+- clear security-boundary and compatibility documentation.
 
-Reality Assets are not executable plugins. They are not hardware drivers. They do not grant real device control.
+The optional Lab, ESP32 reference rig, historical Marketplace/Manual Import
+compatibility, and natural-language proposer are not the default product path.
+Changes there must not introduce a reverse dependency into Core, CLI, or daemon.
 
-## What You Can Submit
+## Safety rules
 
-- Device descriptions and manifests
-- Capability contracts
-- World model assumptions
-- Safety boundaries and blocked behaviors
-- Example supported prompts
-- Example unsupported or ambiguous prompts
-- Simulation-only validation notes
-- Documentation improvements
+- Treat models, agents, imported data and network messages as untrusted.
+- Reject out-of-contract values; do not silently clamp them into execution.
+- Missing, invalid, stale, frozen or mismatched state must fail closed.
+- A blocked or shadow decision must never send an actuation signal.
+- Evidence must truthfully record `hardwareSignalSent`.
+- Do not describe RLSOK as safety-rated, certified, hard real-time, or a
+  replacement for an E-Stop, safety PLC, or certified controller.
+- Never add credentials, tokens, private endpoints, or secrets.
 
-## What You Cannot Submit
+Historical identifiers such as `rw`, `RealityWarden`, and
+`realitywarden.io/*` may be required for compatibility. Do not rename stable
+formats without an explicit, lossless migration.
 
-- Real hardware execution code
-- Adapter code that controls physical devices
-- Credentials, tokens, endpoints, or secrets
-- Shell commands, `eval`, postinstall scripts, or webhook behavior
-- Auto-execution behavior
-- Destructive action claims
-- Claims that community assets are verified for hardware execution
+## Validation
 
-## Community Asset Rules
-
-Community Reality Assets are descriptive only.
-
-Community assets must not execute code.
-
-Community assets are simulation-only by default.
-
-Real execution is disabled by default.
-
-Adapter code is not accepted in community asset submissions.
-
-Hardware execution requires separate review, certification, and explicit local enablement.
-
-RealityWarden remains simulation-first.
-
-## How to Submit a Reality Asset Draft
-
-1. Read [SECURITY.md](./SECURITY.md).
-2. Start from [examples/community-assets/README.md](./examples/community-assets/README.md).
-3. Prepare a JSON asset draft with:
-   - `assetId`
-   - `name`
-   - `deviceManifest`
-   - `capabilityContracts`
-   - `adapterBoundary`
-   - `examplePrompts`
-   - `supportLevel`
-   - `safetyNotes`
-4. Keep `realAdapterEnabled` set to `false`.
-5. Open a GitHub issue using the "Submit Reality Asset" template, or open a PR if you have a complete simulation-only draft.
-
-## Validate Locally
-
-Run the project validation suite before opening a PR:
+Run before opening a pull request:
 
 ```bash
 npm run typecheck
 npm run build
+npm run test:releasegate
+npm run test:real-hardware
+npm run test:virtual-loopback
 npm run verify
 ```
 
-Validate a Reality Asset JSON file:
-
-```bash
-node scripts/validate-reality-asset.cjs examples/community-assets/example_drone.asset.json
-```
-
-## Review Process
-
-Maintainers check community submissions for:
-
-- simulation-only boundaries
-- complete device descriptions
-- safe capability wording
-- no credentials or endpoints
-- no executable behavior
-- no real adapter enablement
-- clear supported, unsupported, and ambiguous prompts
-- local validation results
-
-Passing schema validation does not mean real hardware execution is safe or supported.
-
-## Safety Boundaries
-
-Open Reality follows this contribution principle:
-
-**Permissionless contribution. Permissioned execution.**
-
-Anyone can propose a device asset description. Real execution remains disabled unless a future review process explicitly enables a separate, local, safety-gated adapter path.
-
-## Current Public Alpha Boundary
-
-The current Public Alpha is simulation-first. Real device execution is disabled by default. Community assets are unverified by default and must not be treated as physical device control instructions.
+Describe the boundary affected, new failure behavior, compatibility impact, and
+the exact commands run.

@@ -119,8 +119,8 @@ export function createSupportActions(appRoot: string, getLogPath: () => string):
     showAbout: async () => {
       await dialog.showMessageBox({
         type: 'info',
-        title: 'About RealityWarden',
-        message: `RealityWarden ${app.getVersion()} · Public Alpha`,
+        title: 'About RLSOK',
+        message: `RLSOK ReleaseGate ${app.getVersion()} · RLSOK by RealityWarden`,
         detail: [
           'REAL-device-first safety governance runtime.',
           'Current REAL scope: ESP32-S3 + SG90 + HC-SR04 reviewed reference rig.',

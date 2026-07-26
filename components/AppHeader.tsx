@@ -1,16 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { UiLanguage } from './LabConfigurator';
+import type { UiLanguage } from '@/lib/i18n';
 import { t } from '@/lib/i18n';
 
 interface FileMenuProps {
   language: UiLanguage;
-  workspaceMode: 'real' | 'simulation';
   onNew: () => void;
   onOpen: () => void;
-  onImportAsset: () => void;
-  onImportManual: () => void;
   onSave: () => void;
   onSaveAs: () => void;
   onRestore: () => void;
@@ -19,23 +16,19 @@ interface FileMenuProps {
   onAbout: () => void;
 }
 
-export function FileMenu({ language, workspaceMode, onNew, onOpen, onImportAsset, onImportManual, onSave, onSaveAs, onRestore, onOpenSupport, onExportDiagnostics, onAbout }: FileMenuProps) {
+export function FileMenu({ language, onNew, onOpen, onSave, onSaveAs, onRestore, onOpenSupport, onExportDiagnostics, onAbout }: FileMenuProps) {
   const [open, setOpen] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
-  const items: Array<{ id: string; label: string; action: () => void; simulationOnly?: true }> = [
+  const items: Array<{ id: string; label: string; action: () => void }> = [
     { id: 'new', label: t(language, 'app_new'), action: onNew },
     { id: 'open', label: t(language, 'app_open'), action: onOpen },
-    ...(workspaceMode === 'simulation' ? [
-      { id: 'import-asset', label: language === 'zh' ? '导入仿真资产…' : 'Import Simulation Asset…', action: onImportAsset, simulationOnly: true as const },
-      { id: 'import-manual', label: language === 'zh' ? '导入设备手册（仅仿真）…' : 'Import Device Manual (Simulation Only)…', action: onImportManual, simulationOnly: true as const },
-    ] : []),
     { id: 'save', label: t(language, 'app_save_project'), action: onSave },
     { id: 'save-as', label: t(language, 'app_save_as'), action: onSaveAs },
     { id: 'restore', label: t(language, 'app_restore'), action: onRestore },
     { id: 'support', label: language === 'zh' ? '打开支持指南' : 'Open Support Guide', action: onOpenSupport },
     { id: 'diagnostics', label: language === 'zh' ? '导出本地诊断包…' : 'Export Local Diagnostics…', action: onExportDiagnostics },
-    { id: 'about', label: language === 'zh' ? '关于 RealityWarden' : 'About RealityWarden', action: onAbout }
+    { id: 'about', label: language === 'zh' ? '关于 RLSOK' : 'About RLSOK', action: onAbout }
   ];
 
   const focusItem = (index: number) => {
@@ -86,7 +79,6 @@ export function FileMenu({ language, workspaceMode, onNew, onOpen, onImportAsset
             type="button"
             role="menuitem"
             data-file-action={item.id}
-            data-simulation-file-action={item.simulationOnly ? item.id : undefined}
             tabIndex={-1}
             onClick={() => { setOpen(false); item.action(); }}
             onKeyDown={(event) => {
@@ -129,9 +121,7 @@ interface AppHeaderProps extends FileMenuProps {
   hasReport: boolean;
   onQuickStart: () => void;
   onActions: () => void;
-  onMarketplace: () => void;
   onFocusRealHardware: () => void;
-  onWorkspaceModeChange: (mode: 'real' | 'simulation') => void;
   onExportReport: () => void;
   onExportReceipt: () => void;
   onExportAdapter: () => void;
@@ -140,7 +130,6 @@ interface AppHeaderProps extends FileMenuProps {
 
 export function AppHeader(props: AppHeaderProps) {
   const { language, projectName, result, customActionCount, hasReport } = props;
-  const realMode = props.workspaceMode === 'real';
   const resultClass = result === 'blocked' || result === 'failed'
     ? 'border-status-blocked-edge bg-status-blocked-surface text-status-blocked-soft'
     : result === 'gated'
@@ -161,56 +150,26 @@ export function AppHeader(props: AppHeaderProps) {
     <header data-component="AppHeader" className="flex h-12 w-full shrink-0 select-none items-center border-b border-border bg-surface">
       <div className="flex h-full w-[240px] shrink-0 items-center gap-2 border-r border-border px-3 xl:w-[280px]">
         <div className="min-w-0 flex-1"><div className="text-[11px] font-bold uppercase tracking-wide text-text-muted">{t(language, 'app_project')}</div><div className="truncate text-[15px] font-semibold text-text-primary">{projectName}</div></div>
-        <div className="flex h-8 shrink-0 border border-border" role="group" aria-label={language === 'zh' ? '门的运行方式' : 'How to run the gate'}>
-          <button title={language === 'zh' ? '真机 · REAL DEVICE' : 'REAL DEVICE'} type="button" aria-pressed={props.workspaceMode === 'real'} onClick={() => props.onWorkspaceModeChange('real')} className={`px-2 text-[11px] font-bold ${props.workspaceMode === 'real' ? 'bg-status-warning-surface text-status-warning' : 'bg-surface-raised text-text-secondary'}`}>{language === 'zh' ? '真机' : 'REAL'}</button>
-          <button
-            title={props.realHardwareConnected
-              ? (language === 'zh' ? '断开真实设备并进入预演（不发硬件信号）' : 'Disconnect the REAL device and enter dry run (no hardware signal)')
-              : (language === 'zh' ? '预演 · 不发硬件信号' : 'Dry run · no hardware signal')}
-            type="button"
-            aria-label={props.realHardwareConnected
-              ? (language === 'zh' ? '断开真实设备并进入预演（不发硬件信号）' : 'Disconnect the REAL device and enter dry run (no hardware signal)')
-              : (language === 'zh' ? '预演 · 不发硬件信号' : 'Dry run · no hardware signal')}
-            aria-pressed={props.workspaceMode === 'simulation'}
-            onClick={() => props.onWorkspaceModeChange('simulation')}
-            className={`border-l border-border px-2 text-[11px] font-semibold ${props.workspaceMode === 'simulation' ? 'bg-[#0B2233] text-simulation' : 'bg-surface-raised text-text-secondary'}`}
-          >
-            {props.realHardwareConnected ? (language === 'zh' ? '断开 → 预演' : 'DISCONNECT → DRY RUN') : (language === 'zh' ? '预演' : 'DRY RUN')}
-          </button>
-        </div>
       </div>
       <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3">
         <nav className="flex shrink-0 items-center gap-2" aria-label={language === 'zh' ? '项目操作' : 'Project actions'}>
           <FileMenu {...props} />
-          {realMode ? (
-            <button data-real-hardware-focus type="button" onClick={props.onFocusRealHardware} className="h-8 shrink-0 whitespace-nowrap border border-status-warning-edge bg-status-warning-surface px-3 text-[13px] font-semibold text-status-warning">
-              {props.realHardwareConnected
-                ? (language === 'zh' ? '设备控制' : 'Device Controls')
-                : (language === 'zh' ? '连接设备' : 'Connect Device')}
-            </button>
-          ) : (
-            <>
-              <button data-simulation-toolbar-action="quick-start" type="button" onClick={props.onQuickStart} className="h-8 shrink-0 whitespace-nowrap border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_quick_start')}</button>
-              <button data-simulation-toolbar-action="actions" data-action-composer-trigger type="button" onClick={props.onActions} className="h-8 shrink-0 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary">{language === 'zh' ? '自定义动作' : 'Actions'}{customActionCount ? ` (${customActionCount})` : ''}</button>
-              <button data-simulation-toolbar-action="marketplace" data-marketplace-trigger type="button" title={language === 'zh' ? '仅声明式仿真资产；生态是路线图第二章，不授予任何真机权限' : 'Declarative simulation assets only; the ecosystem is chapter two of the roadmap and grants no real-device authority'} onClick={props.onMarketplace} className="h-8 shrink-0 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-secondary hover:text-text-primary">Marketplace</button>
-            </>
-          )}
+          <button data-real-hardware-focus type="button" onClick={props.onFocusRealHardware} className="h-8 shrink-0 whitespace-nowrap border border-status-warning-edge bg-status-warning-surface px-3 text-[13px] font-semibold text-status-warning">
+            {props.realHardwareConnected
+              ? (language === 'zh' ? '设备控制' : 'Device Controls')
+              : (language === 'zh' ? '连接设备' : 'Connect Device')}
+          </button>
+          <button data-toolbar-action="quick-start" type="button" onClick={props.onQuickStart} className="h-8 shrink-0 whitespace-nowrap border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_quick_start')}</button>
+          <button data-toolbar-action="actions" data-action-composer-trigger type="button" onClick={props.onActions} className="h-8 shrink-0 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary">{language === 'zh' ? '自定义动作' : 'Actions'}{customActionCount ? ` (${customActionCount})` : ''}</button>
         </nav>
         <div className="flex min-w-0 items-center gap-2 border-l border-border pl-3">
-          {realMode ? (
-            <>
-              <span data-real-connection-state={props.realHardwareConnected ? 'connected' : 'disconnected'} className={`h-7 shrink-0 border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${props.realHardwareConnected ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>{props.realHardwareConnected ? (language === 'zh' ? '设备已连接' : 'Device connected') : (language === 'zh' ? '设备未连接' : 'Device not connected')}</span>
-              <span className="hidden text-[10px] font-bold uppercase tracking-[0.12em] text-status-warning xl:inline">{language === 'zh' ? '门控执行 · 仅限右侧边界' : 'GATED · RIGHT BOUNDARY ONLY'}</span>
-            </>
-          ) : (
-            <>
-              <span className={`h-7 shrink-0 border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${resultClass}`}>{resultText}</span>
-              <span className="h-6 w-px shrink-0 bg-border" />
-              <button data-simulation-toolbar-action="export-report" type="button" onClick={props.onExportReport} disabled={!hasReport} className="h-8 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary disabled:opacity-40">{t(language, 'app_export_report')}</button>
-              <button data-simulation-toolbar-action="export-receipt" type="button" title={language === 'zh' ? '导出防篡改的审计回执（JSON + Markdown + 可打印 HTML）' : 'Export a tamper-evident audit receipt (JSON + Markdown + printable HTML)'} onClick={props.onExportReceipt} disabled={!hasReport} className="h-8 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary disabled:opacity-40">{language === 'zh' ? '导出审计回执' : 'Export Receipt'}</button>
-              <button data-simulation-toolbar-action="export-adapter" type="button" onClick={props.onExportAdapter} className="h-8 whitespace-nowrap border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_export_adapter_package')}</button>
-            </>
-          )}
+          <span data-real-connection-state={props.realHardwareConnected ? 'connected' : 'disconnected'} className={`h-7 shrink-0 border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${props.realHardwareConnected ? 'border-status-executed-edge bg-status-executed-surface text-status-executed-soft' : 'border-status-warning-edge bg-status-warning-surface text-status-warning'}`}>{props.realHardwareConnected ? (language === 'zh' ? '设备已连接' : 'Device connected') : (language === 'zh' ? '设备未连接' : 'Device not connected')}</span>
+          <span className={`h-7 shrink-0 border px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide ${resultClass}`}>{resultText}</span>
+          <span className="hidden text-[10px] font-bold uppercase tracking-[0.12em] text-status-warning xl:inline">{language === 'zh' ? '门控执行 · 仅限右侧边界' : 'GATED · RIGHT BOUNDARY ONLY'}</span>
+          <span className="h-6 w-px shrink-0 bg-border" />
+          <button data-toolbar-action="export-report" type="button" onClick={props.onExportReport} disabled={!hasReport} className="h-8 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary disabled:opacity-40">{t(language, 'app_export_report')}</button>
+          <button data-toolbar-action="export-receipt" type="button" title={language === 'zh' ? '导出防篡改的审计回执（JSON + Markdown + 可打印 HTML）' : 'Export a tamper-evident audit receipt (JSON + Markdown + printable HTML)'} onClick={props.onExportReceipt} disabled={!hasReport} className="h-8 whitespace-nowrap border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-primary disabled:opacity-40">{language === 'zh' ? '导出审计回执' : 'Export Receipt'}</button>
+          <button data-toolbar-action="export-adapter" type="button" onClick={props.onExportAdapter} className="h-8 whitespace-nowrap border border-accent px-3 text-[13px] font-semibold text-accent">{t(language, 'app_export_adapter_package')}</button>
           <select data-interface-language value={language} onChange={(event) => props.onLanguageChange(event.target.value as UiLanguage)} aria-label={language === 'zh' ? '界面语言' : 'Interface language'} className="h-8 w-20 border border-border bg-surface-raised px-2 text-[12px] text-text-primary"><option value="zh">中文</option><option value="en">English</option></select>
         </div>
       </div>

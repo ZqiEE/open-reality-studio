@@ -9,7 +9,7 @@ export interface StartupShellOptions {
 
 const copy = {
   zh: {
-    brand: 'RealityWarden 桌面端',
+    brand: 'RLSOK ReleaseGate',
     cold_start: ['系统初始化中', '正在加载本地应用服务。'],
     initializing: ['系统仍在初始化', '本地应用服务启动时间较长，完成后将自动进入工作台。'],
     recoverable_error: ['启动异常', '本地应用服务未能启动。你可以安全地重试或退出。'],
@@ -24,7 +24,7 @@ const copy = {
     evidence: '界面状态不代表硬件传输结果。请以 Audit Evidence 审计证据核实真实硬件执行状态。'
   },
   en: {
-    brand: 'RealityWarden Desktop',
+    brand: 'RLSOK ReleaseGate',
     cold_start: ['Initializing system', 'Loading the local application service.'],
     initializing: ['Initialization is taking longer', 'The local application service is still starting. The workspace will open automatically.'],
     recoverable_error: ['Startup fault', 'The local application service could not start. You can safely retry or exit.'],
