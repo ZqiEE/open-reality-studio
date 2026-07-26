@@ -45,7 +45,6 @@ for (const required of [
   'dist-electron-runtime/lib/hardware/RealExecutionReleaseApproval.js',
   '.next-build/BUILD_ID',
   'node_modules/next/dist/bin/next',
-  'node_modules/pdfjs-dist/package.json',
   'node_modules/serialport/package.json',
   'assets/branding/realitywarden.ico'
 ]) {
@@ -55,7 +54,6 @@ for (const required of [
 const packagedMetadata = JSON.parse(asar.extractFile(asarPath, 'package.json').toString('utf8'));
 assert.equal(packagedMetadata.version, packageJson.version, 'packaged app version must match package.json');
 assert.equal(packagedMetadata.main, 'dist-electron/main.js', 'packaged app main entry must target the compiled Electron process');
-assert.equal(packagedMetadata.dependencies?.['pdfjs-dist'], '4.10.38', 'packaged app must retain the pinned PDF extraction runtime');
 
 // Next 16 (Turbopack) emits flat hash-named chunks under static/chunks/ rather
 // than the older app/page-[hash].js layout. Scan every top-level JS chunk so
@@ -103,7 +101,7 @@ if (fs.existsSync(sourceMarketplaceDistribution)) {
 }
 if (productionRelease && !fs.existsSync(sourceMarketplaceDistribution)) throw new Error('production package verification requires the provisioned Marketplace distribution config');
 
-const executable = path.join(releaseDir, 'win-unpacked', 'RealityWarden.exe');
+const executable = path.join(releaseDir, 'win-unpacked', 'RLSOK.exe');
 const supportDir = path.join(resourcesDir, 'support');
 for (const required of ['SUPPORT.md', 'SUPPORT.html', 'WINDOWS_TRIAL_GUIDE.md', 'EVALUATION_GUIDE.md', 'REAL_HARDWARE_ESP32.md', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES.html']) {
   assert(fs.existsSync(path.join(supportDir, required)), `packaged offline support resource missing: ${required}`);
@@ -124,11 +122,11 @@ assert(packagedNotices.includes('CycloneDX') && packagedNotices.includes('UR5e d
 assert(fs.existsSync(executable), 'branded RealityWarden executable is missing from win-unpacked');
 assert(fs.existsSync(path.join(root, packageJson.build.win.icon)), 'configured Windows icon is missing');
 assert.equal(packageJson.build.afterPack, 'scripts/after-pack.cjs', 'Windows branding hook must run after packaging');
-assert.equal(packageJson.build.win.executableName, 'RealityWarden', 'Windows executable name must stay branded');
+assert.equal(packageJson.build.win.executableName, 'RLSOK', 'Windows executable name must stay branded');
 assert.equal(packageJson.build.nsis.installerIcon, packageJson.build.win.icon, 'NSIS installer must use the branded icon');
 assert.equal(packageJson.build.nsis.uninstallerIcon, packageJson.build.win.icon, 'NSIS uninstaller must use the branded icon');
 
-const installerName = `RealityWarden-${packageJson.version}-Setup.exe`;
+const installerName = `RLSOK-${packageJson.version}-Setup.exe`;
 const installer = path.join(releaseDir, installerName);
 assert(fs.existsSync(installer), `NSIS installer missing: ${installerName}`);
 assert(fs.statSync(installer).size > 1024 * 1024, 'NSIS installer is unexpectedly small');

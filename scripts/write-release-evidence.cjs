@@ -74,24 +74,24 @@ function readSourceRevision(root) {
 function buildReleaseEvidence(root, generatedAt = new Date().toISOString(), options = {}) {
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const releaseDir = path.join(root, 'release');
-  const installerName = `RealityWarden-${packageJson.version}-Setup.exe`;
+  const installerName = `RLSOK-${packageJson.version}-Setup.exe`;
   const installer = requireFile(path.join(releaseDir, installerName), 'NSIS installer');
-  const executable = requireFile(path.join(releaseDir, 'win-unpacked', 'RealityWarden.exe'), 'Packaged executable');
+  const executable = requireFile(path.join(releaseDir, 'win-unpacked', 'RLSOK.exe'), 'Packaged executable');
   const installerSha256 = sha256File(installer);
   const executableSha256 = sha256File(executable);
   const buildIdFile = requireFile(path.join(releaseDir, 'win-unpacked', 'resources', 'app.asar.unpacked', '.next-build', 'BUILD_ID'), 'Packaged Next BUILD_ID');
-  const lifecycleName = `RealityWarden-${packageJson.version}-Install-Lifecycle.json`;
+  const lifecycleName = `RLSOK-${packageJson.version}-Install-Lifecycle.json`;
   const lifecycleFile = requireFile(path.join(releaseDir, lifecycleName), 'Windows install lifecycle evidence');
   const lifecycleHashFile = requireFile(`${lifecycleFile}.sha256`, 'Windows install lifecycle evidence checksum');
   const lifecycleHash = sha256File(lifecycleFile);
   const recordedLifecycleHash = fs.readFileSync(lifecycleHashFile, 'utf8').trim().split(/\s+/)[0].toUpperCase();
   if (recordedLifecycleHash !== lifecycleHash) throw new Error(`Windows install lifecycle evidence checksum mismatch: ${lifecycleName}`);
   const lifecycle = validateLifecycleEvidence(JSON.parse(fs.readFileSync(lifecycleFile, 'utf8')), packageJson.version, installerSha256);
-  const designName = `RealityWarden-${packageJson.version}-Design-Acceptance.json`;
+  const designName = `RLSOK-${packageJson.version}-Design-Acceptance.json`;
   const designFile = requireFile(path.join(releaseDir, designName), 'Product-design acceptance evidence');
   const designHash = requireMatchingChecksum(designFile, 'Product-design acceptance evidence');
   const design = validateDesignEvidence(JSON.parse(fs.readFileSync(designFile, 'utf8')));
-  const startupName = `RealityWarden-${packageJson.version}-Startup-Acceptance.json`;
+  const startupName = `RLSOK-${packageJson.version}-Startup-Acceptance.json`;
   const startupFile = requireFile(path.join(releaseDir, startupName), 'Startup-design acceptance evidence');
   const startupHash = requireMatchingChecksum(startupFile, 'Startup-design acceptance evidence');
   const startup = validateStartupEvidence(JSON.parse(fs.readFileSync(startupFile, 'utf8')));
@@ -99,11 +99,11 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString(), opti
   let codeSigning = { status: 'not_assessed', evidence_file: null, evidence_sha256: null, artifacts: [] };
   let legalRelease = { status: 'not_assessed', input_manifest_sha256: null, publisher: null, sales_jurisdictions: [], documents: {} };
   if (productionRelease) {
-    const signingName = `RealityWarden-${packageJson.version}-Authenticode-Evidence.json`;
+    const signingName = `RLSOK-${packageJson.version}-Authenticode-Evidence.json`;
     const signingFile = requireFile(path.join(releaseDir, signingName), 'Windows Authenticode evidence');
     const signingHash = requireMatchingChecksum(signingFile, 'Windows Authenticode evidence');
     const signing = validateAuthenticodeEvidence(JSON.parse(fs.readFileSync(signingFile, 'utf8')), packageJson.version, {
-      'win-unpacked/RealityWarden.exe': executableSha256,
+      'win-unpacked/RLSOK.exe': executableSha256,
       [installerName]: installerSha256
     });
     codeSigning = { status: 'passed', evidence_file: signingName, evidence_sha256: signingHash, artifacts: signing.artifacts };
@@ -137,7 +137,7 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString(), opti
       sha256: installerSha256
     },
     packaged_app: {
-      executable: 'win-unpacked/RealityWarden.exe',
+      executable: 'win-unpacked/RLSOK.exe',
       size_bytes: fs.statSync(executable).size,
       sha256: executableSha256,
       next_build_id: fs.readFileSync(buildIdFile, 'utf8').trim()
@@ -188,7 +188,7 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString(), opti
       {
         id: 'windows-authenticode',
         status: productionRelease ? 'passed' : 'not_assessed',
-        evidence: productionRelease ? 'Both packaged RealityWarden.exe and the NSIS installer have Valid timestamped Authenticode signatures bound to exact artifact digests' : 'Internal acceptance package; Authenticode was not assessed'
+        evidence: productionRelease ? 'Both packaged RLSOK.exe and the NSIS installer have Valid timestamped Authenticode signatures bound to exact artifact digests' : 'Internal acceptance package; Authenticode was not assessed'
       },
       {
         id: 'owner-legal-release-inputs',
@@ -208,7 +208,7 @@ function buildReleaseEvidence(root, generatedAt = new Date().toISOString(), opti
 function writeReleaseEvidence(root, generatedAt, options) {
   const evidence = buildReleaseEvidence(root, generatedAt, options);
   const releaseDir = path.join(root, 'release');
-  const evidenceName = `RealityWarden-${evidence.release_version}-Release-Evidence.json`;
+  const evidenceName = `RLSOK-${evidence.release_version}-Release-Evidence.json`;
   const evidencePath = path.join(releaseDir, evidenceName);
   const serialized = `${JSON.stringify(evidence, null, 2)}\n`;
   fs.writeFileSync(evidencePath, serialized, 'utf8');

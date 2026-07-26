@@ -53,8 +53,8 @@ function inspectAuthenticode(filePath) {
 function buildAuthenticodeEvidence(root, version, generatedAt = new Date().toISOString()) {
   const releaseDir = path.join(root, 'release');
   const targets = [
-    { file: 'win-unpacked/RealityWarden.exe', absolute: path.join(releaseDir, 'win-unpacked', 'RealityWarden.exe') },
-    { file: `RealityWarden-${version}-Setup.exe`, absolute: path.join(releaseDir, `RealityWarden-${version}-Setup.exe`) }
+    { file: 'win-unpacked/RLSOK.exe', absolute: path.join(releaseDir, 'win-unpacked', 'RLSOK.exe') },
+    { file: `RLSOK-${version}-Setup.exe`, absolute: path.join(releaseDir, `RLSOK-${version}-Setup.exe`) }
   ];
   return {
     schema: 'realitywarden.windows-authenticode-evidence',
@@ -89,7 +89,7 @@ function validateAuthenticodeEvidence(evidence, version, expectedDigests) {
 function writeAuthenticodeEvidence(root, version) {
   const evidence = buildAuthenticodeEvidence(root, version);
   const releaseDir = path.join(root, 'release');
-  const name = `RealityWarden-${version}-Authenticode-Evidence.json`;
+  const name = `RLSOK-${version}-Authenticode-Evidence.json`;
   const evidencePath = path.join(releaseDir, name);
   const serialized = `${JSON.stringify(evidence, null, 2)}\n`;
   fs.writeFileSync(evidencePath, serialized, 'utf8');

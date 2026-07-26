@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const LIFECYCLE_PREFIX = 'RealityWarden-install-lifecycle-';
+const LIFECYCLE_PREFIX = 'RLSOK-install-lifecycle-';
 
 function sha256File(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex').toUpperCase();
@@ -25,7 +25,7 @@ function assertSafeLifecycleRoot(candidate) {
   return resolved;
 }
 
-function queryRealityWardenRegistrations() {
+function queryRlsokRegistrations() {
   const roots = [
     'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
     'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
@@ -34,7 +34,7 @@ function queryRealityWardenRegistrations() {
   const matches = [];
   for (const root of roots) {
     try {
-      const output = execFileSync('reg.exe', ['query', root, '/s', '/f', 'RealityWarden', '/d'], {
+      const output = execFileSync('reg.exe', ['query', root, '/s', '/f', 'RLSOK', '/d'], {
         encoding: 'utf8',
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'ignore']
@@ -55,7 +55,7 @@ function findInstalledExecutable(lifecycleRoot) {
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const absolute = path.join(current, entry.name);
       if (entry.isDirectory()) pending.push(absolute);
-      else if (entry.name.toLowerCase() === 'realitywarden.exe') return absolute;
+      else if (entry.name.toLowerCase() === 'rlsok.exe') return absolute;
     }
   }
   return null;
@@ -101,7 +101,7 @@ function validateLifecycleEvidence(evidence, expectedVersion, expectedInstallerH
 
 function writeLifecycleEvidence(root, evidence) {
   const releaseDir = path.join(root, 'release');
-  const name = `RealityWarden-${evidence.release_version}-Install-Lifecycle.json`;
+  const name = `RLSOK-${evidence.release_version}-Install-Lifecycle.json`;
   const target = path.join(releaseDir, name);
   const serialized = `${JSON.stringify(evidence, null, 2)}\n`;
   fs.writeFileSync(target, serialized, 'utf8');
@@ -113,12 +113,12 @@ function writeLifecycleEvidence(root, evidence) {
 function verifyWindowsInstallLifecycle(root, generatedAt = new Date().toISOString()) {
   assert.equal(process.platform, 'win32', 'The NSIS lifecycle gate must run on Windows.');
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  const installerName = `RealityWarden-${packageJson.version}-Setup.exe`;
+  const installerName = `RLSOK-${packageJson.version}-Setup.exe`;
   const installer = path.join(root, 'release', installerName);
   assert(fs.existsSync(installer), `Installer missing: ${installer}`);
 
-  const preexisting = queryRealityWardenRegistrations();
-  assert.equal(preexisting.length, 0, `Refusing to alter an existing RealityWarden installation:\n${preexisting.join('\n')}`);
+  const preexisting = queryRlsokRegistrations();
+  assert.equal(preexisting.length, 0, `Refusing to alter an existing RLSOK installation:\n${preexisting.join('\n')}`);
 
   const lifecycleRoot = assertSafeLifecycleRoot(fs.mkdtempSync(path.join(os.tmpdir(), LIFECYCLE_PREFIX)));
   const installBase = path.join(lifecycleRoot, 'install');
@@ -132,11 +132,11 @@ function verifyWindowsInstallLifecycle(root, generatedAt = new Date().toISOStrin
   try {
     runExecutable(installer, ['/S', '/currentuser', `/D=${installBase}`], path.dirname(installer));
     installedExecutable = findInstalledExecutable(lifecycleRoot);
-    assert(installedExecutable, `Silent installer did not create RealityWarden.exe below ${lifecycleRoot}`);
+    assert(installedExecutable, `Silent installer did not create RLSOK.exe below ${lifecycleRoot}`);
     const installDir = path.dirname(installedExecutable);
-    uninstaller = path.join(installDir, 'Uninstall RealityWarden.exe');
+    uninstaller = path.join(installDir, 'Uninstall RLSOK.exe');
     assert(fs.existsSync(uninstaller), 'Installed NSIS uninstaller is missing.');
-    assert(queryRealityWardenRegistrations().some((entry) => entry.toLowerCase().includes(installDir.toLowerCase())), 'Per-user uninstall registration must point at the isolated installation.');
+    assert(queryRlsokRegistrations().some((entry) => entry.toLowerCase().includes(installDir.toLowerCase())), 'Per-user uninstall registration must point at the isolated installation.');
 
     runExecutable(installedExecutable, ['--prod', '--journey-smoke-test', `--user-data-dir=${profileDir}`], installDir);
     runExecutable(installedExecutable, ['--prod', '--smoke-test', '--offline-smoke-test', `--user-data-dir=${profileDir}`], installDir);
@@ -149,7 +149,7 @@ function verifyWindowsInstallLifecycle(root, generatedAt = new Date().toISOStrin
     assert(fs.existsSync(sentinel), 'In-place reinstall must preserve user data.');
     runExecutable(installedExecutable, ['--prod', '--smoke-test', `--user-data-dir=${profileDir}`], path.dirname(installedExecutable));
 
-    uninstaller = path.join(path.dirname(installedExecutable), 'Uninstall RealityWarden.exe');
+    uninstaller = path.join(path.dirname(installedExecutable), 'Uninstall RLSOK.exe');
     // The uninstaller copies itself to a temporary process. Its working directory
     // must be outside INSTDIR or Windows can keep the otherwise-empty directory locked.
     runExecutable(uninstaller, ['/S', '/currentuser'], lifecycleRoot);

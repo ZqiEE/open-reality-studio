@@ -2,7 +2,7 @@
   "name": "open-reality-interface",
   "version": "0.5.1",
   "private": true,
-  "description": "RealityWarden — the neutral, evidence-grade safety gateway between AI intent and real actuators: every action gated, refusable, and receipted.",
+  "description": "Executable robot policy release control for ROS 2 and learned robot policies.",
   "author": "ZqiEE",
   "engines": {
     "node": ">=22.12.0",
@@ -12,12 +12,19 @@
     "postcss": "8.5.15"
   },
   "main": "dist-electron/main.js",
+  "bin": {
+    "rlsok": "scripts/run-rw.cjs",
+    "rw": "scripts/run-rw.cjs"
+  },
   "scripts": {
-    "dev": "node scripts/start-next-dev.cjs",
+    "dev": "node scripts/run-rw.cjs --help",
+    "lab": "node scripts/start-next-dev.cjs",
+    "lab:start": "next start",
+    "lab:build": "node scripts/run-next-build.cjs",
     "desktop": "node scripts/start-electron.cjs",
     "desktop:start": "node scripts/start-electron.cjs",
     "desktop:dev": "node scripts/build-electron.cjs && electron dist-electron/main.js",
-    "desktop:build": "npm run build && node scripts/build-electron.cjs",
+    "desktop:build": "npm run lab:build && node scripts/build-electron.cjs",
     "desktop:pack": "npm run desktop:build && node scripts/pack-electron.cjs",
     "desktop:pack:production": "npm run desktop:build && node scripts/verify-marketplace-release-config.cjs && node scripts/pack-electron.cjs --production-release",
     "release:prepare-public": "node scripts/prepare-public-release.cjs",
@@ -29,8 +36,10 @@
     "desktop:smoke": "npm run desktop:build && electron dist-electron/main.js --prod --smoke-test",
     "desktop:design-acceptance": "npm run desktop:build && node scripts/run-product-design-acceptance.cjs",
     "desktop:startup-acceptance": "npm run desktop:build && node scripts/run-startup-design-acceptance.cjs",
-    "build": "node scripts/run-next-build.cjs",
-    "start": "next start",
+    "build": "npm run build:core",
+    "build:core": "tsc --noEmit",
+    "start": "node scripts/run-rw.cjs --help",
+    "daemon": "node scripts/run-rlsok-daemon.cjs",
     "typecheck": "tsc --noEmit",
     "build:tests": "node scripts/build-tests.cjs",
     "test:fast": "node scripts/run-fast-tests.cjs",
@@ -93,7 +102,7 @@
     "hardware:diagnose": "node scripts/run-hardware-diagnose.cjs",
     "hardware:acceptance": "node scripts/acceptance-walkthrough.cjs",
     "assets:real": "node scripts/convert-real-device-assets.mjs",
-    "verify": "npm run typecheck && npm run build && npm run test:conformance && npm run test:virtual-lab && npm run test:desktop && npm run test:support && npm run test:accessibility && npm run test:assets && npm run test:release && npm run test:launch-closure && npm run test:protocol && npm run test:adapter-sdk && npm run test:sdk-conformance && npm run test:sdk-scaffold && npm run test:sdk-submit && npm run test:sdk-onramp && npm run test:standard-catalog && npm run test:sdk-review && npm run test:sdk-publish && npm run test:ecosystem-chain && npm run test:sdk-catalog-build && npm run test:sdk-overview && npm run test:governance && npm run test:device-onboarding && npm run test:action-runtime && npm run test:compiler && npm run test:autonomy && npm run test:open-reality-runtime && npm run test:plain-language && npm run test:local-runtime && npm run test:reality-assets && npm run test:reality-asset-import && npm run test:reality-asset-devkit && npm run test:marketplace && npm run test:reporting && npm run test:receipt && npm run test:real-hardware && npm run test:reference-servo-angle-track && npm run test:servo-twin && npm run test:reference-servo-preflight && npm run test:reference-servo-preflight-view && npm run test:reference-servo-preflight-audit && npm run test:servo-intent && npm run test:virtual-loopback && npm run test:llm-compiler && npm run test:action-manifest && npm run test:manual-import",
+    "verify": "npm run typecheck && npm run build && npm run test:releasegate && npm run test:conformance && npm run test:virtual-lab && npm run test:desktop && npm run test:support && npm run test:accessibility && npm run test:assets && npm run test:release && npm run test:launch-closure && npm run test:protocol && npm run test:adapter-sdk && npm run test:sdk-conformance && npm run test:sdk-scaffold && npm run test:sdk-submit && npm run test:sdk-onramp && npm run test:standard-catalog && npm run test:sdk-review && npm run test:sdk-publish && npm run test:ecosystem-chain && npm run test:sdk-catalog-build && npm run test:sdk-overview && npm run test:governance && npm run test:device-onboarding && npm run test:action-runtime && npm run test:compiler && npm run test:autonomy && npm run test:open-reality-runtime && npm run test:plain-language && npm run test:local-runtime && npm run test:reality-assets && npm run test:reality-asset-import && npm run test:reality-asset-devkit && npm run test:marketplace && npm run test:reporting && npm run test:receipt && npm run test:real-hardware && npm run test:reference-servo-angle-track && npm run test:servo-twin && npm run test:reference-servo-preflight && npm run test:reference-servo-preflight-view && npm run test:reference-servo-preflight-audit && npm run test:servo-intent && npm run test:virtual-loopback && npm run test:llm-compiler && npm run test:action-manifest && npm run test:manual-import",
     "lint": "eslint .",
     "test:virtual-loopback": "node -e \"const { execSync } = require('node:child_process'); const fs = require('node:fs'); const tmp = '.tmp-virtual-loopback-test'; if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); try { execSync('npx tsc -p tsconfig.json --outDir ' + tmp + ' --module commonjs --moduleResolution node --noEmit false', { stdio: 'inherit' }); execSync('node ' + tmp + '/tests/real-hardware/virtualLoopbackAcceptance.test.js', { stdio: 'inherit' }); } finally { if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); }\"",
     "hardware:flash": "node scripts/flashFirmware.cjs",
@@ -101,11 +110,25 @@
     "marketplace:catalog:publish": "node scripts/run-marketplace-catalog-publish.cjs",
     "marketplace:live:verify": "node scripts/run-marketplace-live-verify.cjs",
     "marketplace:provision": "node scripts/run-marketplace-provision.cjs",
-    "test:marketplace": "node -e \"const { execSync } = require('node:child_process'); const fs = require('node:fs'); const tmp = '.tmp-marketplace-test'; if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); try { execSync('npx tsc -p tsconfig.json --outDir ' + tmp + ' --module commonjs --moduleResolution node --noEmit false', { stdio: 'inherit' }); execSync('node ' + tmp + '/tests/marketplace/marketplace.test.js', { stdio: 'inherit' }); } finally { if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); }\""
+    "test:marketplace": "node -e \"const { execSync } = require('node:child_process'); const fs = require('node:fs'); const tmp = '.tmp-marketplace-test'; if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); try { execSync('npx tsc -p tsconfig.json --outDir ' + tmp + ' --module commonjs --moduleResolution node --noEmit false', { stdio: 'inherit' }); execSync('node ' + tmp + '/tests/marketplace/marketplace.test.js', { stdio: 'inherit' }); } finally { if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); }\"",
+    "rw": "node scripts/run-rw.cjs",
+    "rlsok": "node scripts/run-rw.cjs",
+    "test:releasegate": "node scripts/run-releasegate-tests.cjs",
+    "test:exec-spec": "node scripts/run-releasegate-tests.cjs exec-spec",
+    "test:release-policy": "node scripts/run-releasegate-tests.cjs release-policy",
+    "test:release-diff": "node scripts/run-releasegate-tests.cjs release-diff",
+    "test:release-revocation": "node scripts/run-releasegate-tests.cjs release-revocation",
+    "test:execution-gate": "node scripts/run-releasegate-tests.cjs execution-gate",
+    "test:shadow-mode": "node scripts/run-releasegate-tests.cjs shadow-mode",
+    "test:evidence": "node scripts/run-releasegate-tests.cjs evidence",
+    "test:fail-closed": "node scripts/run-releasegate-tests.cjs fail-closed",
+    "test:no-bypass": "node scripts/run-releasegate-tests.cjs no-bypass",
+    "test:adapter-contract": "node scripts/run-releasegate-tests.cjs adapter-contract",
+    "test:product-boundary": "node scripts/run-releasegate-tests.cjs product-boundary"
   },
   "build": {
     "appId": "com.realitywarden.desktop",
-    "productName": "RealityWarden",
+    "productName": "RLSOK",
     "icon": "assets/branding/realitywarden.ico",
     "asar": true,
     "npmRebuild": false,
@@ -175,7 +198,7 @@
     },
     "win": {
       "icon": "assets/branding/realitywarden.ico",
-      "executableName": "RealityWarden",
+      "executableName": "RLSOK",
       "signAndEditExecutable": true,
       "target": [
         {
@@ -185,7 +208,7 @@
           ]
         }
       ],
-      "artifactName": "RealityWarden-${version}-Setup.${ext}"
+      "artifactName": "RLSOK-${version}-Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -194,8 +217,8 @@
       "runAfterFinish": false,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "RealityWarden",
-      "uninstallDisplayName": "RealityWarden",
+      "shortcutName": "RLSOK",
+      "uninstallDisplayName": "RLSOK",
       "deleteAppDataOnUninstall": false,
       "installerIcon": "assets/branding/realitywarden.ico",
       "uninstallerIcon": "assets/branding/realitywarden.ico"
@@ -207,7 +230,7 @@
     "@types/three": "^0.164.0",
     "esptool-js": "0.6.0",
     "next": "^16.2.10",
-    "pdfjs-dist": "4.10.38",
+    "js-yaml": "^4.3.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "serialport": "^13.0.0",

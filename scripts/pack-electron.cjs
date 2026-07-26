@@ -33,7 +33,7 @@ execFileSync(process.execPath, [path.join(__dirname, 'verify-electron-package.cj
   windowsHide: true
 });
 
-const packagedExecutable = path.join(root, 'release', 'win-unpacked', 'RealityWarden.exe');
+const packagedExecutable = path.join(root, 'release', 'win-unpacked', 'RLSOK.exe');
 const smokeEnvironment = { ...process.env };
 delete smokeEnvironment.ELECTRON_RUN_AS_NODE;
 execFileSync(packagedExecutable, ['--prod', '--smoke-test'], {
@@ -47,7 +47,7 @@ execFileSync(packagedExecutable, ['--prod', '--smoke-test'], {
 console.log('Packaged desktop first-run renderer smoke test passed.');
 
 const packageJson = require(path.join(root, 'package.json'));
-const startupEvidencePath = path.join(root, 'release', `RealityWarden-${packageJson.version}-Startup-Acceptance.json`);
+const startupEvidencePath = path.join(root, 'release', `RLSOK-${packageJson.version}-Startup-Acceptance.json`);
 execFileSync(packagedExecutable, ['--prod', '--startup-design-smoke-test'], {
   cwd: path.dirname(packagedExecutable),
   env: { ...smokeEnvironment, ORS_STARTUP_DESIGN_EVIDENCE_PATH: startupEvidencePath },
@@ -58,7 +58,7 @@ execFileSync(packagedExecutable, ['--prod', '--startup-design-smoke-test'], {
 
 console.log('Packaged desktop startup-design acceptance passed.');
 
-const designEvidencePath = path.join(root, 'release', `RealityWarden-${packageJson.version}-Design-Acceptance.json`);
+const designEvidencePath = path.join(root, 'release', `RLSOK-${packageJson.version}-Design-Acceptance.json`);
 execFileSync(packagedExecutable, ['--prod', '--design-smoke-test'], {
   cwd: path.dirname(packagedExecutable),
   env: { ...smokeEnvironment, ORS_DESIGN_EVIDENCE_PATH: designEvidencePath },

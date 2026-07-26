@@ -70,7 +70,7 @@ recorded as `command_acknowledged_open_loop` with
 Expected Windows artifact:
 
 ```text
-release/RealityWarden-0.5.1-Setup.exe
+release/RLSOK-0.5.1-Setup.exe
 ```
 
 ## Known limitations

@@ -61,7 +61,7 @@ function buildSupplyChainArtifacts(root, options = {}) {
   if (!Array.isArray(sbom.components) || !Array.isArray(sbom.dependencies)) throw new Error('CycloneDX SBOM component/dependency inventory is incomplete');
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   parseIso(generatedAt, 'supply-chain generated_at');
-  const sbomName = `RealityWarden-${packageJson.version}-SBOM.cdx.json`;
+  const sbomName = `RLSOK-${packageJson.version}-SBOM.cdx.json`;
   const sbomBytes = `${JSON.stringify(sbom, null, 2)}\n`;
   const lockSha256 = sha256Bytes(fs.readFileSync(lockPath));
   const evidence = {
@@ -103,7 +103,7 @@ function writeSupplyChainEvidence(root, options = {}) {
   const releaseDir = path.join(root, 'release');
   fs.mkdirSync(releaseDir, { recursive: true });
   const sbomPath = path.join(releaseDir, built.evidence.sbom.file);
-  const evidenceName = `RealityWarden-${built.evidence.release_version}-Supply-Chain-Evidence.json`;
+  const evidenceName = `RLSOK-${built.evidence.release_version}-Supply-Chain-Evidence.json`;
   const evidencePath = path.join(releaseDir, evidenceName);
   const outputs = [sbomPath, `${sbomPath}.sha256`, evidencePath, `${evidencePath}.sha256`];
   if (outputs.some((file) => fs.existsSync(file))) throw new Error('supply-chain output already exists; overwrite is refused');

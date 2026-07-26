@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-const evidencePath = path.join(root, 'release', `RealityWarden-${packageJson.version}-Design-Acceptance.json`);
+const evidencePath = path.join(root, 'release', `RLSOK-${packageJson.version}-Design-Acceptance.json`);
 const electron = require('electron');
 const environment = { ...process.env, ORS_DESIGN_EVIDENCE_PATH: evidencePath };
 delete environment.ELECTRON_RUN_AS_NODE;

@@ -34,7 +34,7 @@ Other built-in device families are visible in the workspace, but they are still:
 If you already have a packaged installer, the expected Windows installer file looks like:
 
 ```text
-RealityWarden-0.5.1-Setup.exe
+RLSOK-0.5.1-Setup.exe
 ```
 
 Install flow:
@@ -71,15 +71,15 @@ npm run desktop:pack
 Expected output:
 
 ```text
-release/RealityWarden-0.5.1-Setup.exe
-release/RealityWarden-0.5.1-Startup-Acceptance.json
-release/RealityWarden-0.5.1-Startup-Acceptance.json.sha256
-release/RealityWarden-0.5.1-Design-Acceptance.json
-release/RealityWarden-0.5.1-Design-Acceptance.json.sha256
-release/RealityWarden-0.5.1-Install-Lifecycle.json
-release/RealityWarden-0.5.1-Install-Lifecycle.json.sha256
-release/RealityWarden-0.5.1-Release-Evidence.json
-release/RealityWarden-0.5.1-Release-Evidence.json.sha256
+release/RLSOK-0.5.1-Setup.exe
+release/RLSOK-0.5.1-Startup-Acceptance.json
+release/RLSOK-0.5.1-Startup-Acceptance.json.sha256
+release/RLSOK-0.5.1-Design-Acceptance.json
+release/RLSOK-0.5.1-Design-Acceptance.json.sha256
+release/RLSOK-0.5.1-Install-Lifecycle.json
+release/RLSOK-0.5.1-Install-Lifecycle.json.sha256
+release/RLSOK-0.5.1-Release-Evidence.json
+release/RLSOK-0.5.1-Release-Evidence.json.sha256
 ```
 
 The release evidence JSON is written only after package inspection, packaged

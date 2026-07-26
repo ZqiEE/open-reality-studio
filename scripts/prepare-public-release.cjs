@@ -107,11 +107,11 @@ function buildPublicReleaseManifest(root, options = {}) {
   const version = packageJson.version;
   if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('package version is invalid');
   const releaseDir = path.join(root, 'release');
-  const installerName = `RealityWarden-${version}-Setup.exe`;
+  const installerName = `RLSOK-${version}-Setup.exe`;
   const installerPath = path.join(releaseDir, installerName);
   if (!fs.existsSync(installerPath)) throw new Error(`production installer missing: ${installerPath}`);
   const installerSha256 = sha256File(installerPath);
-  const releaseEvidenceName = `RealityWarden-${version}-Release-Evidence.json`;
+  const releaseEvidenceName = `RLSOK-${version}-Release-Evidence.json`;
   const releaseEvidencePath = path.join(releaseDir, releaseEvidenceName);
   const releaseEvidenceSha256 = requireMatchingChecksum(releaseEvidencePath, 'release evidence');
   const releaseEvidence = readJson(releaseEvidencePath, 'release evidence');
@@ -133,13 +133,13 @@ function buildPublicReleaseManifest(root, options = {}) {
     if (recorded?.file !== current.file || recorded?.sha256 !== current.sha256.toUpperCase() || recorded?.size_bytes !== current.size_bytes) throw new Error(`production release evidence legal document changed after packaging: ${id}`);
   }
 
-  const authName = `RealityWarden-${version}-Authenticode-Evidence.json`;
+  const authName = `RLSOK-${version}-Authenticode-Evidence.json`;
   const authPath = path.join(releaseDir, authName);
   const authSha256 = requireMatchingChecksum(authPath, 'Authenticode evidence');
-  const executablePath = path.join(releaseDir, 'win-unpacked', 'RealityWarden.exe');
+  const executablePath = path.join(releaseDir, 'win-unpacked', 'RLSOK.exe');
   const executableSha256 = sha256File(executablePath);
   const auth = validateAuthenticodeEvidence(readJson(authPath, 'Authenticode evidence'), version, {
-    'win-unpacked/RealityWarden.exe': executableSha256,
+    'win-unpacked/RLSOK.exe': executableSha256,
     [installerName]: installerSha256
   });
   const signerThumbprints = new Set(auth.artifacts.map((item) => item.signer.thumbprint));
@@ -149,17 +149,17 @@ function buildPublicReleaseManifest(root, options = {}) {
   const validateDistribution = options.validateDistribution ?? loadDistributionValidator(root);
   const distribution = validateDistribution(rawDistribution);
   if (!distribution.ok) throw new Error(`production Marketplace distribution rejected: ${distribution.detail}`);
-  const liveName = `RealityWarden-${version}-Marketplace-Live-Evidence.json`;
+  const liveName = `RLSOK-${version}-Marketplace-Live-Evidence.json`;
   const livePath = path.join(releaseDir, liveName);
   const liveSha256 = requireMatchingChecksum(livePath, 'Marketplace live evidence');
   const now = options.now ?? new Date().toISOString();
   const live = validateLiveMarketplaceEvidence(readJson(livePath, 'Marketplace live evidence'), distribution.config, now);
 
-  const supplyName = `RealityWarden-${version}-Supply-Chain-Evidence.json`;
+  const supplyName = `RLSOK-${version}-Supply-Chain-Evidence.json`;
   const supplyPath = path.join(releaseDir, supplyName);
   const supplySha256 = requireMatchingChecksum(supplyPath, 'supply-chain evidence');
   const supply = readJson(supplyPath, 'supply-chain evidence');
-  const sbomName = `RealityWarden-${version}-SBOM.cdx.json`;
+  const sbomName = `RLSOK-${version}-SBOM.cdx.json`;
   const sbomPath = path.join(releaseDir, sbomName);
   const sbomSha256 = requireMatchingChecksum(sbomPath, 'CycloneDX SBOM');
   const sbom = readJson(sbomPath, 'CycloneDX SBOM');
@@ -196,8 +196,8 @@ function buildPublicReleaseManifest(root, options = {}) {
     if (!item.size_bytes) item.size_bytes = fs.statSync(absolute).size;
   }
   const legalOutputNames = {
-    eula: `RealityWarden-${version}-EULA.txt`,
-    privacy_notice: `RealityWarden-${version}-Privacy-Notice.txt`
+    eula: `RLSOK-${version}-EULA.txt`,
+    privacy_notice: `RLSOK-${version}-Privacy-Notice.txt`
   };
   for (const id of ['eula', 'privacy_notice']) {
     const source = legal.documents[id];
@@ -230,10 +230,10 @@ function buildPublicReleaseManifest(root, options = {}) {
 function writePublicReleaseManifest(root, options = {}) {
   const manifest = buildPublicReleaseManifest(root, options);
   const releaseDir = path.join(root, 'release');
-  const installerChecksumName = `RealityWarden-${manifest.release_version}-Setup.exe.sha256`;
-  const manifestName = `RealityWarden-${manifest.release_version}-Public-Release-Manifest.json`;
-  const eulaName = `RealityWarden-${manifest.release_version}-EULA.txt`;
-  const privacyName = `RealityWarden-${manifest.release_version}-Privacy-Notice.txt`;
+  const installerChecksumName = `RLSOK-${manifest.release_version}-Setup.exe.sha256`;
+  const manifestName = `RLSOK-${manifest.release_version}-Public-Release-Manifest.json`;
+  const eulaName = `RLSOK-${manifest.release_version}-EULA.txt`;
+  const privacyName = `RLSOK-${manifest.release_version}-Privacy-Notice.txt`;
   const outputNames = [installerChecksumName, eulaName, `${eulaName}.sha256`, privacyName, `${privacyName}.sha256`, manifestName, `${manifestName}.sha256`];
   const outputPaths = outputNames.map((name) => path.join(releaseDir, name));
   if (outputPaths.some((file) => fs.existsSync(file))) throw new Error('public release output already exists; overwrite is refused');
