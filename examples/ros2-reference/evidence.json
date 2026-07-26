@@ -1,0 +1,8 @@
+{
+  "apiVersion": "realitywarden.io/v1alpha1",
+  "kind": "EvidenceBundle",
+  "releaseId": "ros2-shadow-demo-001",
+  "executablePolicyHash": "9ede19f52a7341deef2f5043762dc229d4d25f9838273451a391f552257e1fb4",
+  "createdAt": "2026-07-26T12:00:00.000Z",
+  "entries": []
+}

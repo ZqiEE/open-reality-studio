@@ -1,4 +1,6 @@
-/lib/open-reality-runtime/ @ZqiEE
-/lib/reality-assets/ @ZqiEE
-/examples/community-assets/ @ZqiEE
+/apps/ @ZqiEE
+/packages/ @ZqiEE
+/experimental/ @ZqiEE
+/examples/ @ZqiEE
+/tests/ @ZqiEE
 /docs/ @ZqiEE

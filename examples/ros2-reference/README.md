@@ -11,7 +11,7 @@ Terminal 1:
 ```bash
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=42
-python3 examples/ros2-releasegate-demo/mock_ros_graph.py
+python3 examples/ros2-reference/mock_ros_graph.py
 ```
 
 Terminal 2:
@@ -20,7 +20,7 @@ Terminal 2:
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=42
 npm run rlsok -- ros2 shadow \
-  --release examples/ros2-releasegate-demo/release.shadow.yaml \
+  --release examples/ros2-reference/release.shadow.yaml \
   --device arm-01 \
   --proposer planner@example.test \
   --evidence evidence/demo-shadow.json
@@ -32,7 +32,7 @@ Terminal 3:
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=42
 ros2 topic pub --once /rlsok/action_proposals std_msgs/msg/String \
-  "{data: '$(tr -d '\n' < examples/ros2-releasegate-demo/proposal.json)'}"
+  "{data: '$(tr -d '\n' < examples/ros2-reference/proposal.json)'}"
 ```
 
 Expected: an allowed Shadow observation, `hardwareSignalSent: false`,
@@ -42,3 +42,7 @@ fail-closed results.
 
 The included mock server accepts goals only for integration observation. Do
 not treat it as a controller or safety test.
+
+`evidence.json` is a minimal valid empty-chain fixture bound to the Shadow
+ExecSpec. It exists for deterministic `verify-evidence` CLI checks; a real
+Shadow session writes decision entries.

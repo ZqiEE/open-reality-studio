@@ -280,6 +280,19 @@ async function testGateAndShadow(): Promise<void> {
   await assert.rejects(gate.execute(allowed.authorizedRequest), /execution_permit_invalid/);
   assert.equal(dispatches, 1);
 
+  const expiring = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-expiring',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (expiring.status !== 'allowed') throw new Error('expected allowed');
+  await assert.rejects(gate.execute({
+    ...expiring.authorizedRequest,
+    now: new Date(NOW.getTime() + 1_001)
+  }), /execution_permit_invalid/);
+  assert.equal(dispatches, 1);
+
   const another = await gate.evaluate({
     ...base,
     proposalId: 'proposal-changed',

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -342,6 +343,25 @@ async function testNoBypass(): Promise<void> {
   }
   assert(sidecar.includes('FollowJointTrajectory'), 'sidecar must use the control_msgs action');
   assert(!sidecar.includes('trajectory_msgs.action'), 'trajectory_msgs does not define an action');
+  const cli = readFileSync(join(root, 'apps/cli/ros2.ts'), 'utf8');
+  assert(cli.includes("options['allow-reference-run'] !== spec.metadata.releaseId"));
+  assert(cli.includes('ROS_SECURITY_STRATEGY=Enforce'));
+  assert(
+    cli.indexOf('const report = await transport.doctor()')
+      < cli.indexOf('await gateway.start('),
+    'Run preflight must complete before proposal subscription'
+  );
+
+  const python = process.platform === 'win32' ? 'python' : 'python3';
+  const unavailable = spawnSync(
+    python,
+    ['-S', join(root, 'experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py'), '--doctor'],
+    { encoding: 'utf8' }
+  );
+  assert.equal(unavailable.status, 2, unavailable.stderr);
+  const unavailableReport = JSON.parse(unavailable.stdout) as { rosAvailable: boolean; detail: string };
+  assert.equal(unavailableReport.rosAvailable, false);
+  assert.match(unavailableReport.detail, /rclpy/);
 
   const gatewaySources = sourceFiles(join(root, 'packages/ros2-reference-gateway'))
     .filter((file) => file.endsWith(`${join('ros2-reference-gateway', 'index.ts')}`));
