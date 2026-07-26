@@ -73,30 +73,32 @@ e0984c0 chore(cleanup): remove repository garbage and hidden files
 127240f chore(deps): reduce runtime scripts and dependencies
 76b7375 test: consolidate retained releasegate coverage
 4db78f1 chore(cleanup): remove obsolete generated-file patterns
+768ba05 fix(cli): accept release input for ros2 inspect
 ```
 
 ## Reduction
 
 Metrics use tracked files for file, documentation, test, and source counts.
-Source lines include TypeScript, JavaScript, CommonJS, ECMAScript module, and
-Python files. Repository size excludes `.git` and includes the installed
-dependency tree.
+Source lines include retained implementation files, package manifests and
+lockfile, plus version-controlled runtime fixtures and policies; documentation,
+workflows, and compiler configuration are excluded. Repository size excludes
+`.git` and includes the installed dependency tree.
 
 | Metric | Before | After |
 | --- | ---: | ---: |
 | Tracked files | 624 | 38 |
-| Source lines | 46,193 | 3,154 |
+| Source lines | 46,193 | 3,177 |
 | Package manifests | 1 | 1 |
 | Production dependencies | 11 | 2 |
 | Development dependencies | 13 | 3 |
 | Root scripts | 115 | 8 |
 | Documentation files | 75 | 7 |
 | Test files | 44 | 2 |
-| Repository size excluding `.git` | 3,560,375,569 bytes | 31,305,465 bytes |
-| Legacy-brand matches (`RealityWarden` plus whole-word `rw`) | 680 | 20 |
+| Repository size excluding `.git` | 3,560,375,569 bytes | 31,306,547 bytes |
+| Legacy-brand matches (`RealityWarden` plus whole-word `rw`) | 680 | 23 |
 | `.fuse_hidden*` files | 10 | 0 |
 
-This removes 93.9% of tracked files and 93.2% of counted source lines. Runtime
+This removes 93.9% of tracked files and 93.1% of counted source lines. Runtime
 dependencies fell by 81.8%, development dependencies by 76.9%, and root
 scripts by 93.0%.
 
@@ -149,13 +151,15 @@ actually completed.
 
 ## Final grep audit
 
-The remaining `RealityWarden` matches are all occurrences of the unavoidable
-published schema identifier `realitywarden.io/v1alpha1`, including validation
-code, fixtures, tests, and documentation.
+The case-insensitive final search has 20 `RealityWarden` matching lines:
+17 contain the unavoidable published schema identifier
+`realitywarden.io/v1alpha1` in validation code, fixtures, tests, and current
+documentation; three are this report's metric and audit text.
 
-The remaining `Marketplace` and `Electron` matches are negative test assertions
-that prevent those retired product surfaces from returning. The remaining
-whole-word `rw` match is a negative assertion that the retired alias is absent
-from root scripts. There are no `Manual Import`, `ESP32`, or `Coming Soon`
-matches. Matches introduced by this audit section are documentation of the
-required search itself and are not active product branding or functionality.
+There are four `Marketplace` matching lines: two negative test guards, the
+historical cleanup commit subject, and this audit. There are three `Electron`
+matching lines: two negative test guards and this audit. `Manual Import`,
+`ESP32`, and `Coming Soon` each match only the required audit sentence in this
+report. Whole-word `rw` has three matching lines: one negative test assertion
+that the retired alias is absent and two metric/audit lines in this report.
+None of these matches provides active legacy branding or functionality.
