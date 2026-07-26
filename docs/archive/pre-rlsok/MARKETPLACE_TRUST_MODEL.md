@@ -1,3 +1,5 @@
+> Archived historical document. This does not describe the current RLSOK product.
+
 # Marketplace trust model
 
 Status: v0.6 Marketplace distribution foundation. The desktop app provides a

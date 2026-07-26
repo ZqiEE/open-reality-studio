@@ -1,3 +1,5 @@
+> Archived historical document. This does not describe the current RLSOK product.
+
 # Reality Asset Submission Guide
 
 RealityWarden accepts Reality Asset submissions that help describe devices for simulation-first Physical AI workflows.
@@ -165,7 +167,7 @@ An accepted asset may be wrapped in the strict Marketplace package envelope
 and signed by a reviewed Ed25519 publisher key. Signing is not safety approval:
 the consumer still rejects executable metadata, re-runs the Reality Asset
 validator, derives the visible trust tier from its own local trust store, and
-installs the package disabled. See `docs/MARKETPLACE_TRUST_MODEL.md`.
+installs the package disabled. See `../MARKETPLACE_TRUST_MODEL.md`.
 
 Maintainers sign only an already reviewed draft and never commit or package a
 private key:

@@ -1,3 +1,5 @@
+> Archived historical document. This does not describe the current RLSOK product.
+
 # Manual / PDF Import (v0.5)
 
 RealityWarden can turn a text-bearing PDF, Markdown file, or plain-text device
