@@ -1,13 +1,13 @@
-import type { ExecutablePolicySpec } from '../exec-spec';
-import { executablePolicyHash } from '../exec-spec';
-import { canonicalJson, sha256, type ExecutionEvidence } from '../evidence';
-import type { ReleaseRecord } from '../release-policy';
-import { executionEligibility } from '../release-policy';
+import type { ExecutablePolicySpec } from './exec-spec';
+import { executablePolicyHash } from './exec-spec';
+import { canonicalJson, sha256, type ExecutionEvidence } from './evidence';
+import type { ReleaseRecord } from './release-policy';
+import { executionEligibility } from './release-policy';
 
 declare const permitBrand: unique symbol;
 
 /** Opaque type only. No permit value or constructor is exported. */
-export interface ExecutionPermit {
+interface ExecutionPermit {
   readonly [permitBrand]: true;
 }
 
@@ -25,12 +25,12 @@ export interface ExecutionRequest<TAction, TState> {
   now?: Date;
 }
 
-export interface AuthorizedExecutionRequest<TAction, TState>
+interface AuthorizedExecutionRequest<TAction, TState>
   extends ExecutionRequest<TAction, TState> {
   permit: ExecutionPermit;
 }
 
-export type ExecutionDecision<TAction, TState> =
+type ExecutionDecision<TAction, TState> =
   | {
       status: 'allowed';
       reason: string;
@@ -41,16 +41,11 @@ export type ExecutionDecision<TAction, TState> =
       reason: string;
     };
 
-export interface ExecutionGate<TAction, TState, TResult> {
-  evaluate(request: ExecutionRequest<TAction, TState>): Promise<ExecutionDecision<TAction, TState>>;
-  execute(request: AuthorizedExecutionRequest<TAction, TState>): Promise<TResult>;
-}
-
 export interface EvidenceSink {
   append(evidence: ExecutionEvidence): void | Promise<void>;
 }
 
-export interface ActionDispatcher<TAction, TResult> {
+interface ActionDispatcher<TAction, TResult> {
   dispatch(action: TAction, permit: ExecutionPermit): Promise<TResult>;
 }
 
@@ -60,7 +55,7 @@ export type ActionPolicy<TAction, TState> = (
 ) => Promise<{ allowed: boolean; reason: string; matchedRuleIds: string[] }>;
 
 export class ReleaseExecutionGate<TAction, TState, TResult>
-implements ExecutionGate<TAction, TState, TResult> {
+{
   private readonly permits = new Map<object, {
     actionHash: string;
     expiresAt: number;

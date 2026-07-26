@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { canonicalJson, sha256 } from '../evidence';
+import { canonicalJson, sha256 } from './evidence';
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/, 'expected lowercase SHA-256');
 const timestamp = z.string().datetime({ offset: true });
@@ -48,7 +48,6 @@ export const executablePolicySpecSchema = z.object({
   }).strict(),
   runtimePolicy: z.object({
     policySha256: hash,
-    maxActionRateHz: z.number().positive(),
     maxStateAgeMs: z.number().int().positive(),
     failClosed: z.literal(true)
   }).strict(),
@@ -97,9 +96,9 @@ export function executablePolicyHash(spec: ExecutablePolicySpec): string {
   return sha256(canonicalJson(executablePolicySpecSchema.parse(spec)));
 }
 
-export type CheckResult = 'PASS' | 'BLOCK' | 'APPROVAL_REQUIRED' | 'INVALID';
+type CheckResult = 'PASS' | 'BLOCK' | 'APPROVAL_REQUIRED' | 'INVALID';
 
-export interface ExecSpecCheck {
+interface ExecSpecCheck {
   result: CheckResult;
   reasons: string[];
 }
@@ -128,7 +127,7 @@ export function checkExecutablePolicySpec(input: unknown, now: Date = new Date()
   return { result: 'PASS', reasons: [] };
 }
 
-export interface ExecSpecDiff {
+interface ExecSpecDiff {
   changes: string[];
   invalidatesApproval: boolean;
 }

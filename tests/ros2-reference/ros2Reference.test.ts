@@ -4,26 +4,23 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   appendEvidence,
-  canonicalJson,
-  sha256,
   verifyEvidenceBundle,
   type ChainedEvidence,
   type EvidenceBundle,
   type ExecutionEvidence
-} from '../../packages/evidence';
-import { executablePolicyHash, executablePolicySpecSchema, type ExecutablePolicySpec } from '../../packages/exec-spec';
-import { ReleaseExecutionGate, type ExecutionRequest } from '../../packages/execution-gate';
-import type { ReleaseRecord } from '../../packages/release-policy';
+} from '../../packages/core/evidence';
+import { executablePolicyHash, executablePolicySpecSchema, type ExecutablePolicySpec } from '../../packages/core/exec-spec';
+import type { ReleaseRecord } from '../../packages/core/release-policy';
 import {
+  InMemoryReleaseResolver,
   InMemoryReleaseRecordStore,
   Ros2ReferenceGateway,
-  parseRos2ProposalPayload,
+  ros2ProposalEnvelopeSchema,
   type JointStateSnapshot,
   type JointTrajectoryAction,
   type Ros2DoctorReport,
   type Ros2ReferenceTransport
 } from '../../packages/ros2-reference-gateway';
-import { InMemoryReleaseResolver } from '../../packages/ros2-gateway';
 
 const H = (character: string) => character.repeat(64);
 const NOW = new Date('2026-07-26T12:00:00.000Z');
@@ -62,7 +59,6 @@ function release(mode: 'shadow' | 'canary' | 'released' = 'shadow'): ExecutableP
     },
     runtimePolicy: {
       policySha256: H('2'),
-      maxActionRateHz: 10,
       maxStateAgeMs: 500,
       failClosed: true
     },
@@ -128,6 +124,7 @@ class SpyTransport implements Ros2ReferenceTransport {
   dispatches = 0;
   cancellations = 0;
   accepted = true;
+  dispatchError?: string;
 
   async subscribeProposals(handler: (payload: string) => Promise<void>): Promise<void> {
     this.handler = handler;
@@ -138,6 +135,7 @@ class SpyTransport implements Ros2ReferenceTransport {
   }
   async dispatchTrajectory(): Promise<{ accepted: boolean; detail: string }> {
     this.dispatches += 1;
+    if (this.dispatchError) throw new Error(this.dispatchError);
     return { accepted: this.accepted, detail: this.accepted ? 'accepted' : 'unavailable' };
   }
   async cancelActiveGoal(): Promise<{ requested: boolean; detail: string }> {
@@ -159,7 +157,6 @@ class SpyTransport implements Ros2ReferenceTransport {
       limitations: ['test_spy']
     };
   }
-  async inspect(): Promise<Record<string, unknown>> { return { test: true }; }
   async close(): Promise<void> {}
 }
 
@@ -184,10 +181,16 @@ function setup(mode: 'shadow' | 'run') {
 
 async function testContract(): Promise<void> {
   const spec = release();
-  assert.equal(parseRos2ProposalPayload(proposal(spec)).actionPayload.points.length, 1);
-  assert.throws(() => parseRos2ProposalPayload('{'), /malformed_json/);
-  assert.throws(() => parseRos2ProposalPayload(JSON.stringify({})), /schema_invalid/);
-  assert.throws(() => parseRos2ProposalPayload('x'.repeat(70_000)), /payload_too_large/);
+  assert.equal(
+    ros2ProposalEnvelopeSchema.parse(JSON.parse(proposal(spec))).actionPayload.points.length,
+    1
+  );
+  assert.throws(() => ros2ProposalEnvelopeSchema.parse({}));
+  await assert.rejects(setup('shadow').gateway.handlePayload('{'), /malformed_json/);
+  await assert.rejects(
+    setup('shadow').gateway.handlePayload('x'.repeat(70_000)),
+    /payload_too_large/
+  );
 
   const duplicate = setup('shadow');
   await duplicate.gateway.handlePayload(proposal(duplicate.spec));
@@ -254,68 +257,36 @@ async function testRevocation(): Promise<void> {
   await active.gateway.revoke(active.spec.metadata.releaseId, 'operator_stop');
   assert.equal(active.transport.cancellations, 1);
   assert.match(active.entries.at(-1)?.decisionReason ?? '', /release_revoked:cancel_requested/);
+  assert.equal(active.entries.at(-1)?.hardwareSignalState, 'attempted_unconfirmed');
+  assert.equal(active.entries.at(-1)?.executionEvidence, 'cancellation_requested');
   const next = JSON.parse(proposal(active.spec, 'proposal-2')) as Record<string, unknown>;
   const blocked = await active.gateway.handlePayload(JSON.stringify(next));
   assert.equal(blocked.decision, 'blocked');
   assert.equal(active.transport.dispatches, 1);
 }
 
-async function testPermitBindings(): Promise<void> {
-  const spec = release('released');
-  const entries: ExecutionEvidence[] = [];
-  let dispatches = 0;
-  let currentRecord = record(spec);
-  const hash = (value: unknown) => sha256(canonicalJson(value));
-  const gate = new ReleaseExecutionGate(
-    { dispatch: async () => { dispatches += 1; return true; } },
-    { append: (entry) => { entries.push(entry); } },
-    async () => ({ allowed: true, reason: 'pass', matchedRuleIds: ['test'] }),
-    hash,
-    async () => currentRecord
-  );
-  const candidate = action();
-  const request: ExecutionRequest<JointTrajectoryAction, JointStateSnapshot> = {
-    release: spec,
-    releaseRecord: record(spec),
-    deviceId: 'arm-01',
-    proposalId: 'permit-binding',
-    action: candidate,
-    actionHash: hash(candidate),
-    state: { names: ['joint_a', 'joint_b'], positions: [0, 0], observedAt: NOW.toISOString() },
-    stateObservedAt: NOW.toISOString(),
-    controllerIdentity: 'controller-a',
-    now: NOW
-  };
-  const allowed = await gate.evaluate(request);
-  assert.equal(allowed.status, 'allowed');
-  if (allowed.status !== 'allowed') return;
-  await assert.rejects(gate.execute({
-    ...allowed.authorizedRequest,
-    controllerIdentity: 'controller-b'
-  }), /execution_permit_invalid/);
-  assert.equal(dispatches, 0);
-
-  const revoked = await gate.evaluate({ ...request, proposalId: 'permit-revoked' });
-  assert.equal(revoked.status, 'allowed');
-  if (revoked.status !== 'allowed') return;
-  currentRecord = { ...currentRecord, state: 'revoked' };
-  await assert.rejects(gate.execute(revoked.authorizedRequest), /execution_permit_invalid/);
-  assert.equal(dispatches, 0);
-}
-
 async function testEvidence(): Promise<void> {
-  const run = setup('run');
-  run.transport.accepted = false;
-  await run.gateway.handlePayload(proposal(run.spec));
-  assert.equal(run.entries.at(-1)?.decision, 'failed');
-  assert.equal(run.entries.at(-1)?.hardwareSignalState, 'attempted_unconfirmed');
+  const rejected = setup('run');
+  rejected.transport.accepted = false;
+  await rejected.gateway.handlePayload(proposal(rejected.spec));
+  assert.equal(rejected.entries.at(-1)?.decision, 'failed');
+  assert.equal(rejected.entries.at(-1)?.hardwareSignalState, 'attempted_unconfirmed');
+  assert.equal(rejected.entries.at(-1)?.executionEvidence, 'dispatch_failed');
+
+  const timeout = setup('run');
+  timeout.transport.dispatchError = 'ros_action_request_timeout';
+  await timeout.gateway.handlePayload(proposal(timeout.spec));
+  assert.equal(timeout.entries.at(-1)?.decisionReason, 'ros_action_request_timeout');
+  assert.equal(timeout.entries.at(-1)?.hardwareSignalState, 'attempted_unconfirmed');
+  assert.equal(timeout.entries.at(-1)?.executionEvidence, 'dispatch_failed');
+
   let chain: ChainedEvidence[] = [];
-  for (const entry of run.entries) chain = [...chain, appendEvidence(chain, entry)];
+  for (const entry of rejected.entries) chain = [...chain, appendEvidence(chain, entry)];
   const bundle: EvidenceBundle = {
     apiVersion: 'realitywarden.io/v1alpha1',
     kind: 'EvidenceBundle',
-    releaseId: run.spec.metadata.releaseId,
-    executablePolicyHash: executablePolicyHash(run.spec),
+    releaseId: rejected.spec.metadata.releaseId,
+    executablePolicyHash: executablePolicyHash(rejected.spec),
     createdAt: NOW.toISOString(),
     entries: chain
   };
@@ -392,7 +363,7 @@ const suites: Record<string, () => Promise<void>> = {
   'ros2-contract': testContract,
   'ros2-shadow': testShadow,
   'ros2-reference': testReferenceRun,
-  'ros2-revocation': async () => { await testRevocation(); await testPermitBindings(); },
+  'ros2-revocation': testRevocation,
   'ros2-evidence': testEvidence,
   'ros2-no-bypass': testNoBypass
 };

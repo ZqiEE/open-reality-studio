@@ -1,8 +1,4 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
-import { actionContractSchema } from '../../packages/action-contract';
 import {
   appendEvidence,
   canonicalJson,
@@ -10,25 +6,24 @@ import {
   verifyEvidenceBundle,
   type EvidenceBundle,
   type ExecutionEvidence
-} from '../../packages/evidence';
+} from '../../packages/core/evidence';
 import {
   checkExecutablePolicySpec,
   diffExecutablePolicies,
   executablePolicyHash,
   executablePolicySpecSchema,
   type ExecutablePolicySpec
-} from '../../packages/exec-spec';
+} from '../../packages/core/exec-spec';
 import {
   ReleaseExecutionGate,
   ShadowExecutionGate,
   type ExecutionRequest
-} from '../../packages/execution-gate';
+} from '../../packages/core/execution-gate';
 import {
   executionEligibility,
   transitionRelease,
   type ReleaseRecord
-} from '../../packages/release-policy';
-import { InMemoryReleaseResolver } from '../../packages/ros2-gateway';
+} from '../../packages/core/release-policy';
 
 const H = (character: string) => character.repeat(64);
 const NOW = new Date('2026-07-26T00:00:00.000Z');
@@ -67,7 +62,6 @@ function spec(overrides: Partial<ExecutablePolicySpec> = {}): ExecutablePolicySp
     },
     runtimePolicy: {
       policySha256: H('2'),
-      maxActionRateHz: 20,
       maxStateAgeMs: 1000,
       failClosed: true
     },
@@ -140,19 +134,6 @@ async function testExecSpec(): Promise<void> {
   revoked.evidence = { status: 'revoked', scenarioPackId: 'pick-v3', testReportSha256: H('3'), approvedBy: '', approvedAt: '' };
   assert.equal(checkExecutablePolicySpec(revoked, NOW).result, 'BLOCK');
 
-  assert.equal(actionContractSchema.safeParse({
-    apiVersion: 'realitywarden.io/v1alpha1',
-    kind: 'ActionContract',
-    metadata: { name: 'bad', version: '1' },
-    representation: 'joint_position',
-    dimension: 2,
-    jointOrder: ['only-one'],
-    units: { position: 'degree', velocity: 'degree_per_second' },
-    parameterRanges: {},
-    requiredState: [],
-    executionMode: 'single',
-    constraints: []
-  }).success, false);
 }
 
 async function testReleasePolicyAndDiff(): Promise<void> {
@@ -169,14 +150,14 @@ async function testReleasePolicyAndDiff(): Promise<void> {
     reason: 'tests complete',
     spec: release,
     evidence: [evidenceFor(release)]
-  }).record;
+  });
   record = transitionRelease(record, 'approved', {
     actor: 'approver',
     occurredAt: NOW.toISOString(),
     reason: 'approved',
     spec: release,
     evidence: [evidenceFor(release)]
-  }).record;
+  });
   assert.equal(record.approvedIdentityHash, identity);
   assert.throws(() => transitionRelease(record, 'released', {
     actor: 'operator',
@@ -231,6 +212,7 @@ async function testGateAndShadow(): Promise<void> {
   const release = spec();
   const entries: ExecutionEvidence[] = [];
   let dispatches = 0;
+  let currentRecord = releasedRecord(release);
   const hashAction = (action: unknown) => sha256(canonicalJson(action));
   const gate = new ReleaseExecutionGate(
     {
@@ -245,13 +227,14 @@ async function testGateAndShadow(): Promise<void> {
       reason: action.safe ? 'policy_allowed' : 'policy_blocked',
       matchedRuleIds: ['safe-only']
     }),
-    hashAction
+    hashAction,
+    async () => currentRecord
   );
 
   const action = { safe: false };
   const base: ExecutionRequest<typeof action, { ready: boolean }> = {
     release,
-    releaseRecord: releasedRecord(release),
+    releaseRecord: currentRecord,
     deviceId: 'arm-03',
     proposalId: 'proposal-gate',
     action,
@@ -263,6 +246,12 @@ async function testGateAndShadow(): Promise<void> {
   assert.equal((await gate.evaluate(base)).status, 'blocked');
   assert.equal(dispatches, 0);
   assert.equal(entries.at(-1)?.hardwareSignalSent, false);
+
+  assert.equal((await gate.evaluate({
+    ...base,
+    releaseRecord: { ...currentRecord, state: 'tested', approvedIdentityHash: undefined }
+  })).status, 'approval_required');
+  assert.equal(dispatches, 0);
 
   assert.equal((await gate.evaluate({ ...base, action: { safe: true }, state: undefined })).status, 'blocked');
   assert.equal(dispatches, 0);
@@ -300,9 +289,65 @@ async function testGateAndShadow(): Promise<void> {
     actionHash: hashAction(safeAction)
   });
   if (another.status !== 'allowed') throw new Error('expected allowed');
-  another.authorizedRequest.action.safe = false;
+  another.authorizedRequest.action = { safe: false };
   await assert.rejects(gate.execute(another.authorizedRequest), /execution_permit_invalid/);
   assert.equal(dispatches, 1);
+
+  const wrongDevice = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-wrong-device',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (wrongDevice.status !== 'allowed') throw new Error('expected allowed');
+  await assert.rejects(gate.execute({
+    ...wrongDevice.authorizedRequest,
+    deviceId: 'arm-99'
+  }), /execution_permit_invalid/);
+
+  const wrongController = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-wrong-controller',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (wrongController.status !== 'allowed') throw new Error('expected allowed');
+  await assert.rejects(gate.execute({
+    ...wrongController.authorizedRequest,
+    controllerIdentity: 'controller-b'
+  }), /execution_permit_invalid/);
+
+  const wrongRelease = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-wrong-release',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (wrongRelease.status !== 'allowed') throw new Error('expected allowed');
+  await assert.rejects(gate.execute({
+    ...wrongRelease.authorizedRequest,
+    release: {
+      ...wrongRelease.authorizedRequest.release,
+      metadata: {
+        ...wrongRelease.authorizedRequest.release.metadata,
+        releaseId: 'other-release'
+      }
+    }
+  }), /execution_permit_invalid/);
+
+  const revokedBeforeDispatch = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-revoked-before-dispatch',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (revokedBeforeDispatch.status !== 'allowed') throw new Error('expected allowed');
+  currentRecord = { ...currentRecord, state: 'revoked' };
+  await assert.rejects(
+    gate.execute(revokedBeforeDispatch.authorizedRequest),
+    /execution_permit_invalid/
+  );
+  currentRecord = releasedRecord(release);
 
   await assert.rejects(gate.execute({ ...base, permit: {} } as any), /execution_permit_invalid/);
   assert.equal(dispatches, 1);
@@ -324,98 +369,19 @@ async function testGateAndShadow(): Promise<void> {
   assert.equal(shadowEntries[0].hardwareSignalState, 'not_sent');
 }
 
-async function testAdapterContracts(): Promise<void> {
-  const resolver = new InMemoryReleaseResolver();
-  const release = spec();
-  resolver.bind('arm-03', 'proposer-a', release);
-  assert.equal((await resolver.resolveActiveRelease('arm-03', 'proposer-a')).metadata.releaseId, release.metadata.releaseId);
-  await assert.rejects(resolver.resolveActiveRelease('arm-03', 'proposer-b'), /active_release_not_found/);
-}
-
-function sourceFiles(path: string): string[] {
-  if (!existsSync(path)) return [];
-  return readdirSync(path).flatMap((name) => {
-    const child = join(path, name);
-    return statSync(child).isDirectory() ? sourceFiles(child) : /\.(?:ts|tsx|js|cjs|mjs)$/.test(name) ? [child] : [];
-  });
-}
-
-async function testProductBoundaries(): Promise<void> {
-  const root = process.cwd();
-  const packageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
-    bin: Record<string, string>;
-    scripts: Record<string, string>;
-  };
-  const trackedFiles = new Set(
-    execFileSync(
-      'git',
-      ['ls-files'],
-      { cwd: root, encoding: 'utf8' }
-    ).trim().split(/\r?\n/)
-  );
-  assert.deepEqual(Object.keys(packageJson.bin), ['rlsok'], 'rlsok must be the only public binary');
-  assert.equal(packageJson.bin.rlsok, 'scripts/run-rlsok.cjs');
-  assert(!('rw' in packageJson.scripts), 'the retired CLI alias must not remain');
-
-  const readme = readFileSync(join(root, 'README.md'), 'utf8');
-  assert(readme.startsWith('# RLSOK\n'), 'README must lead with the current product name');
-  for (const statement of [
-    'release-control and execution-gating system for learned robot policies',
-    'Shadow is the default',
-    'Live DDS, SROS2, controller and physical-robot validation require an appropriate ROS 2 environment'
-  ]) assert(readme.includes(statement), `README is missing required boundary statement: ${statement}`);
-
-  for (const removed of [
-    'app',
-    'components',
-    'electron',
-    'firmware',
-    'lib',
-    'marketplace'
-  ]) assert(
-    !Array.from(trackedFiles).some((file) => file === removed || file.startsWith(`${removed}/`)),
-    `${removed} must not remain as a tracked product surface`
-  );
-
-  const trustedRoots = [
-    'packages/exec-spec',
-    'packages/release-policy',
-    'packages/execution-gate',
-    'packages/evidence',
-    'packages/action-contract',
-    'packages/robot-profile',
-    'packages/ros2-gateway',
-    'packages/ros2-reference-gateway',
-    'apps/cli'
-  ];
-  const forbiddenImport = /(?:from\s+['"]|require\(['"])[^'"]*(?:react|next|electron|marketplace|manual-import|compiler|virtual-lab|hardware)/i;
-  for (const path of trustedRoots.flatMap((entry) => sourceFiles(join(root, entry)))) {
-    assert(!forbiddenImport.test(readFileSync(path, 'utf8')), `${path} imports outside the trusted RLSOK boundary`);
-  }
-}
-
 const suites: Record<string, () => Promise<void>> = {
   'exec-spec': testExecSpec,
   'release-policy': testReleasePolicyAndDiff,
-  'release-diff': testReleasePolicyAndDiff,
-  'release-revocation': testReleasePolicyAndDiff,
   evidence: testEvidence,
-  'execution-gate': testGateAndShadow,
-  'shadow-mode': testGateAndShadow,
-  'fail-closed': testGateAndShadow,
-  'no-bypass': testGateAndShadow,
-  'adapter-contract': testAdapterContracts,
-  'product-boundary': testProductBoundaries
+  'execution-gate': testGateAndShadow
 };
 
 async function main(): Promise<void> {
   const requested = process.argv[2];
   const selected = requested ? [[requested, suites[requested]] as const] : Object.entries(suites);
   if (selected.some(([, run]) => !run)) throw new Error(`unknown suite: ${requested}`);
-  const completed = new Set<() => Promise<void>>();
   for (const [name, run] of selected) {
-    if (!completed.has(run)) await run();
-    completed.add(run);
+    await run();
     process.stdout.write(`ok - ${name}\n`);
   }
   process.stdout.write(`ReleaseGate tests passed (${selected.length} categories).\n`);

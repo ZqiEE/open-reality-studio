@@ -14,13 +14,12 @@ interface SidecarReply {
   error?: string;
 }
 
-export interface PythonRos2SidecarOptions {
+interface PythonRos2SidecarOptions {
   pythonExecutable: string;
   sidecarPath: string;
   proposalTopic?: string;
   jointStateTopic?: string;
   controllerAction?: string;
-  startupTimeoutMs?: number;
 }
 
 /**
@@ -73,10 +72,6 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
     return this.request('doctor', {}) as Promise<Ros2DoctorReport>;
   }
 
-  async inspect(): Promise<Record<string, unknown>> {
-    return this.request('inspect', {}) as Promise<Record<string, unknown>>;
-  }
-
   async close(): Promise<void> {
     const child = this.child;
     if (!child) return;
@@ -125,12 +120,11 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
       for (const pending of Array.from(this.pending.values())) pending.reject(error);
       this.pending.clear();
     });
-    const timeoutMs = this.options.startupTimeoutMs ?? 5_000;
     await Promise.race([
       this.request('ping', {}),
       new Promise((_, reject) => setTimeout(
         () => reject(new Error('ros2_sidecar_startup_timeout')),
-        timeoutMs
+        5_000
       ))
     ]);
   }

@@ -4,22 +4,21 @@ import {
   ShadowExecutionGate,
   type ActionPolicy,
   type EvidenceSink
-} from '../execution-gate';
+} from '../core/execution-gate';
 import {
   canonicalJson,
   sha256,
   type ExecutionEvidence
-} from '../evidence';
+} from '../core/evidence';
 import {
   executablePolicyHash,
   type ExecutablePolicySpec
-} from '../exec-spec';
-import type { ReleaseRecord } from '../release-policy';
-import type { ReleaseResolver } from '../ros2-gateway';
+} from '../core/exec-spec';
+import type { ReleaseRecord } from '../core/release-policy';
 
 const isoTimestamp = z.string().datetime({ offset: true });
 
-export const jointTrajectoryActionSchema = z.object({
+const jointTrajectoryActionSchema = z.object({
   representation: z.literal('trajectory'),
   jointNames: z.array(z.string().min(1)).min(1).max(64),
   points: z.array(z.object({
@@ -45,9 +44,9 @@ export const ros2ProposalEnvelopeSchema = z.object({
   createdAt: isoTimestamp
 }).strict();
 
-export type Ros2ProposalEnvelope = z.infer<typeof ros2ProposalEnvelopeSchema>;
+type Ros2ProposalEnvelope = z.infer<typeof ros2ProposalEnvelopeSchema>;
 
-export const jointStateSnapshotSchema = z.object({
+const jointStateSnapshotSchema = z.object({
   names: z.array(z.string().min(1)).min(1).max(256),
   positions: z.array(z.number().finite()).min(1).max(256),
   observedAt: isoTimestamp
@@ -94,16 +93,27 @@ export interface Ros2ReferenceTransport {
   ): Promise<{ accepted: boolean; detail: string }>;
   cancelActiveGoal(reason: string): Promise<{ requested: boolean; detail: string }>;
   doctor(): Promise<Ros2DoctorReport>;
-  inspect(): Promise<Record<string, unknown>>;
   close(): Promise<void>;
 }
 
-export interface ReleaseRecordStore {
-  get(releaseId: string): Promise<ReleaseRecord>;
-  revoke(releaseId: string, reason: string, at: string): Promise<ReleaseRecord>;
+export class InMemoryReleaseResolver {
+  private readonly releases = new Map<string, ExecutablePolicySpec>();
+
+  bind(deviceId: string, proposerIdentity: string, release: ExecutablePolicySpec): void {
+    this.releases.set(`${deviceId}\0${proposerIdentity}`, release);
+  }
+
+  async resolveActiveRelease(
+    deviceId: string,
+    proposerIdentity: string
+  ): Promise<ExecutablePolicySpec> {
+    const release = this.releases.get(`${deviceId}\0${proposerIdentity}`);
+    if (!release) throw new Error('active_release_not_found');
+    return release;
+  }
 }
 
-export class InMemoryReleaseRecordStore implements ReleaseRecordStore {
+export class InMemoryReleaseRecordStore {
   constructor(private readonly records: Map<string, ReleaseRecord>) {}
 
   async get(releaseId: string): Promise<ReleaseRecord> {
@@ -125,7 +135,7 @@ export class InMemoryReleaseRecordStore implements ReleaseRecordStore {
   }
 }
 
-export interface Ros2GatewayResult {
+interface Ros2GatewayResult {
   proposalId: string;
   decision: 'allowed' | 'blocked' | 'failed';
   reason: string;
@@ -133,15 +143,14 @@ export interface Ros2GatewayResult {
   controllerGoalCount: number;
 }
 
-export interface Ros2GatewayOptions {
+interface Ros2GatewayOptions {
   mode?: 'shadow' | 'run';
   controllerIdentity: string;
-  releaseResolver: ReleaseResolver;
-  releaseRecords: ReleaseRecordStore;
+  releaseResolver: InMemoryReleaseResolver;
+  releaseRecords: InMemoryReleaseRecordStore;
   transport: Ros2ReferenceTransport;
   evidence: EvidenceSink;
   now?: () => Date;
-  maxPayloadBytes?: number;
 }
 
 function sameOrder(left: readonly string[], right: readonly string[]): boolean {
@@ -185,7 +194,6 @@ function evidenceForLifecycle(
 export class Ros2ReferenceGateway {
   private readonly mode: 'shadow' | 'run';
   private readonly seenProposalIds = new Set<string>();
-  private readonly maxPayloadBytes: number;
   private active?: {
     release: ExecutablePolicySpec;
     proposalId: string;
@@ -195,7 +203,6 @@ export class Ros2ReferenceGateway {
 
   constructor(private readonly options: Ros2GatewayOptions) {
     this.mode = options.mode ?? 'shadow';
-    this.maxPayloadBytes = options.maxPayloadBytes ?? 65_536;
   }
 
   async start(onResult?: (result: Ros2GatewayResult) => void): Promise<void> {
@@ -206,7 +213,7 @@ export class Ros2ReferenceGateway {
   }
 
   async handlePayload(payload: string): Promise<Ros2GatewayResult> {
-    if (Buffer.byteLength(payload, 'utf8') > this.maxPayloadBytes) {
+    if (Buffer.byteLength(payload, 'utf8') > 65_536) {
       throw new Error('proposal_payload_too_large');
     }
     let raw: unknown;
@@ -385,10 +392,6 @@ export class Ros2ReferenceGateway {
     this.active = undefined;
   }
 
-  markGoalCompleted(): void {
-    this.active = undefined;
-  }
-
   private async blocked(
     proposal: Ros2ProposalEnvelope,
     reason: string
@@ -431,17 +434,4 @@ export class Ros2ReferenceGateway {
       controllerGoalCount: this.goalCount
     };
   }
-}
-
-export function parseRos2ProposalPayload(payload: string, maxBytes = 65_536): Ros2ProposalEnvelope {
-  if (Buffer.byteLength(payload, 'utf8') > maxBytes) throw new Error('proposal_payload_too_large');
-  let raw: unknown;
-  try {
-    raw = JSON.parse(payload);
-  } catch {
-    throw new Error('proposal_payload_malformed_json');
-  }
-  const parsed = ros2ProposalEnvelopeSchema.safeParse(raw);
-  if (!parsed.success) throw new Error(`proposal_schema_invalid:${parsed.error.issues[0]?.message ?? 'unknown'}`);
-  return parsed.data;
 }

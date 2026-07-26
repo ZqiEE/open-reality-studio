@@ -1,8 +1,8 @@
-import type { ExecutablePolicySpec } from '../exec-spec';
-import { executablePolicyHash } from '../exec-spec';
-import type { ExecutionEvidence } from '../evidence';
+import type { ExecutablePolicySpec } from './exec-spec';
+import { executablePolicyHash } from './exec-spec';
+import type { ExecutionEvidence } from './evidence';
 
-export type ReleaseState =
+type ReleaseState =
   | 'draft'
   | 'tested'
   | 'approved'
@@ -32,16 +32,6 @@ export interface ReleaseRecord {
   revokedReason?: string;
 }
 
-export interface ReleaseTransition {
-  releaseId: string;
-  from: ReleaseState;
-  to: ReleaseState;
-  actor: string;
-  occurredAt: string;
-  reason: string;
-  executablePolicyHash: string;
-}
-
 export function transitionRelease(
   record: ReleaseRecord,
   to: ReleaseState,
@@ -52,7 +42,7 @@ export function transitionRelease(
     spec: ExecutablePolicySpec;
     evidence: ExecutionEvidence[];
   }
-): { record: ReleaseRecord; transition: ReleaseTransition } {
+): ReleaseRecord {
   if (!transitions[record.state].includes(to)) {
     throw new Error(`invalid_release_transition:${record.state}->${to}`);
   }
@@ -74,18 +64,7 @@ export function transitionRelease(
     revokedAt: to === 'revoked' ? context.occurredAt : record.revokedAt,
     revokedReason: to === 'revoked' ? context.reason : record.revokedReason
   };
-  return {
-    record: next,
-    transition: {
-      releaseId: record.releaseId,
-      from: record.state,
-      to,
-      actor: context.actor,
-      occurredAt: context.occurredAt,
-      reason: context.reason,
-      executablePolicyHash: currentHash
-    }
-  };
+  return next;
 }
 
 export function executionEligibility(

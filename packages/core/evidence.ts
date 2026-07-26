@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export type ExecutionEvidenceDecision =
+type ExecutionEvidenceDecision =
   | 'allowed'
   | 'blocked'
   | 'approval_required'
@@ -26,7 +26,6 @@ export interface ExecutionEvidence {
   hardwareSignalSent: boolean;
   hardwareSignalState: string;
   executionEvidence: string;
-  approverIdentity?: string;
 }
 
 export interface ChainedEvidence {

@@ -12,20 +12,20 @@ import {
   type ChainedEvidence,
   type EvidenceBundle,
   type ExecutionEvidence
-} from '../../packages/evidence';
+} from '../../packages/core/evidence';
 import {
   executablePolicyHash,
   executablePolicySpecSchema,
   type ExecutablePolicySpec
-} from '../../packages/exec-spec';
-import type { EvidenceSink } from '../../packages/execution-gate';
-import type { ReleaseRecord } from '../../packages/release-policy';
+} from '../../packages/core/exec-spec';
+import type { EvidenceSink } from '../../packages/core/execution-gate';
+import type { ReleaseRecord } from '../../packages/core/release-policy';
 import {
+  InMemoryReleaseResolver,
   InMemoryReleaseRecordStore,
   Ros2ReferenceGateway
 } from '../../packages/ros2-reference-gateway';
 import { PythonRos2SidecarTransport } from '../../packages/ros2-reference-gateway/sidecar';
-import { InMemoryReleaseResolver } from '../../packages/ros2-gateway';
 
 type Options = Record<string, string>;
 
