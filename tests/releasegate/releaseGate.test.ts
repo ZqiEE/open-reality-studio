@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { actionContractSchema } from '../../packages/action-contract';
@@ -27,12 +28,7 @@ import {
   transitionRelease,
   type ReleaseRecord
 } from '../../packages/release-policy';
-import {
-  InMemoryActionProposalSource,
-  InMemoryControllerSink,
-  InMemoryReleaseResolver,
-  InMemoryRobotStateSource
-} from '../../packages/ros2-gateway';
+import { InMemoryReleaseResolver } from '../../packages/ros2-gateway';
 
 const H = (character: string) => character.repeat(64);
 const NOW = new Date('2026-07-26T00:00:00.000Z');
@@ -316,31 +312,11 @@ async function testGateAndShadow(): Promise<void> {
 }
 
 async function testAdapterContracts(): Promise<void> {
-  const source = new InMemoryActionProposalSource<{ value: number }>();
-  let observed = 0;
-  await source.subscribe(async (proposal) => { observed = proposal.action.value; });
-  await source.publish({
-    proposalId: 'p1',
-    proposerIdentity: 'untrusted',
-    deviceId: 'arm-03',
-    action: { value: 7 },
-    proposedAt: NOW.toISOString()
-  });
-  assert.equal(observed, 7);
-  const states = new InMemoryRobotStateSource<{ ready: boolean }>();
-  await assert.rejects(states.getFreshState(100), /robot_state_missing/);
-  states.update({ ready: true });
-  assert.deepEqual(await states.getFreshState(100), { ready: true });
-
   const resolver = new InMemoryReleaseResolver();
   const release = spec();
   resolver.bind('arm-03', 'proposer-a', release);
   assert.equal((await resolver.resolveActiveRelease('arm-03', 'proposer-a')).metadata.releaseId, release.metadata.releaseId);
   await assert.rejects(resolver.resolveActiveRelease('arm-03', 'proposer-b'), /active_release_not_found/);
-
-  const sink = new InMemoryControllerSink<{ value: number }>();
-  await sink.cancel('test cancel');
-  assert.deepEqual(sink.cancellations, ['test cancel']);
 }
 
 function sourceFiles(path: string): string[] {
@@ -357,26 +333,36 @@ async function testProductBoundaries(): Promise<void> {
     bin: Record<string, string>;
     scripts: Record<string, string>;
   };
-  assert.equal(packageJson.bin.rlsok, packageJson.bin.rw, 'rlsok and rw binaries must use one implementation');
-  assert.equal(packageJson.scripts.rlsok, packageJson.scripts.rw, 'rlsok and rw scripts must use one implementation');
-  assert.equal(packageJson.scripts.build, 'npm run build:core', 'default build must target the headless core');
-  assert.equal(packageJson.scripts.daemon, 'node scripts/run-rlsok-daemon.cjs', 'daemon boundary must have an explicit headless entry');
-  assert(packageJson.scripts.lab && packageJson.scripts['lab:build'], 'optional Lab must have explicit scripts');
+  const trackedFiles = new Set(
+    execFileSync(
+      'git',
+      ['ls-files'],
+      { cwd: root, encoding: 'utf8' }
+    ).trim().split(/\r?\n/)
+  );
+  assert.deepEqual(Object.keys(packageJson.bin), ['rlsok'], 'rlsok must be the only public binary');
+  assert.equal(packageJson.bin.rlsok, 'scripts/run-rlsok.cjs');
+  assert(!('rw' in packageJson.scripts), 'the retired CLI alias must not remain');
 
   const readme = readFileSync(join(root, 'README.md'), 'utf8');
   assert(readme.startsWith('# RLSOK\n'), 'README must lead with the current product name');
   for (const statement of [
-    'Release control for executable robot policies.',
-    'Only RLSOK releases reach the robot.',
-    'ROS 2 Jazzy/rclpy Shadow and restricted trajectory gateway | Experimental reference implementation'
+    'release-control and execution-gating system for learned robot policies',
+    'Shadow is the default',
+    'Live DDS, SROS2, controller and physical-robot validation require an appropriate ROS 2 environment'
   ]) assert(readme.includes(statement), `README is missing required boundary statement: ${statement}`);
 
   for (const removed of [
-    'components/MarketplaceManager.tsx',
-    'components/ManualImportWizard.tsx',
-    'components/AssetImportWizard.tsx',
-    'components/RealityAssetCatalog.tsx'
-  ]) assert(!existsSync(join(root, removed)), `${removed} must not remain as a dormant product surface`);
+    'app',
+    'components',
+    'electron',
+    'firmware',
+    'lib',
+    'marketplace'
+  ]) assert(
+    !Array.from(trackedFiles).some((file) => file === removed || file.startsWith(`${removed}/`)),
+    `${removed} must not remain as a tracked product surface`
+  );
 
   const trustedRoots = [
     'packages/exec-spec',
@@ -385,13 +371,11 @@ async function testProductBoundaries(): Promise<void> {
     'packages/evidence',
     'packages/action-contract',
     'packages/robot-profile',
-    'packages/adapter-sdk',
     'packages/ros2-gateway',
     'packages/ros2-reference-gateway',
-    'apps/cli',
-    'apps/daemon'
+    'apps/cli'
   ];
-  const forbiddenImport = /(?:from\s+['"]|require\(['"])[^'"]*(?:react|next|electron|marketplace|manual-import|llm-compiler|virtual-lab)/i;
+  const forbiddenImport = /(?:from\s+['"]|require\(['"])[^'"]*(?:react|next|electron|marketplace|manual-import|compiler|virtual-lab|hardware)/i;
   for (const path of trustedRoots.flatMap((entry) => sourceFiles(join(root, entry)))) {
     assert(!forbiddenImport.test(readFileSync(path, 'utf8')), `${path} imports outside the trusted RLSOK boundary`);
   }

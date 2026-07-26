@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const output = path.join(root, '.tmp-rw-cli');
+const output = path.join(root, '.tmp-rlsok-cli');
 
 if (fs.existsSync(output)) fs.rmSync(output, { recursive: true, force: true });
 try {
@@ -29,7 +29,7 @@ try {
   );
   const result = spawnSync(
     process.execPath,
-    [path.join(output, 'apps', 'cli', 'rw.js'), ...process.argv.slice(2)],
+    [path.join(output, 'apps', 'cli', 'rlsok.js'), ...process.argv.slice(2)],
     { cwd: root, stdio: 'inherit' }
   );
   if (result.error) throw result.error;

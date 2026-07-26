@@ -218,10 +218,9 @@ function verifyEvidence(path: string): void {
 
 function usage(exitCode = 1): never {
   process.stdout.write(
-    'RLSOK CLI (rw)\n' +
+    'RLSOK ReleaseGate CLI\n' +
     'Release control for executable robot policies.\n\n' +
-    'usage: rlsok build ... | rlsok check <release> | rlsok diff <old> <new> | rlsok verify-evidence <bundle> | rlsok ros2 ...\n' +
-    'compatibility alias: rw\n'
+    'usage: rlsok build ... | rlsok check <release> | rlsok diff <old> <new> | rlsok verify-evidence <bundle> | rlsok ros2 ...\n'
   );
   process.exit(exitCode);
 }
