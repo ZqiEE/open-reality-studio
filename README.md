@@ -74,3 +74,7 @@ claimed unless actually completed.
 
 See [architecture](docs/ARCHITECTURE.md) and
 [ROS 2 setup](docs/ROS2_REFERENCE_SETUP.md).
+
+## License
+
+Licensed under the Apache License, Version 2.0. See `LICENSE`.
