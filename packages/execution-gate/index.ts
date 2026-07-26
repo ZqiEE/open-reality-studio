@@ -20,6 +20,8 @@ export interface ExecutionRequest<TAction, TState> {
   actionHash: string;
   state?: TState;
   stateObservedAt?: string;
+  /** Deployment-local controller identity; defaults to the controller profile hash. */
+  controllerIdentity?: string;
   now?: Date;
 }
 
@@ -59,7 +61,13 @@ export type ActionPolicy<TAction, TState> = (
 
 export class ReleaseExecutionGate<TAction, TState, TResult>
 implements ExecutionGate<TAction, TState, TResult> {
-  private readonly permits = new Map<object, { actionHash: string; expiresAt: number }>();
+  private readonly permits = new Map<object, {
+    actionHash: string;
+    expiresAt: number;
+    releaseId: string;
+    deviceId: string;
+    controllerIdentity: string;
+  }>();
 
   constructor(
     private readonly dispatcher: ActionDispatcher<TAction, TResult>,
@@ -159,7 +167,10 @@ implements ExecutionGate<TAction, TState, TResult> {
     const permit = Object.freeze({}) as ExecutionPermit;
     this.permits.set(permit as object, {
       actionHash: request.actionHash,
-      expiresAt: now.getTime() + Math.min(1_000, request.release.runtimePolicy.maxStateAgeMs)
+      expiresAt: now.getTime() + Math.min(1_000, request.release.runtimePolicy.maxStateAgeMs),
+      releaseId: request.release.metadata.releaseId,
+      deviceId: request.deviceId,
+      controllerIdentity: request.controllerIdentity ?? request.release.robot.controllerConfigSha256
     });
     return {
       status: 'allowed',
@@ -173,11 +184,16 @@ implements ExecutionGate<TAction, TState, TResult> {
     const record = this.permits.get(permit);
     this.permits.delete(permit);
     const now = request.now ?? new Date();
+    const eligible = executionEligibility(request.release, request.releaseRecord, request.deviceId, now);
     if (
       !record
       || record.expiresAt < now.getTime()
       || record.actionHash !== request.actionHash
+      || record.releaseId !== request.release.metadata.releaseId
+      || record.deviceId !== request.deviceId
+      || record.controllerIdentity !== (request.controllerIdentity ?? request.release.robot.controllerConfigSha256)
       || this.hashAction(request.action) !== request.actionHash
+      || !eligible.allowed
     ) {
       await this.evidence.append(this.evidenceFor(
         request,
