@@ -12,6 +12,11 @@ node_modules/
 *.tsbuildinfo
 __pycache__/
 *.py[cod]
+.fuse_hidden*
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
 
 *.log
 tmp-*.out.log
