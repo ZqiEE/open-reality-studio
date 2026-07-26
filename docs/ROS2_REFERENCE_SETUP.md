@@ -52,6 +52,9 @@ Publish proposals and verify:
 Only after reviewing Shadow evidence, create an independently approved
 `canary` or `released` ExecSpec. Run requires an exact, repeated release ID:
 
+Run also fails closed unless `ROS_SECURITY_ENABLE=true` and
+`ROS_SECURITY_STRATEGY=Enforce` are visible to the sidecar.
+
 ```bash
 rlsok ros2 run \
   --release release.canary.yaml \

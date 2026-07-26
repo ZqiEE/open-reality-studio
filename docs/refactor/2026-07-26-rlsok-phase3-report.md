@@ -74,6 +74,8 @@ Phase 3:
 - Shadow has no dispatcher and records zero controller goals.
 - Run records attempted/unconfirmed dispatch honestly. Controller acceptance
   is not proof of physical motion.
+- Run checks SROS2 `Enforce` and controller availability before registering
+  the proposal handler.
 - Active reference goals receive a cancellation request after revocation.
   Cancellation evidence is not proof that motion stopped.
 - Proposal payloads are strict, size-bounded, identity-bound, duplicate

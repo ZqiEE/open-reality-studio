@@ -131,7 +131,10 @@ class ReferenceTransportNode(NodeBase):
             "controllerAction": self.args.controller_action,
             "jointStateFresh": self.latest_state is not None,
             "actionServerAvailable": self.action_client.server_is_ready(),
-            "sros2Enabled": os.environ.get("ROS_SECURITY_ENABLE") == "true",
+            "sros2Enabled": (
+                os.environ.get("ROS_SECURITY_ENABLE") == "true"
+                and os.environ.get("ROS_SECURITY_STRATEGY") == "Enforce"
+            ),
             "limitations": [
                 "experimental_reference_only",
                 "not_safety_rated",
@@ -161,7 +164,10 @@ def unavailable_report(args: argparse.Namespace) -> Dict[str, Any]:
         "controllerAction": args.controller_action,
         "jointStateFresh": False,
         "actionServerAvailable": False,
-        "sros2Enabled": os.environ.get("ROS_SECURITY_ENABLE") == "true",
+        "sros2Enabled": (
+            os.environ.get("ROS_SECURITY_ENABLE") == "true"
+            and os.environ.get("ROS_SECURITY_STRATEGY") == "Enforce"
+        ),
         "limitations": [
             "rclpy_unavailable",
             "experimental_reference_only",

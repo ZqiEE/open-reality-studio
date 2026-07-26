@@ -152,15 +152,18 @@ async function runGateway(mode: 'shadow' | 'run', options: Options): Promise<num
     transport,
     evidence: new FileEvidenceSink(spec, evidencePath)
   });
-  await gateway.start((result) => {
-    process.stdout.write(`${JSON.stringify(result)}\n`);
-  });
   const report = await transport.doctor();
   process.stdout.write(`${JSON.stringify({ mode, evidencePath, doctor: report }, null, 2)}\n`);
   if (!report.rosAvailable) throw new Error('ROS 2 unavailable');
+  if (mode === 'run' && !report.sros2Enabled) {
+    throw new Error('reference run requires SROS2 with ROS_SECURITY_STRATEGY=Enforce');
+  }
   if (mode === 'run' && !report.actionServerAvailable) {
     throw new Error('controller action server unavailable');
   }
+  await gateway.start((result) => {
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+  });
   process.stdout.write(
     mode === 'shadow'
       ? 'Shadow observation active; controller dispatch is disabled. Press Ctrl+C to stop.\n'
