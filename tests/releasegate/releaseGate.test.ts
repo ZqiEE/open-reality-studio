@@ -39,7 +39,7 @@ function spec(overrides: Partial<ExecutablePolicySpec> = {}): ExecutablePolicySp
     kind: 'ExecutablePolicy',
     metadata: {
       name: 'warehouse-pick-v27',
-      releaseId: 'rw-release-2026-0042',
+      releaseId: 'rlsok-release-2026-0042',
       createdAt: '2026-07-25T00:00:00.000Z'
     },
     model: {
