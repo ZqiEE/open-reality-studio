@@ -1,0 +1,23 @@
+metadata:
+  name: test-release-v1
+  releaseId: rw-test-release-1
+  createdAt: "2026-07-26T00:00:00.000Z"
+artifacts:
+  normalizerSha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  preprocessorSha256: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+  postprocessorSha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+runtimePolicy:
+  maxActionRateHz: 10
+  maxStateAgeMs: 500
+  failClosed: true
+evidence:
+  scenarioPackId: test-scenarios-v1
+  testReportSha256: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+  status: approved
+  approvedBy: test-approver
+  approvedAt: "2026-07-26T00:05:00.000Z"
+deployment:
+  allowedDeviceIds:
+    - test-arm-01
+  mode: released
+  expiresAt: "2099-01-01T00:00:00.000Z"
