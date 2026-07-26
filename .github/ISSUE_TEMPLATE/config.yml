@@ -1,8 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: Reality Asset Developer Kit
-    url: https://github.com/ZqiEE/open-reality-studio/blob/main/docs/REALITY_ASSET_DEVELOPER_KIT.md
-    about: Read the developer kit before submitting a Reality Asset.
-  - name: Device support matrix
-    url: https://github.com/ZqiEE/open-reality-studio/blob/main/docs/DEVICE_SUPPORT.md
-    about: Check which devices are runnable, read-only, or Coming Soon.

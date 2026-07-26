@@ -1,0 +1,32 @@
+name: RLSOK core
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+
+  ros2-doctor:
+    runs-on: ubuntu-24.04
+    container: ros:jazzy-ros-base
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          apt-get update
+          apt-get install -y ros-jazzy-control-msgs ros-jazzy-sensor-msgs
+      - shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          python3 experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py --doctor

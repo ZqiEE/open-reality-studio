@@ -1,0 +1,45 @@
+apiVersion: realitywarden.io/v1alpha1
+kind: ExecutablePolicy
+metadata:
+  name: ros2-reference-shadow
+  releaseId: ros2-shadow-demo-001
+  createdAt: "2026-07-26T00:00:00.000Z"
+model:
+  artifact: artifacts/reference-policy
+  sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  framework: ros2
+  policyType: joint-trajectory
+  codeRevision: phase3-demo
+actionContract:
+  representation: trajectory
+  dimension: 2
+  jointOrder:
+    - joint_a
+    - joint_b
+  units:
+    position: radian
+    velocity: radian_per_second
+  normalizerSha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  preprocessorSha256: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+  postprocessorSha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+robot:
+  profileId: mock-reference-arm
+  profileSha256: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+  urdfSha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+  controllerType: joint_trajectory_controller
+  controllerConfigSha256: "1111111111111111111111111111111111111111111111111111111111111111"
+runtimePolicy:
+  policySha256: "2222222222222222222222222222222222222222222222222222222222222222"
+  maxStateAgeMs: 1000
+  failClosed: true
+evidence:
+  scenarioPackId: ros2-reference-demo-v1
+  testReportSha256: "3333333333333333333333333333333333333333333333333333333333333333"
+  status: approved
+  approvedBy: demo-release@example.test
+  approvedAt: "2026-07-26T01:00:00.000Z"
+deployment:
+  allowedDeviceIds:
+    - arm-01
+  mode: shadow
+  expiresAt: "2099-01-01T00:00:00.000Z"
