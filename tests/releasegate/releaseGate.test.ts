@@ -368,7 +368,7 @@ async function testProductBoundaries(): Promise<void> {
   for (const statement of [
     'Release control for executable robot policies.',
     'Only RLSOK releases reach the robot.',
-    'Live ROS 2 / DDS / SROS 2 network integration | Not implemented'
+    'ROS 2 Jazzy/rclpy Shadow and restricted trajectory gateway | Experimental reference implementation'
   ]) assert(readme.includes(statement), `README is missing required boundary statement: ${statement}`);
 
   for (const removed of [
@@ -387,6 +387,7 @@ async function testProductBoundaries(): Promise<void> {
     'packages/robot-profile',
     'packages/adapter-sdk',
     'packages/ros2-gateway',
+    'packages/ros2-reference-gateway',
     'apps/cli',
     'apps/daemon'
   ];

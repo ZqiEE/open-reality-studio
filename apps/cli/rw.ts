@@ -21,6 +21,7 @@ import {
   verifyEvidenceBundle,
   type EvidenceBundle
 } from '../../packages/evidence';
+import { ros2Usage, runRos2Command } from './ros2';
 
 type Options = Record<string, string>;
 
@@ -219,16 +220,26 @@ function usage(exitCode = 1): never {
   process.stdout.write(
     'RLSOK CLI (rw)\n' +
     'Release control for executable robot policies.\n\n' +
-    'usage: rlsok build ... | rlsok check <release> | rlsok diff <old> <new> | rlsok verify-evidence <bundle>\n' +
+    'usage: rlsok build ... | rlsok check <release> | rlsok diff <old> <new> | rlsok verify-evidence <bundle> | rlsok ros2 ...\n' +
     'compatibility alias: rw\n'
   );
   process.exit(exitCode);
 }
 
-const [command, ...args] = process.argv.slice(2);
-if (command === '--help' || command === '-h' || command === 'help') usage(0);
-else if (command === 'build') build(args);
-else if (command === 'check' && args.length === 1) check(args[0]);
-else if (command === 'diff' && args.length === 2) diff(args[0], args[1]);
-else if (command === 'verify-evidence' && args.length === 1) verifyEvidence(args[0]);
-else usage();
+async function main(): Promise<void> {
+  const [command, ...args] = process.argv.slice(2);
+  if (command === '--help' || command === '-h' || command === 'help') usage(0);
+  else if (command === 'build') build(args);
+  else if (command === 'check' && args.length === 1) check(args[0]);
+  else if (command === 'diff' && args.length === 2) diff(args[0], args[1]);
+  else if (command === 'verify-evidence' && args.length === 1) verifyEvidence(args[0]);
+  else if (command === 'ros2') process.exitCode = await runRos2Command(args);
+  else usage();
+}
+
+void main().catch((error) => {
+  if (process.argv[2] === 'ros2' && process.argv[3] === 'help') {
+    process.stderr.write(`${ros2Usage()}\n`);
+  }
+  fail(error instanceof Error ? error.message : String(error));
+});

@@ -102,7 +102,7 @@
     "hardware:diagnose": "node scripts/run-hardware-diagnose.cjs",
     "hardware:acceptance": "node scripts/acceptance-walkthrough.cjs",
     "assets:real": "node scripts/convert-real-device-assets.mjs",
-    "verify": "npm run typecheck && npm run build && npm run test:releasegate && npm run test:conformance && npm run test:virtual-lab && npm run test:desktop && npm run test:support && npm run test:accessibility && npm run test:assets && npm run test:release && npm run test:launch-closure && npm run test:protocol && npm run test:adapter-sdk && npm run test:sdk-conformance && npm run test:sdk-scaffold && npm run test:sdk-submit && npm run test:sdk-onramp && npm run test:standard-catalog && npm run test:sdk-review && npm run test:sdk-publish && npm run test:ecosystem-chain && npm run test:sdk-catalog-build && npm run test:sdk-overview && npm run test:governance && npm run test:device-onboarding && npm run test:action-runtime && npm run test:compiler && npm run test:autonomy && npm run test:open-reality-runtime && npm run test:plain-language && npm run test:local-runtime && npm run test:reality-assets && npm run test:reality-asset-import && npm run test:reality-asset-devkit && npm run test:marketplace && npm run test:reporting && npm run test:receipt && npm run test:real-hardware && npm run test:reference-servo-angle-track && npm run test:servo-twin && npm run test:reference-servo-preflight && npm run test:reference-servo-preflight-view && npm run test:reference-servo-preflight-audit && npm run test:servo-intent && npm run test:virtual-loopback && npm run test:llm-compiler && npm run test:action-manifest && npm run test:manual-import",
+    "verify": "npm run typecheck && npm run build && npm run test:releasegate && npm run test:ros2-reference && npm run test:conformance && npm run test:virtual-lab && npm run test:desktop && npm run test:support && npm run test:accessibility && npm run test:assets && npm run test:release && npm run test:launch-closure && npm run test:protocol && npm run test:adapter-sdk && npm run test:sdk-conformance && npm run test:sdk-scaffold && npm run test:sdk-submit && npm run test:sdk-onramp && npm run test:standard-catalog && npm run test:sdk-review && npm run test:sdk-publish && npm run test:ecosystem-chain && npm run test:sdk-catalog-build && npm run test:sdk-overview && npm run test:governance && npm run test:device-onboarding && npm run test:action-runtime && npm run test:compiler && npm run test:autonomy && npm run test:open-reality-runtime && npm run test:plain-language && npm run test:local-runtime && npm run test:reality-assets && npm run test:reality-asset-import && npm run test:reality-asset-devkit && npm run test:marketplace && npm run test:reporting && npm run test:receipt && npm run test:real-hardware && npm run test:reference-servo-angle-track && npm run test:servo-twin && npm run test:reference-servo-preflight && npm run test:reference-servo-preflight-view && npm run test:reference-servo-preflight-audit && npm run test:servo-intent && npm run test:virtual-loopback && npm run test:llm-compiler && npm run test:action-manifest && npm run test:manual-import",
     "lint": "eslint .",
     "test:virtual-loopback": "node -e \"const { execSync } = require('node:child_process'); const fs = require('node:fs'); const tmp = '.tmp-virtual-loopback-test'; if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); try { execSync('npx tsc -p tsconfig.json --outDir ' + tmp + ' --module commonjs --moduleResolution node --noEmit false', { stdio: 'inherit' }); execSync('node ' + tmp + '/tests/real-hardware/virtualLoopbackAcceptance.test.js', { stdio: 'inherit' }); } finally { if (fs.existsSync(tmp)) fs.rmSync(tmp, { recursive: true, force: true }); }\"",
     "hardware:flash": "node scripts/flashFirmware.cjs",
@@ -124,7 +124,14 @@
     "test:fail-closed": "node scripts/run-releasegate-tests.cjs fail-closed",
     "test:no-bypass": "node scripts/run-releasegate-tests.cjs no-bypass",
     "test:adapter-contract": "node scripts/run-releasegate-tests.cjs adapter-contract",
-    "test:product-boundary": "node scripts/run-releasegate-tests.cjs product-boundary"
+    "test:product-boundary": "node scripts/run-releasegate-tests.cjs product-boundary",
+    "test:ros2-reference": "node scripts/run-ros2-reference-tests.cjs",
+    "test:ros2-contract": "node scripts/run-ros2-reference-tests.cjs ros2-contract",
+    "test:ros2-shadow": "node scripts/run-ros2-reference-tests.cjs ros2-shadow",
+    "test:ros2-run": "node scripts/run-ros2-reference-tests.cjs ros2-reference",
+    "test:ros2-revocation": "node scripts/run-ros2-reference-tests.cjs ros2-revocation",
+    "test:ros2-evidence": "node scripts/run-ros2-reference-tests.cjs ros2-evidence",
+    "test:ros2-no-bypass": "node scripts/run-ros2-reference-tests.cjs ros2-no-bypass"
   },
   "build": {
     "appId": "com.realitywarden.desktop",
