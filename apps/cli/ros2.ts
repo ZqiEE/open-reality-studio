@@ -184,7 +184,7 @@ export function ros2Usage(): string {
     '  rlsok ros2 [shadow] --release <spec> --device <id> --proposer <identity> [--evidence <path>]',
     '  rlsok ros2 run --release <spec> --device <id> --proposer <identity> --allow-reference-run <release-id>',
     '  rlsok ros2 doctor [--python <path>] [--sidecar <path>]',
-    '  rlsok ros2 inspect [--python <path>] [--sidecar <path>]',
+    '  rlsok ros2 inspect [<release>] [--python <path>] [--sidecar <path>]',
     '',
     'ROS 2 support is experimental/reference-only, not safety-rated, and not hard realtime.'
   ].join('\n');
@@ -192,7 +192,13 @@ export function ros2Usage(): string {
 
 export async function runRos2Command(args: string[]): Promise<number> {
   const operation = args[0] && !args[0].startsWith('--') ? args[0] : 'shadow';
-  const optionArgs = operation === 'shadow' && args[0]?.startsWith('--') ? args : args.slice(1);
+  const inspectRelease =
+    operation === 'inspect' && args[1] && !args[1].startsWith('--') ? args[1] : undefined;
+  if (inspectRelease) readRelease(inspectRelease);
+  const optionArgs =
+    operation === 'shadow' && args[0]?.startsWith('--')
+      ? args
+      : args.slice(inspectRelease ? 2 : 1);
   const options = parseOptions(optionArgs);
   if (operation === 'doctor' || operation === 'inspect') return runOneShot(operation, options);
   if (operation === 'shadow' || operation === 'run') return runGateway(operation, options);

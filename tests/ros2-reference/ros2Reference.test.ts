@@ -363,6 +363,23 @@ async function testNoBypass(): Promise<void> {
   assert.equal(unavailableReport.rosAvailable, false);
   assert.match(unavailableReport.detail, /rclpy/);
 
+  const inspect = spawnSync(
+    process.execPath,
+    [
+      join(root, 'scripts/run-rlsok.cjs'),
+      'ros2',
+      'inspect',
+      join(root, 'examples/ros2-reference/release.shadow.yaml')
+    ],
+    { encoding: 'utf8' }
+  );
+  assert(
+    inspect.status === 0 || inspect.status === 2,
+    `inspect with a release must reach the sidecar instead of rejecting the positional input: ${inspect.stderr}`
+  );
+  const inspectReport = JSON.parse(inspect.stdout) as { rosAvailable: boolean };
+  assert.equal(typeof inspectReport.rosAvailable, 'boolean');
+
   const gatewaySources = sourceFiles(join(root, 'packages/ros2-reference-gateway'))
     .filter((file) => file.endsWith(`${join('ros2-reference-gateway', 'index.ts')}`));
   const directController = /ActionClient|send_goal_async|rclpy/;
