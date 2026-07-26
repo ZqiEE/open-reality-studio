@@ -316,7 +316,8 @@ export class Ros2ReferenceGateway {
       },
       this.options.evidence,
       policy,
-      (candidate) => sha256(canonicalJson(candidate))
+      (candidate) => sha256(canonicalJson(candidate)),
+      async () => this.options.releaseRecords.get(release.metadata.releaseId)
     );
     const decision = await gate.evaluate({
       release,

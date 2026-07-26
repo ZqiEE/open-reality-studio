@@ -263,12 +263,14 @@ async function testPermitBindings(): Promise<void> {
   const spec = release('released');
   const entries: ExecutionEvidence[] = [];
   let dispatches = 0;
+  let currentRecord = record(spec);
   const hash = (value: unknown) => sha256(canonicalJson(value));
   const gate = new ReleaseExecutionGate(
     { dispatch: async () => { dispatches += 1; return true; } },
     { append: (entry) => { entries.push(entry); } },
     async () => ({ allowed: true, reason: 'pass', matchedRuleIds: ['test'] }),
-    hash
+    hash,
+    async () => currentRecord
   );
   const candidate = action();
   const request: ExecutionRequest<JointTrajectoryAction, JointStateSnapshot> = {
@@ -295,10 +297,8 @@ async function testPermitBindings(): Promise<void> {
   const revoked = await gate.evaluate({ ...request, proposalId: 'permit-revoked' });
   assert.equal(revoked.status, 'allowed');
   if (revoked.status !== 'allowed') return;
-  await assert.rejects(gate.execute({
-    ...revoked.authorizedRequest,
-    releaseRecord: { ...request.releaseRecord, state: 'revoked' }
-  }), /execution_permit_invalid/);
+  currentRecord = { ...currentRecord, state: 'revoked' };
+  await assert.rejects(gate.execute(revoked.authorizedRequest), /execution_permit_invalid/);
   assert.equal(dispatches, 0);
 }
 

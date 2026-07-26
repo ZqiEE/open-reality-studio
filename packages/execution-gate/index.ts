@@ -73,7 +73,10 @@ implements ExecutionGate<TAction, TState, TResult> {
     private readonly dispatcher: ActionDispatcher<TAction, TResult>,
     private readonly evidence: EvidenceSink,
     private readonly policy: ActionPolicy<TAction, TState>,
-    private readonly hashAction: (action: TAction) => string
+    private readonly hashAction: (action: TAction) => string,
+    private readonly refreshReleaseRecord?: (
+      request: AuthorizedExecutionRequest<TAction, TState>
+    ) => Promise<ReleaseRecord>
   ) {}
 
   private evidenceFor(
@@ -184,7 +187,21 @@ implements ExecutionGate<TAction, TState, TResult> {
     const record = this.permits.get(permit);
     this.permits.delete(permit);
     const now = request.now ?? new Date();
-    const eligible = executionEligibility(request.release, request.releaseRecord, request.deviceId, now);
+    let currentReleaseRecord = request.releaseRecord;
+    try {
+      currentReleaseRecord = this.refreshReleaseRecord
+        ? await this.refreshReleaseRecord(request)
+        : request.releaseRecord;
+    } catch {
+      await this.evidence.append(this.evidenceFor(
+        request,
+        'failed',
+        'release_record_refresh_failed',
+        ['release_eligibility', 'single_use_permit']
+      ));
+      throw new Error('execution_permit_invalid');
+    }
+    const eligible = executionEligibility(request.release, currentReleaseRecord, request.deviceId, now);
     if (
       !record
       || record.expiresAt < now.getTime()
