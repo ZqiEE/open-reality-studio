@@ -351,8 +351,15 @@ async function testNoBypass(): Promise<void> {
     inspect.status === 0 || inspect.status === 2,
     `inspect with a release must reach the sidecar instead of rejecting the positional input: ${inspect.stderr}`
   );
-  const inspectReport = JSON.parse(inspect.stdout) as { rosAvailable: boolean };
-  assert.equal(typeof inspectReport.rosAvailable, 'boolean');
+  const inspectReport = JSON.parse(inspect.stdout) as {
+    rosAvailable?: boolean;
+    nodes?: string[];
+  };
+  assert(
+    typeof inspectReport.rosAvailable === 'boolean'
+      || Array.isArray(inspectReport.nodes),
+    'inspect must return either an unavailable report or a live ROS graph'
+  );
 
   const gatewaySources = sourceFiles(join(root, 'packages/ros2-reference-gateway'))
     .filter((file) => file.endsWith(`${join('ros2-reference-gateway', 'index.ts')}`));
