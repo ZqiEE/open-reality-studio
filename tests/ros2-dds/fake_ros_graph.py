@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+from pathlib import Path
 import time
 
 import rclpy
@@ -23,6 +24,7 @@ class FixtureGraph(Node):
         self.args = args
         self.started = time.monotonic()
         self.proposal_sent = 0
+        self.goal_count = 0
         self.joint_publisher = self.create_publisher(
             JointState, args.joint_state_topic, 10
         )
@@ -39,6 +41,11 @@ class FixtureGraph(Node):
         self.timer = self.create_timer(0.05, self.tick)
 
     def goal(self, _goal_request):
+        self.goal_count += 1
+        if self.args.goal_count_file:
+            Path(self.args.goal_count_file).write_text(
+                str(self.goal_count), encoding="utf-8"
+            )
         if self.args.controller_behavior == "reject":
             return GoalResponse.REJECT
         return GoalResponse.ACCEPT
@@ -70,6 +77,7 @@ def main() -> int:
     parser.add_argument(
         "--controller-behavior", choices=["accept", "reject"], default="accept"
     )
+    parser.add_argument("--goal-count-file")
     args = parser.parse_args()
     rclpy.init()
     node = FixtureGraph(args)

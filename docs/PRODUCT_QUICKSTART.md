@@ -46,12 +46,13 @@ npm run demo:e2e
 ```
 
 The command creates an isolated PostgreSQL database and loopback-only Fastify
-API, creates randomized temporary credentials, registers and explicitly
-approves the fixture release, issues and consumes one context-bound Permit,
-runs standalone Shadow with zero controller goals, uploads and verifies
-Evidence, revokes the release, proves the next Permit is denied, proves backup
-restore, and removes all temporary containers, data, credentials, and files.
-Any failed assertion exits non-zero and cleanup still runs.
+API, creates separate release-manager, approver, runtime, and auditor
+credentials, then invokes the cloud-connected product command for Shadow,
+simulated Reference Run, and a revocation race. It verifies both Permit
+bindings, zero Shadow/race controller goals, one simulated Reference goal,
+cloud Evidence, authenticated approval identity, complete chain export, and
+backup/restore. It removes all temporary containers, data, credentials, and
+files on success or failure.
 
 For manual cloud commands, set configuration outside the command line:
 
@@ -60,12 +61,21 @@ export RLSOK_EXECUTION_MODE=cloud-connected
 export RLSOK_CLOUD_API_URL=https://your-isolated-api.example
 export RLSOK_CLOUD_API_KEY_FILE=/secure/path/rlsok-api-key
 rlsok cloud get-release fixture-release-001
+rlsok ros2 shadow \
+  --release release.shadow.yaml \
+  --device fixture-arm-01 \
+  --proposer runtime-gateway \
+  --evidence evidence/cloud-shadow.json
 ```
 
 Cloud-connected mode never falls back to standalone. API, version, TLS,
 timeout, response, approval, revocation, or Permit failures deny the operation.
-Verify a stored cloud Evidence record with
-`rlsok cloud verify-evidence <evidence-id>`.
+Export and verify every record offline:
+
+```bash
+rlsok cloud evidence export --output evidence/cloud-chain.json
+rlsok cloud verify-evidence-chain evidence/cloud-chain.json
+```
 
 ## Reference Run
 
@@ -75,7 +85,7 @@ test-only `FollowJointTrajectory` action server. Use a canary release and exact
 release confirmation:
 
 ```bash
-rlsok ros2 run \
+RLSOK_EXECUTION_MODE=cloud-connected rlsok ros2 run \
   --release release.canary.yaml \
   --device fixture-arm-01 \
   --proposer test-proposer \
@@ -85,9 +95,9 @@ rlsok ros2 run \
 
 Reference Run enforces local release identity, approval, action/device/controller
 binding, fresh state, local Permit expiry/single-use, and a final release-state
-refresh. In cloud-connected integration, use
-`CloudConnectedDispatchBoundary` so cloud state is refreshed and the cloud
-Permit is atomically consumed immediately before the adapter call. An
+refresh. The command itself invokes `CloudConnectedDispatchBoundary`; customers
+do not need to assemble a TypeScript integration. It refreshes cloud state and
+atomically consumes the cloud Permit immediately before the adapter call. An
 unavailable cloud, stale state, changed content, mismatch, revocation, expired
 or consumed Permit, unavailable controller, rejection, timeout, or ambiguous
 cancellation fails closed and writes Evidence where identity is available.
@@ -95,4 +105,3 @@ cancellation fails closed and writes Evidence where identity is available.
 The reference path is experimental, is not hard real-time or safety-rated, and
 does not support arbitrary ROS 2 distributions, simulators, controllers,
 model formats, operating systems, or robots.
-

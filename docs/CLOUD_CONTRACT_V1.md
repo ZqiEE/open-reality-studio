@@ -12,7 +12,7 @@ not accept that version must fail closed.
 | Release ID | `metadata.releaseId` | `release_id` / `releaseId` | Exact string equality. |
 | Canonical JSON | Recursive object-key ordering, array order preserved, undefined omitted, non-finite numbers rejected | Same | Shared fixtures must produce identical bytes before hashing. |
 | Content hash | `executablePolicyHash` | `releaseContentHash` | SHA-256 of the validated complete ExecSpec. |
-| Approval identity | Local approved actor plus approved content hash | `approved_by` plus approved content hash | Approval applies only to the current exact content. |
+| Approval identity | Local approved actor plus approved content hash | Authenticated principal ID, stable display label, credential ID, timestamp, and approved content hash | Request JSON cannot choose the authoritative approver. Approval applies only to the current exact content. |
 | Release state | Local staged states including `shadow` and `canary` | `draft`, `approved`, `revoked` | Cloud state controls authorization; local staged state may be stricter. |
 | Revocation | Refreshed local release record | Persisted revocation and `revoked` state | Refresh and atomic Permit consumption happen immediately before dispatch. |
 | Action hash | SHA-256 of canonical action | Lowercase SHA-256 | Exact equality. |
@@ -23,7 +23,7 @@ not accept that version must fail closed.
 | `hardwareSignalSent` | Boolean plus detailed signal state | Boolean | The boolean must report the observed dispatch fact, not eligibility. |
 | Evidence chain | Per-bundle `sequence`, `previousHash`, `hash` | Per-organization sequence and previous hash | Cloud records use their own explicit envelope and are independently verified. |
 | Errors | Stable fail-closed reason strings | Stable non-2xx `{error}` codes | Non-2xx or malformed responses deny; credentials are never included. |
-| Organization | Standalone has no tenant boundary | API key resolves one organization | Every cloud query and mutation is scoped to that organization. |
+| Organization | Standalone has no tenant boundary | Credential resolves one organization and scoped principal | Every cloud query and mutation is scoped to that organization and explicit scope. |
 
 The shared fixture is
 [`fixtures/cloud-contract/v1/release.json`](../fixtures/cloud-contract/v1/release.json).
@@ -38,9 +38,16 @@ Both repositories validate it and assert the same content and action hashes.
 - TLS verification uses the platform default and remains enabled. Plain HTTP is
   accepted only for loopback isolated tests.
 - Requests time out after five seconds and responses are capped at 1 MiB.
-- Only safe `GET` requests receive one bounded retry.
-- Approval, Permit issuance/consumption, Evidence submission, and revocation
-  are never silently retried.
+- Safe `GET` requests receive one bounded retry. Registration, Permit issuance,
+  and Evidence submission carry an organization-scoped idempotency key and may
+  retry once with that same key after an ambiguous network result.
+- Approval, revocation, and Permit consumption are not blindly retried. A
+  timeout directs the operator to query current release/Permit state before
+  deciding the next action.
 - Redirects, cross-origin targets, non-2xx responses, and malformed responses
   fail closed.
 
+Cloud Evidence payloads contain bounded execution facts and hashes, not
+arbitrary proposal contents. They are authenticated runtime-gateway assertions:
+the chain makes later mutation, deletion, duplication, or reordering detectable,
+but does not prove the asserted physical event was truthful.
