@@ -248,6 +248,9 @@ export class Ros2ReferenceGateway {
     ) {
       return this.blocked(proposal, 'units_mismatch');
     }
+    if (this.options.controllerIdentity !== release.robot.controllerConfigSha256) {
+      return this.blocked(proposal, 'controller_identity_mismatch');
+    }
     if (action.points.some((point) => (
       point.positions.length !== release.actionContract.dimension
       || (point.velocities !== undefined && point.velocities.length !== release.actionContract.dimension)
@@ -347,6 +350,7 @@ export class Ros2ReferenceGateway {
         controllerGoalCount: this.goalCount
       };
     }
+    const goalsBeforeExecution = this.goalCount;
     try {
       await gate.execute(decision.authorizedRequest);
       return {
@@ -361,7 +365,7 @@ export class Ros2ReferenceGateway {
         proposalId: proposal.proposalId,
         decision: 'failed',
         reason: error instanceof Error ? error.message : 'reference_dispatch_failed',
-        hardwareSignalSent: true,
+        hardwareSignalSent: this.goalCount > goalsBeforeExecution,
         controllerGoalCount: this.goalCount
       };
     }

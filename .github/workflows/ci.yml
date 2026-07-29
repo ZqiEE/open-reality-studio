@@ -10,23 +10,61 @@ jobs:
   core:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run verify
+      - run: npm run package:smoke
+      - run: npm run sbom
+      - run: npm run licenses
+      - run: npm audit --omit=dev --audit-level=high
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: distribution-proof
+          path: |
+            artifacts/*.tgz
+            artifacts/*.sha256
+            artifacts/*.json
 
-  ros2-doctor:
+  ros2-jazzy-dds:
     runs-on: ubuntu-24.04
     container: ros:jazzy-ros-base
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
       - run: |
           apt-get update
-          apt-get install -y ros-jazzy-control-msgs ros-jazzy-sensor-msgs
+          apt-get install -y --no-install-recommends \
+            ros-jazzy-control-msgs \
+            ros-jazzy-sensor-msgs \
+            ros-jazzy-std-msgs \
+            ros-jazzy-trajectory-msgs
+          rm -rf /var/lib/apt/lists/*
       - shell: bash
         run: |
           source /opt/ros/jazzy/setup.bash
+          npm ci
           python3 experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py --doctor
+          npm run ros2:test
+          npm run ros2:dds-test
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sanitized-ros2-dds-evidence
+          path: artifacts/ros2-dds/*.json
+
+  secret-scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Install pinned Gitleaks CLI
+        run: go install github.com/zricethezav/gitleaks/v8@v8.28.0
+      - run: |
+          "$(go env GOPATH)/bin/gitleaks" detect --source=. --no-banner --redact

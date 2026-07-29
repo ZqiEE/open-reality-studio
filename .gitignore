@@ -1,4 +1,8 @@
 node_modules/
+.tmp-rlsok/
+dist/
+artifacts/
+*.tgz
 dist/
 build/
 coverage/

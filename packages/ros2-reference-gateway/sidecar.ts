@@ -1,11 +1,14 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import {
+  createInterface,
+  type Interface as ReadlineInterface,
+} from "node:readline";
 import type {
   JointStateSnapshot,
   JointTrajectoryAction,
   Ros2DoctorReport,
-  Ros2ReferenceTransport
-} from '.';
+  Ros2ReferenceTransport,
+} from ".";
 
 interface SidecarReply {
   id: number;
@@ -32,58 +35,75 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
   private handler?: (payload: string) => Promise<void>;
   private state?: JointStateSnapshot;
   private nextId = 1;
-  private readonly pending = new Map<number, {
-    resolve(value: unknown): void;
-    reject(error: Error): void;
-  }>();
+  private readonly pending = new Map<
+    number,
+    {
+      resolve(value: unknown): void;
+      reject(error: Error): void;
+    }
+  >();
 
   constructor(private readonly options: PythonRos2SidecarOptions) {}
 
-  async subscribeProposals(handler: (payload: string) => Promise<void>): Promise<void> {
-    if (this.handler) throw new Error('proposal_subscription_already_active');
+  async subscribeProposals(
+    handler: (payload: string) => Promise<void>,
+  ): Promise<void> {
+    if (this.handler) throw new Error("proposal_subscription_already_active");
     this.handler = handler;
     await this.ensureStarted();
   }
 
   async getFreshJointState(maxAgeMs: number): Promise<JointStateSnapshot> {
-    if (!this.state) throw new Error('joint_state_missing');
+    // DDS discovery is asynchronous for every new sidecar participant. Give
+    // the first sample a bounded startup window without weakening the
+    // release's freshness check applied below.
+    const deadline = Date.now() + 5_000;
+    while (!this.state && Date.now() < deadline) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+    }
+    if (!this.state) throw new Error("joint_state_missing");
     const ageMs = Date.now() - Date.parse(this.state.observedAt);
     if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > maxAgeMs) {
-      throw new Error('joint_state_stale');
+      throw new Error("joint_state_stale");
     }
     return this.state;
   }
 
   async dispatchTrajectory(
     action: JointTrajectoryAction,
-    controllerIdentity: string
+    controllerIdentity: string,
   ): Promise<{ accepted: boolean; detail: string }> {
-    return this.request('dispatch', { action, controllerIdentity }) as Promise<{
+    return this.request("dispatch", { action, controllerIdentity }) as Promise<{
       accepted: boolean;
       detail: string;
     }>;
   }
 
-  async cancelActiveGoal(reason: string): Promise<{ requested: boolean; detail: string }> {
-    return this.request('cancel', { reason }) as Promise<{ requested: boolean; detail: string }>;
+  async cancelActiveGoal(
+    reason: string,
+  ): Promise<{ requested: boolean; detail: string }> {
+    return this.request("cancel", { reason }) as Promise<{
+      requested: boolean;
+      detail: string;
+    }>;
   }
 
   async doctor(): Promise<Ros2DoctorReport> {
-    return this.request('doctor', {}) as Promise<Ros2DoctorReport>;
+    return this.request("doctor", {}) as Promise<Ros2DoctorReport>;
   }
 
   async close(): Promise<void> {
     const child = this.child;
     if (!child) return;
     try {
-      await this.request('shutdown', {});
+      await this.request("shutdown", {});
     } catch {
       child.kill();
     }
     this.lines?.close();
     this.child = undefined;
     for (const pending of Array.from(this.pending.values())) {
-      pending.reject(new Error('ros2_sidecar_closed'));
+      pending.reject(new Error("ros2_sidecar_closed"));
     }
     this.pending.clear();
   }
@@ -92,57 +112,70 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
     if (this.child) return;
     const args = [
       this.options.sidecarPath,
-      '--proposal-topic', this.options.proposalTopic ?? '/rlsok/action_proposals',
-      '--joint-state-topic', this.options.jointStateTopic ?? '/joint_states',
-      '--controller-action',
-      this.options.controllerAction ?? '/joint_trajectory_controller/follow_joint_trajectory'
+      "--proposal-topic",
+      this.options.proposalTopic ?? "/rlsok/action_proposals",
+      "--joint-state-topic",
+      this.options.jointStateTopic ?? "/joint_states",
+      "--controller-action",
+      this.options.controllerAction ??
+        "/joint_trajectory_controller/follow_joint_trajectory",
     ];
     const child = spawn(this.options.pythonExecutable, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
     });
     this.child = child;
     this.lines = createInterface({ input: child.stdout });
-    this.lines.on('line', (line) => void this.handleLine(line));
-    let stderr = '';
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr = `${stderr}${chunk.toString('utf8')}`.slice(-8_192);
+    this.lines.on("line", (line) => void this.handleLine(line));
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr = `${stderr}${chunk.toString("utf8")}`.slice(-8_192);
     });
-    child.on('exit', (code) => {
+    child.on("exit", (code) => {
       const error = new Error(
-        `ros2_sidecar_exited:${code ?? 'signal'}${stderr.trim() ? `:${stderr.trim()}` : ''}`
+        `ros2_sidecar_exited:${code ?? "signal"}${stderr.trim() ? `:${stderr.trim()}` : ""}`,
       );
-      for (const pending of Array.from(this.pending.values())) pending.reject(error);
+      for (const pending of Array.from(this.pending.values()))
+        pending.reject(error);
       this.pending.clear();
       this.child = undefined;
     });
-    child.on('error', (error) => {
-      for (const pending of Array.from(this.pending.values())) pending.reject(error);
+    child.on("error", (error) => {
+      for (const pending of Array.from(this.pending.values()))
+        pending.reject(error);
       this.pending.clear();
     });
     await Promise.race([
-      this.request('ping', {}),
-      new Promise((_, reject) => setTimeout(
-        () => reject(new Error('ros2_sidecar_startup_timeout')),
-        5_000
-      ))
+      this.request("ping", {}),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error("ros2_sidecar_startup_timeout")),
+          5_000,
+        ),
+      ),
     ]);
   }
 
-  private request(operation: string, params: Record<string, unknown>): Promise<unknown> {
-    if (!this.child && operation !== 'ping') {
+  private request(
+    operation: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (!this.child && operation !== "ping") {
       return this.ensureStarted().then(() => this.request(operation, params));
     }
     const child = this.child;
-    if (!child) return Promise.reject(new Error('ros2_sidecar_not_started'));
+    if (!child) return Promise.reject(new Error("ros2_sidecar_not_started"));
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      child.stdin.write(`${JSON.stringify({ id, operation, params })}\n`, (error) => {
-        if (!error) return;
-        this.pending.delete(id);
-        reject(error);
-      });
+      child.stdin.write(
+        `${JSON.stringify({ id, operation, params })}\n`,
+        (error) => {
+          if (!error) return;
+          this.pending.delete(id);
+          reject(error);
+        },
+      );
     });
   }
 
@@ -153,11 +186,11 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
     } catch {
       return;
     }
-    if (message.event === 'joint_state') {
+    if (message.event === "joint_state") {
       this.state = message.state as JointStateSnapshot;
       return;
     }
-    if (message.event === 'proposal' && typeof message.payload === 'string') {
+    if (message.event === "proposal" && typeof message.payload === "string") {
       try {
         await this.handler?.(message.payload);
       } catch {
@@ -165,12 +198,13 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
       }
       return;
     }
-    if (typeof message.id !== 'number') return;
+    if (typeof message.id !== "number") return;
     const pending = this.pending.get(message.id);
     if (!pending) return;
     this.pending.delete(message.id);
     const reply = message as unknown as SidecarReply;
     if (reply.ok) pending.resolve(reply.result);
-    else pending.reject(new Error(reply.error ?? 'ros2_sidecar_request_failed'));
+    else
+      pending.reject(new Error(reply.error ?? "ros2_sidecar_request_failed"));
   }
 }

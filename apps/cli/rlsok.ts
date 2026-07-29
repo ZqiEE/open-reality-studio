@@ -13,6 +13,8 @@ import {
   type EvidenceBundle
 } from '../../packages/core/evidence';
 import { ros2Usage, runRos2Command } from './ros2';
+import { cloudUsage, runCloudCommand } from './cloud';
+import { runStandaloneShadow } from './shadow';
 
 function fail(message: string): never {
   process.stderr.write(`ERROR: ${message}\n`);
@@ -65,7 +67,7 @@ function usage(exitCode = 1): never {
   process.stdout.write(
     'RLSOK ReleaseGate CLI\n' +
     'Release control for executable robot policies.\n\n' +
-    'usage: rlsok check <release> | rlsok diff <old> <new> | rlsok verify-evidence <bundle> | rlsok ros2 ...\n'
+    'usage: rlsok check <release> | rlsok diff <old> <new> | rlsok shadow <release> <proposal> <evidence> | rlsok verify-evidence <bundle> | rlsok ros2 ... | rlsok cloud ...\n'
   );
   process.exit(exitCode);
 }
@@ -75,14 +77,21 @@ async function main(): Promise<void> {
   if (command === '--help' || command === '-h' || command === 'help') usage(0);
   else if (command === 'check' && args.length === 1) check(args[0]);
   else if (command === 'diff' && args.length === 2) diff(args[0], args[1]);
+  else if (command === 'shadow' && args.length === 3) {
+    process.exitCode = await runStandaloneShadow(args[0], args[1], args[2]);
+  }
   else if (command === 'verify-evidence' && args.length === 1) verifyEvidence(args[0]);
   else if (command === 'ros2') process.exitCode = await runRos2Command(args);
+  else if (command === 'cloud') process.exitCode = await runCloudCommand(args);
   else usage();
 }
 
 void main().catch((error) => {
   if (process.argv[2] === 'ros2' && process.argv[3] === 'help') {
     process.stderr.write(`${ros2Usage()}\n`);
+  }
+  if (process.argv[2] === 'cloud' && process.argv[3] === 'help') {
+    process.stderr.write(`${cloudUsage()}\n`);
   }
   fail(error instanceof Error ? error.message : String(error));
 });
