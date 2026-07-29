@@ -66,4 +66,5 @@ jobs:
           fetch-depth: 0
       - name: Install pinned Gitleaks CLI
         run: go install github.com/zricethezav/gitleaks/v8@v8.28.0
-      - run: "$(go env GOPATH)/bin/gitleaks" detect --source=. --no-banner --redact
+      - run: |
+          "$(go env GOPATH)/bin/gitleaks" detect --source=. --no-banner --redact
