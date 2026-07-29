@@ -327,7 +327,10 @@ async function testNoBypass(): Promise<void> {
   const unavailable = spawnSync(
     python,
     ['-S', join(root, 'experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py'), '--doctor'],
-    { encoding: 'utf8' }
+    {
+      encoding: 'utf8',
+      env: { ...process.env, PYTHONPATH: '' }
+    }
   );
   assert.equal(unavailable.status, 2, unavailable.stderr);
   const unavailableReport = JSON.parse(unavailable.stdout) as { rosAvailable: boolean; detail: string };
