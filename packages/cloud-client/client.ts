@@ -297,6 +297,10 @@ export class RlsokCloudClient {
             ...record,
           }),
           organizationFingerprint: page.organizationFingerprint,
+          includedForReleaseFilter:
+            record.includedForReleaseFilter === undefined
+              ? !releaseId || record.releaseId === releaseId
+              : Boolean(record.includedForReleaseFilter),
         });
       }
       if (page.nextAfterSequence === null) break;
@@ -371,6 +375,7 @@ export function verifyEvidenceChain(exported: EvidenceExport):
     return { ok: false, reason: "evidence_bounds_inconsistent" };
   }
   const seen = new Set<number>();
+  let selectedRecords = 0;
   let previousHash = checkpoint?.evidenceHash ?? null;
   for (const record of records) {
     if (record.organizationFingerprint !== exported.organizationFingerprint) {
@@ -399,17 +404,23 @@ export function verifyEvidenceChain(exported: EvidenceExport):
         reason: `evidence_previous_hash_mismatch:${record.sequence}`,
       };
     }
-    if (exported.releaseFilter && record.releaseId !== exported.releaseFilter) {
+    const expectedIncluded =
+      !exported.releaseFilter || record.releaseId === exported.releaseFilter;
+    if (record.includedForReleaseFilter !== expectedIncluded) {
       return {
         ok: false,
         reason: `evidence_release_boundary_unexpected:${record.sequence}`,
       };
     }
+    if (record.includedForReleaseFilter) selectedRecords += 1;
     const verified = verifyCloudEvidence(record);
     if (!verified.ok) {
       return { ok: false, reason: `${verified.reason}:${record.sequence}` };
     }
     previousHash = record.evidenceHash;
+  }
+  if (exported.releaseFilter && selectedRecords === 0) {
+    return { ok: false, reason: "evidence_release_filter_empty" };
   }
   return { ok: true, recordsVerified: records.length };
 }

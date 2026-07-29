@@ -157,6 +157,7 @@ export type SubmitEvidence = z.infer<typeof submitEvidenceSchema>;
 export type CloudEvidence = z.infer<typeof evidenceResponseSchema>;
 export type ExportedCloudEvidence = CloudEvidence & {
   organizationFingerprint: string;
+  includedForReleaseFilter: boolean;
 };
 
 export const evidenceExportPageSchema = z
@@ -197,6 +198,7 @@ const normalizedEvidenceSchema = z
     evidenceHash: hash,
     createdAt: timestamp,
     organizationFingerprint: hash,
+    includedForReleaseFilter: z.boolean(),
   })
   .strict();
 

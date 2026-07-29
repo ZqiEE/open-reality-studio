@@ -337,6 +337,7 @@ function evidenceExport(count = 205): EvidenceExport {
       ...body,
       evidenceHash,
       organizationFingerprint,
+      includedForReleaseFilter: true,
     });
     previousHash = evidenceHash;
   }
