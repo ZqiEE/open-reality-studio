@@ -1,0 +1,73 @@
+{
+  "contractVersion": "rlsok-cloud/v1",
+  "execSpec": {
+    "apiVersion": "realitywarden.io/v1alpha1",
+    "kind": "ExecutablePolicy",
+    "metadata": {
+      "name": "cross-repository-shadow-fixture",
+      "releaseId": "fixture-release-001",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    },
+    "model": {
+      "artifact": "artifacts/fixture-policy",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "framework": "ros2",
+      "policyType": "joint-trajectory",
+      "codeRevision": "fixture-v1"
+    },
+    "actionContract": {
+      "representation": "trajectory",
+      "dimension": 2,
+      "jointOrder": ["joint_a", "joint_b"],
+      "units": {
+        "position": "radian",
+        "velocity": "radian_per_second"
+      },
+      "normalizerSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "preprocessorSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "postprocessorSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "robot": {
+      "profileId": "fixture-arm",
+      "profileSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "urdfSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "controllerType": "joint_trajectory_controller",
+      "controllerConfigSha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "runtimePolicy": {
+      "policySha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "maxStateAgeMs": 1000,
+      "failClosed": true
+    },
+    "evidence": {
+      "scenarioPackId": "cross-repository-v1",
+      "testReportSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "status": "approved",
+      "approvedBy": "fixture-approver",
+      "approvedAt": "2026-01-01T00:01:00.000Z"
+    },
+    "deployment": {
+      "allowedDeviceIds": ["fixture-arm-01"],
+      "mode": "shadow",
+      "expiresAt": "2099-01-01T00:00:00.000Z"
+    }
+  },
+  "action": {
+    "representation": "trajectory",
+    "jointNames": ["joint_a", "joint_b"],
+    "points": [
+      {
+        "positions": [0.1, -0.1],
+        "timeFromStartMs": 250
+      }
+    ],
+    "units": {
+      "position": "radian",
+      "velocity": "radian_per_second"
+    }
+  },
+  "expected": {
+    "contentHash": "d193591e0d72767def9ca243a0a8e8bdbb9e074467e77975ca61dd2b75e2b6d7",
+    "actionHash": "3564118f9d5767cbe2e4a087ef2e687c6665861bc34457877912710b88a3c7eb"
+  }
+}

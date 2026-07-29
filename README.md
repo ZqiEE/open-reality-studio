@@ -21,6 +21,17 @@ npm run build
 npm test
 ```
 
+A clean installable package is produced and tested without repository-relative
+paths:
+
+```bash
+npm run package:smoke
+npm run sbom
+```
+
+The intended package and binary names are `@realitywarden/rlsok` and `rlsok`.
+This repository prepares a tarball but does not publish it.
+
 ## ExecSpec
 
 The complete runnable example is
@@ -73,7 +84,9 @@ physical-robot validation require an appropriate ROS 2 environment and are not
 claimed unless actually completed.
 
 See [architecture](docs/ARCHITECTURE.md) and
-[ROS 2 setup](docs/ROS2_REFERENCE_SETUP.md).
+[ROS 2 setup](docs/ROS2_REFERENCE_SETUP.md). Start with the
+[product quickstart](docs/PRODUCT_QUICKSTART.md) and review the
+[cloud contract](docs/CLOUD_CONTRACT_V1.md) before cloud-connected use.
 
 ## License
 

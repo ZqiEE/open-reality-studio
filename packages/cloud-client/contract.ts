@@ -1,0 +1,114 @@
+import { z } from 'zod';
+import { executablePolicySpecSchema } from '../core/exec-spec';
+
+export const cloudContractVersion = 'rlsok-cloud/v1' as const;
+export const cloudApiPathVersion = 'v1' as const;
+
+const hash = z.string().regex(/^[a-f0-9]{64}$/);
+const timestamp = z.string().datetime({ offset: true });
+
+export const releaseResponseSchema = z.object({
+  apiVersion: z.literal(cloudContractVersion),
+  release_id: z.string().min(1).optional(),
+  releaseId: z.string().min(1).optional(),
+  content_hash: hash.optional(),
+  contentHash: hash.optional(),
+  state: z.enum(['draft', 'approved', 'revoked']),
+  exec_spec: executablePolicySpecSchema.optional(),
+  execSpec: executablePolicySpecSchema.optional(),
+  created_at: timestamp.optional(),
+  updated_at: timestamp.optional()
+}).passthrough().transform((value) => ({
+  releaseId: value.releaseId ?? value.release_id ?? '',
+  contentHash: value.contentHash ?? value.content_hash ?? '',
+  state: value.state,
+  execSpec: value.execSpec ?? value.exec_spec
+})).refine((value) => value.releaseId.length > 0 && hash.safeParse(value.contentHash).success);
+
+export const registerReleaseResponseSchema = z.object({
+  apiVersion: z.literal(cloudContractVersion),
+  releaseId: z.string().min(1),
+  contentHash: hash
+}).strict();
+
+export const permitRequestSchema = z.object({
+  releaseId: z.string().min(1).max(200),
+  contentHash: hash,
+  actionHash: hash,
+  deviceId: z.string().min(1).max(200),
+  controllerId: z.string().min(1).max(200),
+  expiresInSeconds: z.number().int().min(1).max(60).default(30)
+}).strict();
+
+export const consumePermitRequestSchema = permitRequestSchema
+  .omit({ expiresInSeconds: true })
+  .strict();
+
+export const permitResponseSchema = z.object({
+  apiVersion: z.literal(cloudContractVersion),
+  permitId: z.string().uuid(),
+  expiresAt: timestamp
+}).strict();
+
+export const consumePermitResponseSchema = z.object({
+  apiVersion: z.literal(cloudContractVersion),
+  permitId: z.string().uuid(),
+  consumed: z.literal(true)
+}).strict();
+
+export const revokeReleaseResponseSchema = z.object({
+  apiVersion: z.literal(cloudContractVersion),
+  releaseId: z.string().min(1),
+  state: z.literal('revoked')
+}).strict();
+
+export const cloudEvidenceDecisionSchema = z.enum(['allowed', 'blocked', 'failed']);
+
+export const submitEvidenceSchema = z.object({
+  releaseId: z.string().min(1).max(200),
+  permitId: z.string().uuid().nullable().optional(),
+  decision: cloudEvidenceDecisionSchema,
+  hardwareSignalSent: z.boolean(),
+  payload: z.record(z.string(), z.unknown())
+}).strict();
+
+export const evidenceResponseSchema = z.object({
+  apiVersion: z.literal(cloudContractVersion),
+  id: z.string().uuid(),
+  sequence: z.union([z.number().int().nonnegative(), z.string().regex(/^\d+$/)]),
+  release_id: z.string().min(1).optional(),
+  releaseId: z.string().min(1).optional(),
+  permit_id: z.string().uuid().nullable().optional(),
+  permitId: z.string().uuid().nullable().optional(),
+  decision: cloudEvidenceDecisionSchema,
+  hardware_signal_sent: z.boolean().optional(),
+  hardwareSignalSent: z.boolean().optional(),
+  payload: z.record(z.string(), z.unknown()),
+  previous_hash: hash.nullable().optional(),
+  previousHash: hash.nullable().optional(),
+  evidence_hash: hash.optional(),
+  evidenceHash: hash.optional(),
+  created_at: timestamp.optional(),
+  createdAt: timestamp.optional()
+}).passthrough().transform((value) => ({
+  id: value.id,
+  sequence: Number(value.sequence),
+  releaseId: value.releaseId ?? value.release_id ?? '',
+  permitId: value.permitId ?? value.permit_id ?? null,
+  decision: value.decision,
+  hardwareSignalSent:
+    value.hardwareSignalSent ?? value.hardware_signal_sent ?? false,
+  payload: value.payload,
+  previousHash: value.previousHash ?? value.previous_hash ?? null,
+  evidenceHash: value.evidenceHash ?? value.evidence_hash ?? '',
+  createdAt: value.createdAt ?? value.created_at ?? ''
+})).refine((value) => (
+  value.releaseId.length > 0
+  && hash.safeParse(value.evidenceHash).success
+  && timestamp.safeParse(value.createdAt).success
+));
+
+export type PermitRequest = z.infer<typeof permitRequestSchema>;
+export type ConsumePermitRequest = z.infer<typeof consumePermitRequestSchema>;
+export type SubmitEvidence = z.infer<typeof submitEvidenceSchema>;
+export type CloudEvidence = z.infer<typeof evidenceResponseSchema>;

@@ -1,0 +1,22 @@
+{
+  "proposalId": "standalone-shadow-001",
+  "deviceId": "arm-01",
+  "action": {
+    "representation": "trajectory",
+    "jointNames": ["joint_a", "joint_b"],
+    "points": [
+      {
+        "positions": [0.1, -0.1],
+        "timeFromStartMs": 250
+      }
+    ],
+    "units": {
+      "position": "radian",
+      "velocity": "radian_per_second"
+    }
+  },
+  "state": {
+    "names": ["joint_a", "joint_b"],
+    "positions": [0, 0]
+  }
+}
