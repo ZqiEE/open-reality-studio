@@ -46,6 +46,10 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
   }
 
   async getFreshJointState(maxAgeMs: number): Promise<JointStateSnapshot> {
+    const deadline = Date.now() + Math.min(maxAgeMs, 1_000);
+    while (!this.state && Date.now() < deadline) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+    }
     if (!this.state) throw new Error('joint_state_missing');
     const ageMs = Date.now() - Date.parse(this.state.observedAt);
     if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > maxAgeMs) {
