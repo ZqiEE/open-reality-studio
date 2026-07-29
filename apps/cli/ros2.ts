@@ -65,6 +65,19 @@ function defaultSidecarPath(): string {
   return resolve("experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py");
 }
 
+async function waitForControllerDiscovery(
+  transport: PythonRos2SidecarTransport,
+  initial: Awaited<ReturnType<PythonRos2SidecarTransport["doctor"]>>,
+) {
+  let report = initial;
+  const deadline = Date.now() + 5_000;
+  while (!report.actionServerAvailable && Date.now() < deadline) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    report = await transport.doctor();
+  }
+  return report;
+}
+
 function runOneShot(operation: "doctor" | "inspect", options: Options): number {
   const python =
     options.python ?? (process.platform === "win32" ? "python" : "python3");
@@ -141,7 +154,10 @@ async function runCloudConnectedGateway(
     jointStateTopic: options["joint-state-topic"],
     controllerAction: options["controller-action"],
   });
-  const doctor = await transport.doctor();
+  let doctor = await transport.doctor();
+  if (mode === "run" && !doctor.actionServerAvailable) {
+    doctor = await waitForControllerDiscovery(transport, doctor);
+  }
   process.stdout.write(
     `${JSON.stringify({
       executionMode: "cloud-connected",

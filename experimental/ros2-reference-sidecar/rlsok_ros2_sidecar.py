@@ -75,7 +75,9 @@ class ReferenceTransportNode(NodeBase):
         emit({"event": "joint_state", "state": state})
 
     def dispatch(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        if not self.action_client.wait_for_server(timeout_sec=1.0):
+        # A newly started DDS participant can need several discovery rounds
+        # even when the controller was already running.
+        if not self.action_client.wait_for_server(timeout_sec=5.0):
             return {"accepted": False, "detail": "action_server_unavailable"}
         action = params["action"]
         goal = FollowJointTrajectory.Goal()
