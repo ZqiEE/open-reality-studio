@@ -25,6 +25,7 @@ import {
   type Ros2DoctorReport,
   type Ros2ReferenceTransport,
 } from "../../packages/ros2-reference-gateway";
+import { PythonRos2SidecarTransport } from "../../packages/ros2-reference-gateway/sidecar";
 
 const H = (character: string) => character.repeat(64);
 const NOW = new Date("2026-07-26T12:00:00.000Z");
@@ -397,6 +398,22 @@ async function testNoBypass(): Promise<void> {
   assert(
     sidecar.includes("FollowJointTrajectory"),
     "sidecar must use the control_msgs action",
+  );
+  assert(
+    sidecar.includes("datetime.now(timezone.utc)"),
+    "JointState freshness must use receipt wall clock, not the ROS simulation epoch",
+  );
+  assert(
+    sidecar.includes("sourceTimestamp"),
+    "the source header timestamp must remain available for diagnostics",
+  );
+  assert.throws(
+    () => new PythonRos2SidecarTransport({
+      pythonExecutable: "python3",
+      sidecarPath: "unused",
+      discoveryTimeoutMs: 999,
+    }),
+    /ros2_discovery_timeout_out_of_range/,
   );
   assert(
     !sidecar.includes("trajectory_msgs.action"),

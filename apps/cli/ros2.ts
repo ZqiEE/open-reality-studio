@@ -49,6 +49,18 @@ function required(options: Options, name: string): string {
   return value;
 }
 
+function discoveryTimeoutMs(options: Options): number {
+  const raw =
+    options["discovery-timeout-ms"] ??
+    process.env.RLSOK_ROS2_DISCOVERY_TIMEOUT_MS ??
+    "15000";
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1_000 || value > 120_000) {
+    throw new Error("ROS 2 discovery timeout must be an integer from 1000 to 120000 ms");
+  }
+  return value;
+}
+
 function readRelease(path: string): ExecutablePolicySpec {
   const resolved = resolve(path);
   if (!existsSync(resolved))
@@ -68,9 +80,10 @@ function defaultSidecarPath(): string {
 async function waitForControllerDiscovery(
   transport: PythonRos2SidecarTransport,
   initial: Awaited<ReturnType<PythonRos2SidecarTransport["doctor"]>>,
+  timeoutMs: number,
 ) {
   let report = initial;
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + timeoutMs;
   while (!report.actionServerAvailable && Date.now() < deadline) {
     await new Promise((resolveWait) => setTimeout(resolveWait, 100));
     report = await transport.doctor();
@@ -82,7 +95,12 @@ function runOneShot(operation: "doctor" | "inspect", options: Options): number {
   const python =
     options.python ?? (process.platform === "win32" ? "python" : "python3");
   const sidecar = resolve(options.sidecar ?? defaultSidecarPath());
-  const result = spawnSync(python, [sidecar, `--${operation}`], {
+  const result = spawnSync(python, [
+    sidecar,
+    `--${operation}`,
+    "--discovery-timeout-seconds",
+    String(discoveryTimeoutMs(options) / 1_000),
+  ], {
     encoding: "utf8",
     windowsHide: true,
   });
@@ -146,6 +164,7 @@ async function runCloudConnectedGateway(
     options.evidence ??
       `evidence/ros2-cloud-${mode}-${spec.metadata.releaseId}.json`,
   );
+  const discoveryTimeout = discoveryTimeoutMs(options);
   const transport = new PythonRos2SidecarTransport({
     pythonExecutable:
       options.python ?? (process.platform === "win32" ? "python" : "python3"),
@@ -153,10 +172,11 @@ async function runCloudConnectedGateway(
     proposalTopic: options["proposal-topic"],
     jointStateTopic: options["joint-state-topic"],
     controllerAction: options["controller-action"],
+    discoveryTimeoutMs: discoveryTimeout,
   });
   let doctor = await transport.doctor();
   if (mode === "run" && !doctor.actionServerAvailable) {
-    doctor = await waitForControllerDiscovery(transport, doctor);
+    doctor = await waitForControllerDiscovery(transport, doctor, discoveryTimeout);
   }
   process.stdout.write(
     `${JSON.stringify({
@@ -236,9 +256,10 @@ async function runCloudConnectedGateway(
     const result = await workflow.runProposal(payload);
     process.stdout.write(`${JSON.stringify(result)}\n`);
     await transport.close();
-    return 0;
+    return result.decision === "allowed" ? 0 : 2;
   }
   let completed = false;
+  let completionExitCode = 0;
   let resolveCompletion: () => void = () => undefined;
   let rejectCompletion: (error: Error) => void = () => undefined;
   const completion = new Promise<void>((resolveDone, rejectDone) => {
@@ -261,6 +282,7 @@ async function runCloudConnectedGateway(
       }
       const result = await workflow.runProposal(payload);
       process.stdout.write(`${JSON.stringify(result)}\n`);
+      completionExitCode = result.decision === "allowed" ? 0 : 2;
       resolveCompletion();
     } catch (error) {
       rejectCompletion(
@@ -282,7 +304,7 @@ async function runCloudConnectedGateway(
     ]);
   }
   await transport.close();
-  return 0;
+  return completionExitCode;
 }
 
 async function runGateway(
@@ -324,6 +346,7 @@ async function runGateway(
   const records = new InMemoryReleaseRecordStore(
     new Map([[spec.metadata.releaseId, releaseRecord]]),
   );
+  const discoveryTimeout = discoveryTimeoutMs(options);
   const transport = new PythonRos2SidecarTransport({
     pythonExecutable:
       options.python ?? (process.platform === "win32" ? "python" : "python3"),
@@ -331,6 +354,7 @@ async function runGateway(
     proposalTopic: options["proposal-topic"],
     jointStateTopic: options["joint-state-topic"],
     controllerAction: options["controller-action"],
+    discoveryTimeoutMs: discoveryTimeout,
   });
   const evidencePath = resolve(
     options.evidence ?? `evidence/ros2-${mode}-${spec.metadata.releaseId}.json`,
@@ -344,7 +368,10 @@ async function runGateway(
     transport,
     evidence: new FileEvidenceSink(spec, evidencePath),
   });
-  const report = await transport.doctor();
+  let report = await transport.doctor();
+  if (mode === "run" && !report.actionServerAvailable) {
+    report = await waitForControllerDiscovery(transport, report, discoveryTimeout);
+  }
   process.stdout.write(
     `${JSON.stringify({ mode, evidencePath, doctor: report }, null, 2)}\n`,
   );
