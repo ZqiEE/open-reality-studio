@@ -80,10 +80,27 @@ try {
     `${digest}  ${basename(tarball)}\n`,
     'utf8'
   );
+  const sourceCommit = run('git', ['rev-parse', 'HEAD']).trim();
+  const manifest = {
+    product: 'RLSOK runtime',
+    version: packed[0].version,
+    sourceCommit,
+    package: basename(tarball),
+    sizeBytes: bytes.length,
+    sha256: digest,
+    files: packed[0].files
+      .map((file) => file.path)
+      .sort((left, right) => left.localeCompare(right))
+  };
+  writeFileSync(
+    resolve(root, 'artifacts', `${basename(tarball)}.manifest.json`),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    'utf8'
+  );
   rmSync(tarball);
   process.stdout.write(JSON.stringify({
-    package: basename(tarball),
-    sha256: digest,
+    ...manifest,
+    files: manifest.files.length,
     help: 'passed',
     check: 'passed',
     standaloneShadow: 'passed',
