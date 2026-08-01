@@ -91,7 +91,9 @@ class FixtureGraph(Node):
     def _write_metrics(self) -> None:
         if not self.args.metrics_file:
             return
-        Path(self.args.metrics_file).write_text(
+        metrics_path = Path(self.args.metrics_file)
+        temporary_path = metrics_path.with_suffix(metrics_path.suffix + ".tmp")
+        temporary_path.write_text(
             json.dumps(
                 {
                     "jointStateMessagesPublished": self.joint_state_publish_count,
@@ -104,6 +106,7 @@ class FixtureGraph(Node):
             + "\n",
             encoding="utf-8",
         )
+        temporary_path.replace(metrics_path)
 
 
 def main() -> int:
