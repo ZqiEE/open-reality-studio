@@ -16,6 +16,17 @@ Doctor must report the expected RMW implementation, domain, topics, controller
 action, joint-state status, action-server status, and SROS2 state. Missing ROS
 imports return exit code 2.
 
+Joint-state freshness is measured when the sidecar receives the DDS sample.
+The original ROS header timestamp is retained as `sourceTimestamp` for
+diagnostics, but it is not interpreted as UTC because simulators such as
+Gazebo use a simulation epoch. This does not relax `runtimePolicy.maxStateAgeMs`:
+the received sample must still be current at the execution boundary.
+
+DDS discovery uses a bounded 15-second window by default. A deployment may set
+`--discovery-timeout-ms` or `RLSOK_ROS2_DISCOVERY_TIMEOUT_MS` from 1000 through
+120000 milliseconds. Expiry of that window fails closed before Permit
+consumption or controller dispatch.
+
 ## SROS2
 
 Generate signed deployment artifacts from the deny-by-default reference policy
@@ -67,3 +78,6 @@ npm run rlsok -- ros2 run \
 Stop on stale state, clock skew, discovery changes, SROS2 permissive mode,
 controller rejection, timeout, cancellation ambiguity, or evidence verification
 failure. A cancellation request is not proof that physical motion stopped.
+Blocked and failed cloud-connected executions return a nonzero process status;
+when the cloud release identity is known, revocation and other eligibility
+denials are written as zero-dispatch Evidence without issuing a Permit.

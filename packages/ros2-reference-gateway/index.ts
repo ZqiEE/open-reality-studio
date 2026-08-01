@@ -49,7 +49,8 @@ type Ros2ProposalEnvelope = z.infer<typeof ros2ProposalEnvelopeSchema>;
 const jointStateSnapshotSchema = z.object({
   names: z.array(z.string().min(1)).min(1).max(256),
   positions: z.array(z.number().finite()).min(1).max(256),
-  observedAt: isoTimestamp
+  observedAt: isoTimestamp,
+  sourceTimestamp: isoTimestamp.optional()
 }).strict().superRefine((state, context) => {
   if (state.names.length !== state.positions.length) {
     context.addIssue({
@@ -77,6 +78,7 @@ export interface Ros2DoctorReport {
   proposalTopic: string;
   jointStateTopic: string;
   controllerAction: string;
+  discoveryTimeoutSeconds?: number;
   jointStateFresh: boolean;
   actionServerAvailable: boolean;
   sros2Enabled: boolean;

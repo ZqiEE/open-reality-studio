@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import threading
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 try:
@@ -60,24 +61,28 @@ class ReferenceTransportNode(NodeBase):
     def _joint_state(self, message: JointState) -> None:
         stamp = message.header.stamp
         seconds = stamp.sec + stamp.nanosec / 1_000_000_000
-        if seconds <= 0:
-            seconds = self.get_clock().now().nanoseconds / 1_000_000_000
-        from datetime import datetime, timezone
-        observed_at = datetime.fromtimestamp(seconds, timezone.utc).isoformat().replace(
-            "+00:00", "Z"
-        )
+        # Freshness is measured from receipt at this trust boundary. ROS header
+        # stamps can use simulation time (for example Gazebo starts at epoch 0)
+        # and therefore must not be interpreted as UTC wall clock time.
+        observed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         state = {
             "names": list(message.name),
             "positions": list(message.position),
             "observedAt": observed_at,
         }
+        if seconds > 0:
+            state["sourceTimestamp"] = datetime.fromtimestamp(
+                seconds, timezone.utc
+            ).isoformat().replace("+00:00", "Z")
         self.latest_state = state
         emit({"event": "joint_state", "state": state})
 
     def dispatch(self, params: Dict[str, Any]) -> Dict[str, Any]:
         # A newly started DDS participant can need several discovery rounds
         # even when the controller was already running.
-        if not self.action_client.wait_for_server(timeout_sec=5.0):
+        if not self.action_client.wait_for_server(
+            timeout_sec=self.args.discovery_timeout_seconds
+        ):
             return {"accepted": False, "detail": "action_server_unavailable"}
         action = params["action"]
         goal = FollowJointTrajectory.Goal()
@@ -160,6 +165,7 @@ class ReferenceTransportNode(NodeBase):
             "proposalTopic": self.args.proposal_topic,
             "jointStateTopic": self.args.joint_state_topic,
             "controllerAction": self.args.controller_action,
+            "discoveryTimeoutSeconds": self.args.discovery_timeout_seconds,
             "jointStateFresh": self.latest_state is not None,
             "actionServerAvailable": self.action_client.server_is_ready(),
             "sros2Enabled": (
@@ -193,6 +199,7 @@ def unavailable_report(args: argparse.Namespace) -> Dict[str, Any]:
         "proposalTopic": args.proposal_topic,
         "jointStateTopic": args.joint_state_topic,
         "controllerAction": args.controller_action,
+        "discoveryTimeoutSeconds": args.discovery_timeout_seconds,
         "jointStateFresh": False,
         "actionServerAvailable": False,
         "sros2Enabled": (
@@ -220,7 +227,10 @@ def main() -> int:
     parser.add_argument("--doctor", action="store_true")
     parser.add_argument("--inspect", action="store_true")
     parser.add_argument("--result-timeout-seconds", type=float, default=30.0)
+    parser.add_argument("--discovery-timeout-seconds", type=float, default=15.0)
     args = parser.parse_args()
+    if not 1.0 <= args.discovery_timeout_seconds <= 120.0:
+        parser.error("--discovery-timeout-seconds must be between 1 and 120")
 
     if rclpy is None:
         report = unavailable_report(args)

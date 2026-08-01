@@ -23,6 +23,7 @@ interface PythonRos2SidecarOptions {
   proposalTopic?: string;
   jointStateTopic?: string;
   controllerAction?: string;
+  discoveryTimeoutMs?: number;
 }
 
 /**
@@ -43,7 +44,15 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
     }
   >();
 
-  constructor(private readonly options: PythonRos2SidecarOptions) {}
+  private readonly discoveryTimeoutMs: number;
+
+  constructor(private readonly options: PythonRos2SidecarOptions) {
+    const timeout = options.discoveryTimeoutMs ?? 15_000;
+    if (!Number.isInteger(timeout) || timeout < 1_000 || timeout > 120_000) {
+      throw new Error("ros2_discovery_timeout_out_of_range");
+    }
+    this.discoveryTimeoutMs = timeout;
+  }
 
   async subscribeProposals(
     handler: (payload: string) => Promise<void>,
@@ -57,7 +66,7 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
     // DDS discovery is asynchronous for every new sidecar participant. Give
     // the first sample a bounded startup window without weakening the
     // release's freshness check applied below.
-    const deadline = Date.now() + 5_000;
+    const deadline = Date.now() + this.discoveryTimeoutMs;
     while (!this.state && Date.now() < deadline) {
       await new Promise((resolveWait) => setTimeout(resolveWait, 25));
     }
@@ -118,6 +127,8 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
       "--controller-action",
       this.options.controllerAction ??
         "/joint_trajectory_controller/follow_joint_trajectory",
+      "--discovery-timeout-seconds",
+      String(this.discoveryTimeoutMs / 1_000),
     ];
     const child = spawn(this.options.pythonExecutable, args, {
       stdio: ["pipe", "pipe", "pipe"],
@@ -149,7 +160,7 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
       new Promise((_, reject) =>
         setTimeout(
           () => reject(new Error("ros2_sidecar_startup_timeout")),
-          5_000,
+          this.discoveryTimeoutMs,
         ),
       ),
     ]);

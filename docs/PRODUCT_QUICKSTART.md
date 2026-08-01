@@ -101,6 +101,10 @@ atomically consumes the cloud Permit immediately before the adapter call. An
 unavailable cloud, stale state, changed content, mismatch, revocation, expired
 or consumed Permit, unavailable controller, rejection, timeout, or ambiguous
 cancellation fails closed and writes Evidence where identity is available.
+ROS simulation timestamps are preserved for diagnostics while freshness is
+measured at DDS receipt, so Gazebo simulation time does not require a custom
+timestamp adapter. DDS discovery remains bounded and configurable; exceeding
+the bound fails before Permit consumption or dispatch.
 
 The reference path is experimental, is not hard real-time or safety-rated, and
 does not support arbitrary ROS 2 distributions, simulators, controllers,

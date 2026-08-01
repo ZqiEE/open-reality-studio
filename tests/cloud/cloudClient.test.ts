@@ -4,12 +4,14 @@ import test from "node:test";
 import {
   CloudClientError,
   CloudConnectedDispatchBoundary,
+  CloudConnectedRos2Workflow,
   RlsokCloudClient,
   executionMode,
   loadCloudClientConfig,
   verifyEvidenceChain,
   type EvidenceExport,
 } from "../../packages/cloud-client";
+import type { Ros2ReferenceTransport } from "../../packages/ros2-reference-gateway";
 import {
   executablePolicyHash,
   executablePolicySpecSchema,
@@ -304,6 +306,96 @@ test("revocation refresh denies before permit consumption or controller dispatch
     /cloud_release_not_currently_approved/,
   );
   assert.equal(calls, 1);
+});
+
+test("initial revoked release denial writes and verifies Evidence without a Permit or dispatch", async () => {
+  const spec = executablePolicySpecSchema.parse(fixture.execSpec);
+  let submitted: any;
+  let stateReads = 0;
+  let dispatches = 0;
+  const createdAt = "2026-01-01T00:02:00.000Z";
+  const evidenceId = "22222222-2222-4222-8222-222222222222";
+  const cloud = {
+    async getRelease() {
+      return {
+        releaseId: spec.metadata.releaseId,
+        contentHash: executablePolicyHash(spec),
+        state: "revoked" as const,
+      };
+    },
+    async requestPermit() {
+      throw new Error("permit_must_not_be_requested");
+    },
+    async submitEvidence(value: any) {
+      submitted = value;
+      return {
+        evidenceId,
+        sequence: 0,
+        previousHash: null,
+        evidenceHash: "0".repeat(64),
+        createdAt,
+      };
+    },
+    async getEvidence() {
+      const body = {
+        sequence: 0,
+        previousHash: null,
+        releaseId: submitted.releaseId,
+        permitId: submitted.permitId ?? null,
+        decision: submitted.decision,
+        hardwareSignalSent: submitted.hardwareSignalSent,
+        payload: submitted.payload,
+        createdAt,
+      };
+      return {
+        id: evidenceId,
+        ...body,
+        evidenceHash: sha256(canonicalJson(body)),
+      };
+    },
+  } as unknown as RlsokCloudClient;
+  const transport = {
+    async getFreshJointState() {
+      stateReads += 1;
+      throw new Error("state_must_not_be_read");
+    },
+    async dispatchTrajectory() {
+      dispatches += 1;
+      throw new Error("dispatch_must_not_happen");
+    },
+  } as unknown as Ros2ReferenceTransport;
+  const localResults: any[] = [];
+  const workflow = new CloudConnectedRos2Workflow({
+    mode: "shadow",
+    release: spec,
+    cloud,
+    transport,
+    controllerIdentity: spec.robot.controllerConfigSha256,
+    localEvidence: (result) => {
+      localResults.push(structuredClone(result));
+    },
+  });
+  const payload = JSON.stringify({
+    proposalId: "revoked-proposal-001",
+    releaseId: spec.metadata.releaseId,
+    deviceId: spec.deployment.allowedDeviceIds[0],
+    proposerIdentity: "fixture-policy",
+    actionRepresentation: "trajectory",
+    actionPayload: fixture.action,
+    createdAt,
+  });
+  const result = await workflow.runProposal(payload);
+  assert.equal(result.decision, "blocked");
+  assert.equal(result.reason, "cloud_release_not_eligible:revoked");
+  assert.equal(result.cloudPermitId, null);
+  assert.equal(result.controllerGoalsAttempted, 0);
+  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(result.evidenceVerified, true);
+  assert.equal(stateReads, 0);
+  assert.equal(dispatches, 0);
+  assert.equal(submitted.permitId, null);
+  assert.equal(submitted.payload.evaluationMode, "denial");
+  assert.equal(localResults.length, 2);
 });
 
 function evidenceExport(count = 205): EvidenceExport {

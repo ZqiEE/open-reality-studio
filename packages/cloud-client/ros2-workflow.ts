@@ -47,6 +47,13 @@ interface WorkflowOptions {
   localEvidence: (result: CloudConnectedRos2Result) => void | Promise<void>;
 }
 
+interface EvidenceContext {
+  contentHash: string;
+  actionHash: string;
+  deviceId: string;
+  controllerId: string;
+}
+
 function assertLocalEligibility(
   release: ExecutablePolicySpec,
   proposal: ReturnType<typeof ros2ProposalEnvelopeSchema.parse>,
@@ -77,6 +84,44 @@ function assertLocalEligibility(
 export class CloudConnectedRos2Workflow {
   constructor(private readonly options: WorkflowOptions) {}
 
+  private async persistEvidence(
+    result: CloudConnectedRos2Result,
+    context: EvidenceContext,
+  ): Promise<CloudConnectedRos2Result> {
+    await this.options.localEvidence(result);
+    const evidence: SubmitEvidence = {
+      releaseId: result.releaseId,
+      permitId: result.cloudPermitId,
+      decision: result.decision,
+      hardwareSignalSent: result.hardwareSignalSent,
+      payload: {
+        contractVersion: cloudContractVersion,
+        evaluationMode:
+          result.decision === "blocked"
+            ? "denial"
+            : this.options.mode === "shadow"
+              ? "shadow"
+              : "reference-run",
+        contentHash: context.contentHash,
+        actionHash: context.actionHash,
+        deviceId: context.deviceId,
+        controllerId: context.controllerId,
+        localPermitConsumed: result.localPermitConsumed,
+        controllerGoalsAttempted: result.controllerGoalsAttempted,
+        reason: result.reason,
+        controllerResult: result.controllerResult,
+      },
+    };
+    const stored = await this.options.cloud.submitEvidence(evidence);
+    const retrieved = await this.options.cloud.getEvidence(stored.evidenceId);
+    const verified = verifyCloudEvidence(retrieved);
+    if (!verified.ok) throw new Error(verified.reason);
+    result.cloudEvidenceId = stored.evidenceId;
+    result.evidenceVerified = true;
+    await this.options.localEvidence(result);
+    return result;
+  }
+
   async runProposal(payload: string): Promise<CloudConnectedRos2Result> {
     const proposal = ros2ProposalEnvelopeSchema.parse(JSON.parse(payload));
     const action = assertLocalEligibility(
@@ -89,12 +134,38 @@ export class CloudConnectedRos2Workflow {
     const initial = await this.options.cloud.getRelease(
       this.options.release.metadata.releaseId,
     );
-    if (
-      initial.releaseId !== this.options.release.metadata.releaseId ||
-      initial.contentHash !== contentHash ||
-      initial.state !== "approved"
-    ) {
-      throw new Error("cloud_release_not_eligible");
+    let denialReason: string | null = null;
+    if (initial.releaseId !== this.options.release.metadata.releaseId) {
+      denialReason = "cloud_release_identity_mismatch";
+    } else if (initial.contentHash !== contentHash) {
+      denialReason = "cloud_release_content_hash_mismatch";
+    } else if (initial.state !== "approved") {
+      denialReason = `cloud_release_not_eligible:${initial.state}`;
+    }
+    if (denialReason) {
+      return this.persistEvidence(
+        {
+          executionMode: "cloud-connected",
+          mode: this.options.mode,
+          releaseId: this.options.release.metadata.releaseId,
+          proposalId: proposal.proposalId,
+          decision: "blocked",
+          reason: denialReason,
+          cloudPermitId: null,
+          cloudPermitConsumed: false,
+          localPermitConsumed: false,
+          controllerGoalsAttempted: 0,
+          hardwareSignalSent: false,
+          cloudEvidenceId: null,
+          evidenceVerified: false,
+        },
+        {
+          contentHash,
+          actionHash,
+          deviceId: proposal.deviceId,
+          controllerId: this.options.controllerIdentity,
+        },
+      );
     }
     const state = await this.options.transport.getFreshJointState(
       this.options.release.runtimePolicy.maxStateAgeMs,
@@ -196,38 +267,11 @@ export class CloudConnectedRos2Workflow {
       evidenceVerified: false,
       controllerResult,
     };
-    await this.options.localEvidence(result);
-
-    const evidence: SubmitEvidence = {
-      releaseId: binding.releaseId,
-      permitId: cloudPermit.permitId,
-      decision,
-      hardwareSignalSent,
-      payload: {
-        contractVersion: cloudContractVersion,
-        evaluationMode:
-          decision === "blocked"
-            ? "denial"
-            : this.options.mode === "shadow"
-              ? "shadow"
-              : "reference-run",
-        contentHash,
-        actionHash,
-        deviceId: binding.deviceId,
-        controllerId: binding.controllerId,
-        localPermitConsumed,
-        controllerGoalsAttempted,
-        reason,
-        controllerResult,
-      },
-    };
-    const stored = await this.options.cloud.submitEvidence(evidence);
-    const retrieved = await this.options.cloud.getEvidence(stored.evidenceId);
-    const verified = verifyCloudEvidence(retrieved);
-    if (!verified.ok) throw new Error(verified.reason);
-    result.cloudEvidenceId = stored.evidenceId;
-    result.evidenceVerified = true;
-    await this.options.localEvidence(result);
-    return result;
+    return this.persistEvidence(result, {
+      contentHash,
+      actionHash,
+      deviceId: binding.deviceId,
+      controllerId: binding.controllerId,
+    });
   }
 }
