@@ -146,11 +146,15 @@ class SpyTransport implements Ros2ReferenceTransport {
     if (!this.state) throw new Error("joint_state_missing");
     return this.state;
   }
-  async dispatchTrajectory(): Promise<{ accepted: boolean; detail: string }> {
+  async dispatchTrajectory(): ReturnType<Ros2ReferenceTransport["dispatchTrajectory"]> {
     this.dispatches += 1;
     if (this.dispatchError) throw new Error(this.dispatchError);
     return {
       accepted: this.accepted,
+      completed: this.accepted,
+      succeeded: this.accepted,
+      status: this.accepted ? 4 : 0,
+      errorCode: this.accepted ? 0 : -1,
       detail: this.accepted ? "accepted" : "unavailable",
     };
   }

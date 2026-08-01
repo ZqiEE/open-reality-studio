@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const {
   cpSync,
   mkdirSync,
@@ -47,6 +47,14 @@ try {
   );
   const executable = resolve(packageRoot, 'dist', 'apps', 'cli', 'rlsok.js');
   run(process.execPath, [executable, '--help'], temporary);
+  const doctor = spawnSync(process.execPath, [executable, 'ros2', 'doctor'], {
+    cwd: temporary,
+    encoding: 'utf8',
+    windowsHide: true
+  });
+  if (![0, 2].includes(doctor.status) || !doctor.stdout.includes('"rosAvailable"')) {
+    throw new Error(`packaged_ros2_sidecar_unavailable:${doctor.stderr}`);
+  }
   const release = resolve(
     packageRoot,
     'examples',
@@ -79,6 +87,7 @@ try {
     help: 'passed',
     check: 'passed',
     standaloneShadow: 'passed',
+    packagedRos2Sidecar: 'passed',
     repositoryRelativePathRequired: false
   }) + '\n');
 } finally {

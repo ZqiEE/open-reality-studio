@@ -143,7 +143,16 @@ test('real DDS eligible reference run reaches one fake controller goal', async (
   assert.equal(result.decision, 'allowed');
   assert.equal(result.controllerGoalCount, 1);
   assert.equal(result.hardwareSignalSent, true);
-  assert.equal(evidence.at(-1)?.executionEvidence, 'dispatch_attempted');
+  assert.equal(evidence.at(-1)?.executionEvidence, 'controller_result_recorded');
+  assert.deepEqual(evidence.at(-1)?.controllerResult, {
+    accepted: true,
+    completed: true,
+    succeeded: true,
+    status: 4,
+    errorCode: 0,
+    errorString: '',
+    detail: 'controller_succeeded'
+  });
 });
 
 test('real DDS revocation refresh wins the final dispatch race', async () => {

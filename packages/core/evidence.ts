@@ -26,6 +26,8 @@ export interface ExecutionEvidence {
   hardwareSignalSent: boolean;
   hardwareSignalState: string;
   executionEvidence: string;
+  /** Exact adapter/controller response; absence means no terminal result was observed. */
+  controllerResult?: unknown;
 }
 
 export interface ChainedEvidence {

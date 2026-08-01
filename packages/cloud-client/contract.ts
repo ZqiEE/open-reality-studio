@@ -102,6 +102,15 @@ export const submitEvidenceSchema = z
         localPermitConsumed: z.boolean(),
         controllerGoalsAttempted: z.number().int().min(0).max(1),
         reason: z.string().min(1).max(500),
+        controllerResult: z.object({
+          accepted: z.boolean(),
+          completed: z.boolean(),
+          succeeded: z.boolean(),
+          status: z.number().int().optional(),
+          errorCode: z.number().int().optional(),
+          errorString: z.string().max(500).optional(),
+          detail: z.string().min(1).max(500),
+        }).strict().optional(),
       })
       .strict(),
   })

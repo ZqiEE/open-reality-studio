@@ -81,7 +81,8 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     matchedRuleIds: string[],
     signalState = 'not_sent',
     executionEvidence = 'not_executed',
-    dispatchedAt?: string
+    dispatchedAt?: string,
+    controllerResult?: unknown
   ): ExecutionEvidence {
     return {
       releaseId: request.release.metadata.releaseId,
@@ -102,7 +103,8 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       dispatchedAt,
       hardwareSignalSent: signalState !== 'not_sent',
       hardwareSignalState: signalState,
-      executionEvidence
+      executionEvidence,
+      controllerResult
     };
   }
 
@@ -218,14 +220,18 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     try {
       const dispatchedAt = now.toISOString();
       const result = await this.dispatcher.dispatch(request.action, request.permit);
+      const terminal = result && typeof result === 'object'
+        && 'completed' in result
+        && (result as { completed?: unknown }).completed === true;
       await this.evidence.append(this.evidenceFor(
         request,
         'allowed',
         'dispatched',
         ['release_eligibility', 'state_freshness', 'action_identity'],
         'attempted_unconfirmed',
-        'dispatch_attempted',
-        dispatchedAt
+        terminal ? 'controller_result_recorded' : 'dispatch_attempted',
+        dispatchedAt,
+        result
       ));
       return result;
     } catch (error) {
