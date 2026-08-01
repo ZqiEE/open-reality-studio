@@ -26,6 +26,15 @@ export interface CloudConnectedRos2Result {
   hardwareSignalSent: boolean;
   cloudEvidenceId: string | null;
   evidenceVerified: boolean;
+  controllerResult?: {
+    accepted: boolean;
+    completed: boolean;
+    succeeded: boolean;
+    status?: number;
+    errorCode?: number;
+    errorString?: string;
+    detail: string;
+  };
 }
 
 interface WorkflowOptions {
@@ -110,6 +119,7 @@ export class CloudConnectedRos2Workflow {
       expiresInSeconds: 30,
     });
     let controllerGoalsAttempted = 0;
+    let controllerResult: CloudConnectedRos2Result["controllerResult"];
     const boundary = new CloudConnectedDispatchBoundary(
       this.options.cloud,
       cloudPermit.permitId,
@@ -123,6 +133,21 @@ export class CloudConnectedRos2Workflow {
           );
           if (!response.accepted) {
             throw new Error(`controller_goal_rejected:${response.detail}`);
+          }
+          controllerResult = {
+            accepted: response.accepted,
+            completed: response.completed === true,
+            succeeded: response.succeeded === true,
+            status: response.status,
+            errorCode: response.errorCode,
+            errorString: response.errorString,
+            detail: response.detail,
+          };
+          if (response.completed !== true) {
+            throw new Error(`controller_result_unconfirmed:${response.detail}`);
+          }
+          if (response.succeeded !== true) {
+            throw new Error(`controller_goal_failed:${response.errorCode ?? "unknown"}:${response.detail}`);
           }
           return response;
         },
@@ -139,7 +164,7 @@ export class CloudConnectedRos2Workflow {
     let reason =
       this.options.mode === "shadow"
         ? "shadow_permit_evaluated_no_controller_call"
-        : "simulated_controller_goal_accepted";
+        : "controller_result_succeeded";
     let cloudPermitConsumed = false;
     let localPermitConsumed = false;
     try {
@@ -169,6 +194,7 @@ export class CloudConnectedRos2Workflow {
       hardwareSignalSent,
       cloudEvidenceId: null,
       evidenceVerified: false,
+      controllerResult,
     };
     await this.options.localEvidence(result);
 
@@ -192,6 +218,7 @@ export class CloudConnectedRos2Workflow {
         localPermitConsumed,
         controllerGoalsAttempted,
         reason,
+        controllerResult,
       },
     };
     const stored = await this.options.cloud.submitEvidence(evidence);

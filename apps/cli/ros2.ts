@@ -62,7 +62,7 @@ function readRelease(path: string): ExecutablePolicySpec {
 }
 
 function defaultSidecarPath(): string {
-  return resolve("experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py");
+  return resolve(__dirname, "../../../experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py");
 }
 
 async function waitForControllerDiscovery(
@@ -169,6 +169,11 @@ async function runCloudConnectedGateway(
   if (!doctor.rosAvailable) throw new Error("ROS 2 unavailable");
   if (mode === "run" && !doctor.actionServerAvailable) {
     throw new Error("controller action server unavailable");
+  }
+  if (mode === "run" && !doctor.sros2Enabled) {
+    throw new Error(
+      "cloud-connected reference run requires SROS2 with ROS_SECURITY_STRATEGY=Enforce",
+    );
   }
   const workflow = new CloudConnectedRos2Workflow({
     mode,

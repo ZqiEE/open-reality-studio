@@ -99,7 +99,36 @@ class ReferenceTransportNode(NodeBase):
         if handle is None or not handle.accepted:
             return {"accepted": False, "detail": "goal_rejected"}
         self.active_goal = handle
-        return {"accepted": True, "detail": "goal_accepted"}
+        result_future = handle.get_result_async()
+        try:
+            self._wait_for_future(result_future, self.args.result_timeout_seconds)
+        except TimeoutError:
+            return {
+                "accepted": True,
+                "completed": False,
+                "succeeded": False,
+                "detail": "controller_result_timeout",
+            }
+        wrapped = result_future.result()
+        if wrapped is None:
+            return {
+                "accepted": True,
+                "completed": False,
+                "succeeded": False,
+                "detail": "controller_result_missing",
+            }
+        result = wrapped.result
+        error_code = int(result.error_code)
+        self.active_goal = None
+        return {
+            "accepted": True,
+            "completed": True,
+            "succeeded": error_code == 0,
+            "status": int(wrapped.status),
+            "errorCode": error_code,
+            "errorString": str(result.error_string),
+            "detail": "controller_succeeded" if error_code == 0 else "controller_reported_failure",
+        }
 
     def cancel(self, _params: Dict[str, Any]) -> Dict[str, Any]:
         if self.active_goal is None:
@@ -190,6 +219,7 @@ def main() -> int:
     )
     parser.add_argument("--doctor", action="store_true")
     parser.add_argument("--inspect", action="store_true")
+    parser.add_argument("--result-timeout-seconds", type=float, default=30.0)
     args = parser.parse_args()
 
     if rclpy is None:

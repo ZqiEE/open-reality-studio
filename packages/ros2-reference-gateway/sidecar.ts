@@ -72,11 +72,10 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
   async dispatchTrajectory(
     action: JointTrajectoryAction,
     controllerIdentity: string,
-  ): Promise<{ accepted: boolean; detail: string }> {
-    return this.request("dispatch", { action, controllerIdentity }) as Promise<{
-      accepted: boolean;
-      detail: string;
-    }>;
+  ): ReturnType<Ros2ReferenceTransport["dispatchTrajectory"]> {
+    return this.request("dispatch", { action, controllerIdentity }) as ReturnType<
+      Ros2ReferenceTransport["dispatchTrajectory"]
+    >;
   }
 
   async cancelActiveGoal(

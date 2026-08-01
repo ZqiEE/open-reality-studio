@@ -25,6 +25,9 @@ class FixtureGraph(Node):
         self.started = time.monotonic()
         self.proposal_sent = 0
         self.goal_count = 0
+        self.terminal_result_count = 0
+        self.joint_state_publish_count = 0
+        self._write_metrics()
         self.joint_publisher = self.create_publisher(
             JointState, args.joint_state_topic, 10
         )
@@ -42,17 +45,32 @@ class FixtureGraph(Node):
 
     def goal(self, _goal_request):
         self.goal_count += 1
-        if self.args.goal_count_file:
-            Path(self.args.goal_count_file).write_text(
-                str(self.goal_count), encoding="utf-8"
-            )
+        self._write_metrics()
+        print(
+            json.dumps({"event": "controller_goal_received", "goalCount": self.goal_count}),
+            flush=True,
+        )
         if self.args.controller_behavior == "reject":
             return GoalResponse.REJECT
         return GoalResponse.ACCEPT
 
     async def execute(self, goal_handle):
         goal_handle.succeed()
-        return FollowJointTrajectory.Result()
+        result = FollowJointTrajectory.Result()
+        self.terminal_result_count += 1
+        self._write_metrics()
+        print(
+            json.dumps(
+                {
+                    "event": "controller_terminal_result",
+                    "terminalResultCount": self.terminal_result_count,
+                    "status": "succeeded",
+                    "errorCode": int(result.error_code),
+                }
+            ),
+            flush=True,
+        )
+        return result
 
     def tick(self) -> None:
         state = JointState()
@@ -60,12 +78,35 @@ class FixtureGraph(Node):
         state.name = ["joint_a", "joint_b"]
         state.position = [0.0, 0.0]
         self.joint_publisher.publish(state)
+        self.joint_state_publish_count += 1
+        if self.joint_state_publish_count == 1 or self.joint_state_publish_count % 20 == 0:
+            self._write_metrics()
         elapsed = time.monotonic() - self.started
         if 1.0 < elapsed < 3.0 and self.proposal_sent < 20:
             proposal = String()
             proposal.data = base64.b64decode(self.args.proposal_base64).decode("utf8")
             self.proposal_publisher.publish(proposal)
             self.proposal_sent += 1
+
+    def _write_metrics(self) -> None:
+        if not self.args.metrics_file:
+            return
+        metrics_path = Path(self.args.metrics_file)
+        temporary_path = metrics_path.with_suffix(metrics_path.suffix + ".tmp")
+        temporary_path.write_text(
+            json.dumps(
+                {
+                    "jointStateMessagesPublished": self.joint_state_publish_count,
+                    "proposalsPublished": self.proposal_sent,
+                    "controllerGoalsReceived": self.goal_count,
+                    "terminalResultsReturned": self.terminal_result_count,
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        temporary_path.replace(metrics_path)
 
 
 def main() -> int:
@@ -77,7 +118,7 @@ def main() -> int:
     parser.add_argument(
         "--controller-behavior", choices=["accept", "reject"], default="accept"
     )
-    parser.add_argument("--goal-count-file")
+    parser.add_argument("--metrics-file")
     args = parser.parse_args()
     rclpy.init()
     node = FixtureGraph(args)

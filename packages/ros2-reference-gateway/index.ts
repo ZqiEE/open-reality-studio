@@ -90,7 +90,15 @@ export interface Ros2ReferenceTransport {
   dispatchTrajectory(
     action: JointTrajectoryAction,
     controllerIdentity: string
-  ): Promise<{ accepted: boolean; detail: string }>;
+  ): Promise<{
+    accepted: boolean;
+    detail: string;
+    completed?: boolean;
+    succeeded?: boolean;
+    status?: number;
+    errorCode?: number;
+    errorString?: string;
+  }>;
   cancelActiveGoal(reason: string): Promise<{ requested: boolean; detail: string }>;
   doctor(): Promise<Ros2DoctorReport>;
   close(): Promise<void>;
@@ -316,6 +324,12 @@ export class Ros2ReferenceGateway {
           );
           if (!result.accepted) throw new Error(`controller_goal_rejected:${result.detail}`);
           this.goalCount += 1;
+          if (result.completed === false) {
+            throw new Error(`controller_result_unconfirmed:${result.detail}`);
+          }
+          if (result.completed === true && result.succeeded !== true) {
+            throw new Error(`controller_goal_failed:${result.errorCode ?? 'unknown'}:${result.detail}`);
+          }
           this.active = {
             release,
             proposalId: proposal.proposalId,
