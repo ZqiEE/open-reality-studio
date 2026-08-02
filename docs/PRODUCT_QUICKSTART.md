@@ -1,9 +1,10 @@
 # Product quickstart
 
-RLSOK currently supports Node.js 22.12 or later for the ReleaseGate and tests a
-real DDS reference path with ROS 2 Jazzy on Ubuntu 24.04 in CI. The ROS 2 path
-uses a simulated `FollowJointTrajectory` action server; acceptance by that fake
-controller is not physical motion.
+RLSOK v1.0.2 supports Node.js 22.12 or later for the ReleaseGate and a real DDS
+reference path with ROS 2 Jazzy on Ubuntu 24.04. Validation covers a live
+`FollowJointTrajectory` interface in official UR5e URSim and Gazebo Harmonic
+with the official Universal Robots ROS 2 driver. Simulator acceptance is not
+physical motion.
 
 RLSOK determines whether a specific release is eligible for the configured controller path.
 
@@ -14,17 +15,16 @@ mechanical safeguards, site procedures, and hazard analysis remain required.
 
 ## Standalone Shadow
 
-Prerequisites: Node.js 22.12+, npm 10.5+, and a clean checkout or installed
-RLSOK tarball.
+Prerequisites: Node.js 22.12+, npm 10.5+, and the installed v1.0.2 runtime
+asset. A source checkout is not required.
 
 ```bash
-npm ci
-npm run build
-node dist/apps/cli/rlsok.js shadow \
+npm install ./RLSOK-v1.0.2-runtime-1.0.1.tgz
+npx rlsok shadow \
   examples/ros2-reference/release.shadow.yaml \
   examples/standalone-shadow/proposal.json \
   evidence/standalone-shadow.json
-node dist/apps/cli/rlsok.js verify-evidence evidence/standalone-shadow.json
+npx rlsok verify-evidence evidence/standalone-shadow.json
 ```
 
 Expected output reports `controllerGoalsAttempted: 0` and
@@ -36,23 +36,9 @@ directory to clean up.
 
 ## Cloud-connected Shadow
 
-Prerequisites: sibling clean checkouts of `rlsok` and `rlsok-cloud`, Docker with
-Compose, Node.js 22.12+, and a Linux or macOS development host. No Production,
-Cloudflare, or physical-robot credential is used.
-
-```bash
-cd ../rlsok-cloud
-npm run demo:e2e
-```
-
-The command creates an isolated PostgreSQL database and loopback-only Fastify
-API, creates separate release-manager, approver, runtime, and auditor
-credentials, then invokes the cloud-connected product command for Shadow,
-simulated Reference Run, and a revocation race. It verifies both Permit
-bindings, zero Shadow/race controller goals, one simulated Reference goal,
-cloud Evidence, authenticated approval identity, complete chain export, and
-backup/restore. It removes all temporary containers, data, credentials, and
-files on success or failure.
+Install the v1.0.2 Windows package with the published setup script, create
+separate release-manager, approver, runtime, and auditor identities, and keep
+the runtime credential in a protected file. A source checkout is not required.
 
 For manual cloud commands, set configuration outside the command line:
 
