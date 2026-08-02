@@ -1,93 +1,65 @@
 # RLSOK
 
-RLSOK ReleaseGate validates an executable robot-policy release, binds approval
-to its exact content, issues a short-lived single-use execution permit, gates
-ROS 2 dispatch, and writes verifiable evidence.
+[![CI](https://github.com/realitywarden/rlsok/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/realitywarden/rlsok/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/realitywarden/rlsok?display_name=tag)](https://github.com/realitywarden/rlsok/releases/latest)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-## Boundary
+RLSOK ReleaseGate validates an executable robot-policy release, binds
+independent approval to its exact content, issues a short-lived single-use
+execution Permit, gates ROS 2 dispatch, and writes verifiable Evidence.
+
+## Latest product release
+
+RLSOK **v1.0.2** is the latest stable public product release:
+
+- robot-side runtime component: @realitywarden/rlsok 1.0.1
+- cloud/control-plane component: rlsok-cloud 1.0.3
+- Windows installer: RLSOK-v1.0.2-windows-x64-installer.zip
+- ROS 2 runtime asset: RLSOK-v1.0.2-runtime-1.0.1.tgz
+- Windows cloud asset: RLSOK-v1.0.2-cloud-1.0.3-windows-x64.tar.gz
+
+The product release and component package versions serve different scopes.
+Their exact source commits and SHA-256 digests are recorded in the release
+manifest.
+
+[Download v1.0.2](https://github.com/realitywarden/rlsok/releases/tag/v1.0.2) ·
+[Installation](https://rlsok.com/download) ·
+[Documentation](https://rlsok.com/docs) ·
+[API health](https://api.rlsok.com/healthz)
+
+Verify all assets with SHA256SUMS. Production installation does not depend on a
+source checkout.
+
+## Supported environment
+
+- robot side: Ubuntu 24.04 x64, ROS 2 Jazzy, rclpy, rmw_fastrtps_cpp
+- control plane: Windows 11 x64 and PostgreSQL 16
+- validated simulators: official UR5e URSim and Gazebo Harmonic with the
+  official Universal Robots ROS 2 driver
+
+Live DDS JointState, Shadow zero-dispatch, single-use Permit consumption,
+FollowJointTrajectory terminal results, post-revocation denial, Evidence,
+restart persistence, backup/restore, upgrade/rollback, and endurance passed.
+No physical hardware was used.
+
+## Install the runtime package
+
+Requires Node.js 22.12 or later, npm 10.5 or later, Python 3, and the supported
+ROS 2 environment.
+
+    npm install ./RLSOK-v1.0.2-runtime-1.0.1.tgz
+    npx rlsok ros2 doctor
+
+Start with the [product quickstart](docs/PRODUCT_QUICKSTART.md), then review the
+[ROS 2 setup](docs/ROS2_REFERENCE_SETUP.md), [architecture](docs/ARCHITECTURE.md),
+and [cloud contract](docs/CLOUD_CONTRACT_V1.md).
+
+## Responsibility boundary
 
 RLSOK is not functional-safety software, a motion planner, an E-stop, a safety
 PLC, a certified controller, or a hard real-time system. Independent safety
 systems and controller limits remain required. Shadow is the default mode.
 
-## Install
-
-Requires Node.js 22.12 or later, npm 10.5 or later, and Python 3 for the ROS 2
-sidecar.
-
-```bash
-npm install
-npm run build
-npm test
-```
-
-A clean installable package is produced and tested without repository-relative
-paths:
-
-```bash
-npm run package:smoke
-npm run sbom
-```
-
-The intended package and binary names are `@realitywarden/rlsok` and `rlsok`.
-This repository prepares a tarball but does not publish it.
-
-## ExecSpec
-
-The complete runnable example is
-[`examples/ros2-reference/release.shadow.yaml`](examples/ros2-reference/release.shadow.yaml).
-
-```yaml
-apiVersion: realitywarden.io/v1alpha1
-kind: ExecutablePolicy
-metadata:
-  releaseId: ros2-shadow-demo-001
-deployment:
-  allowedDeviceIds: [arm-01]
-  mode: shadow
-```
-
-The published schema identifier is retained so current ExecSpecs and evidence
-remain verifiable.
-
-## Check
-
-```bash
-npm run rlsok -- check examples/ros2-reference/release.shadow.yaml
-```
-
-## Shadow Mode
-
-```bash
-npm run rlsok -- ros2 shadow \
-  --release examples/ros2-reference/release.shadow.yaml \
-  --device arm-01 \
-  --proposer planner@example.test \
-  --evidence evidence/shadow.json
-```
-
-Shadow evaluates proposals and writes evidence but never sends a controller
-goal.
-
-## Evidence verification
-
-```bash
-npm run rlsok -- verify-evidence examples/ros2-reference/evidence.json
-```
-
-## ROS 2 validation boundary
-
-Automated tests cover Core invariants, ROS message/action contracts, process
-boundaries, fail-closed behavior, Shadow zero-dispatch, revocation refresh,
-cancellation, timeout and rejection evidence. Live DDS, SROS2, controller and
-physical-robot validation require an appropriate ROS 2 environment and are not
-claimed unless actually completed.
-
-See [architecture](docs/ARCHITECTURE.md) and
-[ROS 2 setup](docs/ROS2_REFERENCE_SETUP.md). Start with the
-[product quickstart](docs/PRODUCT_QUICKSTART.md) and review the
-[cloud contract](docs/CLOUD_CONTRACT_V1.md) before cloud-connected use.
-
 ## License
 
-Licensed under the Apache License, Version 2.0. See `LICENSE`.
+Apache-2.0. See [LICENSE](LICENSE).
