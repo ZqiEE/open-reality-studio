@@ -36,11 +36,33 @@ directory to clean up.
 
 ## Cloud-connected Shadow
 
-Install the v1.0.2 Windows package with the published setup script, create
-separate release-manager, approver, runtime, and auditor identities, and keep
-the runtime credential in a protected file. A source checkout is not required.
+For Hosted RLSOK Cloud, sign in at `https://rlsok.com/login`. A Workspace is
+created automatically. Then pair the runtime:
 
-For manual cloud commands, set configuration outside the command line:
+```bash
+rlsok pair
+```
+
+The CLI opens a browser with a short, expiring code. Approving it creates a
+Workspace-scoped runtime principal and stores the high-entropy credential in
+the local protected configuration file. No API key, Organization ID, secret,
+or environment-variable editing is required. The local Execution Gate remains
+the final fail-closed decision point; Cloud does not connect to DDS or send a
+controller goal.
+
+If the local credential is lost, run `rlsok pair` again and revoke the stale
+runtime in Dashboard > Operations. An intentional replacement requires
+`rlsok pair --replace`; the old credential remains active until the Workspace
+administrator revokes it, so replacement cannot silently invalidate another
+running process.
+
+The manual environment-based flow below is retained for advanced self-hosted
+deployments. Install the v1.0.2 Windows package with the published setup script,
+create separate release-manager, approver, runtime, and auditor identities, and
+keep the runtime credential in a protected file. A source checkout is not
+required.
+
+For advanced self-hosted cloud commands, set configuration outside the command line:
 
 ```bash
 export RLSOK_EXECUTION_MODE=cloud-connected

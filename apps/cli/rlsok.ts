@@ -15,6 +15,7 @@ import {
 import { ros2Usage, runRos2Command } from './ros2';
 import { cloudUsage, runCloudCommand } from './cloud';
 import { runStandaloneShadow } from './shadow';
+import { runPairCommand } from './pair';
 
 function fail(message: string): never {
   process.stderr.write(`ERROR: ${message}\n`);
@@ -67,7 +68,7 @@ function usage(exitCode = 1): never {
   process.stdout.write(
     'RLSOK ReleaseGate CLI\n' +
     'Release control for executable robot policies.\n\n' +
-    'usage: rlsok check <release> | rlsok diff <old> <new> | rlsok shadow <release> <proposal> <evidence> | rlsok verify-evidence <bundle> | rlsok ros2 ... | rlsok cloud ...\n'
+    'usage: rlsok pair | rlsok check <release> | rlsok diff <old> <new> | rlsok shadow <release> <proposal> <evidence> | rlsok verify-evidence <bundle> | rlsok ros2 ... | rlsok cloud ...\n'
   );
   process.exit(exitCode);
 }
@@ -81,6 +82,7 @@ async function main(): Promise<void> {
     process.exitCode = await runStandaloneShadow(args[0], args[1], args[2]);
   }
   else if (command === 'verify-evidence' && args.length === 1) verifyEvidence(args[0]);
+  else if (command === 'pair') process.exitCode = await runPairCommand(args);
   else if (command === 'ros2') process.exitCode = await runRos2Command(args);
   else if (command === 'cloud') process.exitCode = await runCloudCommand(args);
   else usage();

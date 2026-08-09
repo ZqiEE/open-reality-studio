@@ -31,7 +31,11 @@ Both repositories validate it and assert the same content and action hashes.
 
 ## Client security behavior
 
-- `RLSOK_CLOUD_API_URL` and `RLSOK_CLOUD_API_KEY` configure the client.
+- `rlsok pair` is the default Hosted Cloud setup. The runtime generates the
+  high-entropy credential locally; the Cloud stores only its hash, and the
+  short browser code has no API authority before approval.
+- `RLSOK_CLOUD_API_URL` and `RLSOK_CLOUD_API_KEY` remain available for advanced
+  self-hosted configuration and override stored paired credentials.
 - `RLSOK_CLOUD_API_KEY_FILE` may replace the key environment variable with a
   non-symlink protected file.
 - API keys are never accepted as CLI arguments or logged.

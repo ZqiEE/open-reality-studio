@@ -54,12 +54,19 @@ Start with the [product quickstart](docs/PRODUCT_QUICKSTART.md), then review the
 [ROS 2 setup](docs/ROS2_REFERENCE_SETUP.md), [architecture](docs/ARCHITECTURE.md),
 and [cloud contract](docs/CLOUD_CONTRACT_V1.md).
 
+Hosted RLSOK Cloud is the default control plane. After installing the runtime,
+pair it from a browser without copying an API key or Organization ID:
+
+    npx rlsok pair
+
+Environment-based credentials remain supported for advanced self-hosted
+control-plane deployments.
+
 ## Responsibility boundary
 
 RLSOK is not functional-safety software, a motion planner, an E-stop, a safety
 PLC, a certified controller, or a hard real-time system. Independent safety
 systems and controller limits remain required. Shadow is the default mode.
-
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).

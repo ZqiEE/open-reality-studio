@@ -1,4 +1,5 @@
 import { lstatSync, readFileSync } from 'node:fs';
+import { readStoredCloudCredentials } from './credentials';
 
 export type ExecutionMode = 'standalone' | 'cloud-connected';
 
@@ -39,7 +40,8 @@ function apiUrl(value: string): URL {
 export function executionMode(
   source: NodeJS.ProcessEnv = process.env
 ): ExecutionMode {
-  const mode = source.RLSOK_EXECUTION_MODE ?? 'standalone';
+  const stored = source === process.env ? readStoredCloudCredentials(source) : null;
+  const mode = source.RLSOK_EXECUTION_MODE ?? (stored ? 'cloud-connected' : 'standalone');
   if (mode !== 'standalone' && mode !== 'cloud-connected') {
     throw new Error('RLSOK_EXECUTION_MODE_must_be_standalone_or_cloud-connected');
   }
@@ -49,11 +51,12 @@ export function executionMode(
 export function loadCloudClientConfig(
   source: NodeJS.ProcessEnv = process.env
 ): CloudClientConfig {
-  const url = source.RLSOK_CLOUD_API_URL;
+  const stored = source === process.env ? readStoredCloudCredentials(source) : null;
+  const url = source.RLSOK_CLOUD_API_URL ?? stored?.apiUrl;
   const key = source.RLSOK_CLOUD_API_KEY
     ?? (source.RLSOK_CLOUD_API_KEY_FILE
       ? readProtectedApiKey(source.RLSOK_CLOUD_API_KEY_FILE)
-      : undefined);
+      : stored?.apiKey);
   if (!url) throw new Error('RLSOK_CLOUD_API_URL_is_required');
   if (!key?.trim()) throw new Error('RLSOK_CLOUD_API_KEY_is_required');
   return {

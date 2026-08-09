@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   CloudClientError,
@@ -10,6 +12,8 @@ import {
   loadCloudClientConfig,
   verifyEvidenceChain,
   type EvidenceExport,
+  readStoredCloudCredentials,
+  writeStoredCloudCredentials,
 } from "../../packages/cloud-client";
 import type { Ros2ReferenceTransport } from "../../packages/ros2-reference-gateway";
 import {
@@ -77,6 +81,26 @@ test("cloud-connected mode never silently falls back to standalone", () => {
       }),
     /requires_https/,
   );
+});
+
+test("browser pairing credentials persist outside the repository and load without environment secrets", () => {
+  const directory = mkdtempSync(join(tmpdir(), "rlsok-pairing-test-"));
+  const source = process.platform === "win32"
+    ? { LOCALAPPDATA: directory }
+    : { XDG_CONFIG_HOME: directory };
+  try {
+    const path = writeStoredCloudCredentials(
+      { apiUrl: "https://api.rlsok.com", apiKey: `rlsok_${"a".repeat(43)}` },
+      source,
+    );
+    assert.ok(path.startsWith(directory));
+    assert.deepEqual(readStoredCloudCredentials(source), {
+      apiUrl: "https://api.rlsok.com",
+      apiKey: `rlsok_${"a".repeat(43)}`,
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("GET retries once but state-changing requests are never retried", async () => {

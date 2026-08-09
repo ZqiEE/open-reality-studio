@@ -48,9 +48,9 @@ export function cloudUsage(): string {
     "  rlsok cloud verify-evidence-chain <file>",
     "  rlsok cloud revoke <release-id> <reason>",
     "",
-    "Cloud configuration is read only from RLSOK_CLOUD_API_URL and",
-    "RLSOK_CLOUD_API_KEY or RLSOK_CLOUD_API_KEY_FILE. API keys are never",
-    "accepted as command arguments.",
+    "Hosted Cloud configuration is created by `rlsok pair`. Environment-based",
+    "configuration remains available for advanced self-hosted deployments.",
+    "API keys are never accepted as command arguments.",
   ].join("\n");
 }
 
