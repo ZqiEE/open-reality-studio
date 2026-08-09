@@ -10,19 +10,19 @@ execution Permit, gates ROS 2 dispatch, and writes verifiable Evidence.
 
 ## Latest product release
 
-RLSOK **v1.0.2** is the latest stable public product release:
+RLSOK **v1.0.3** is the latest stable public product release:
 
-- robot-side runtime component: @realitywarden/rlsok 1.0.1
+- robot-side runtime component: @realitywarden/rlsok 1.1.0
 - cloud/control-plane component: rlsok-cloud 1.0.3
-- Windows installer: RLSOK-v1.0.2-windows-x64-installer.zip
-- ROS 2 runtime asset: RLSOK-v1.0.2-runtime-1.0.1.tgz
-- Windows cloud asset: RLSOK-v1.0.2-cloud-1.0.3-windows-x64.tar.gz
+- Windows installer: RLSOK-v1.0.3-windows-x64-installer.zip
+- ROS 2 runtime asset: RLSOK-v1.0.3-runtime-1.1.0.tgz
+- Windows cloud asset: RLSOK-v1.0.3-cloud-1.0.3-windows-x64.tar.gz
 
 The product release and component package versions serve different scopes.
 Their exact source commits and SHA-256 digests are recorded in the release
 manifest.
 
-[Download v1.0.2](https://github.com/realitywarden/rlsok/releases/tag/v1.0.2) ·
+[Download v1.0.3](https://github.com/realitywarden/rlsok/releases/tag/v1.0.3) ·
 [Installation](https://rlsok.com/download) ·
 [Documentation](https://rlsok.com/docs) ·
 [API health](https://api.rlsok.com/healthz)
@@ -47,7 +47,7 @@ No physical hardware was used.
 Requires Node.js 22.12 or later, npm 10.5 or later, Python 3, and the supported
 ROS 2 environment.
 
-    npm install ./RLSOK-v1.0.2-runtime-1.0.1.tgz
+    npm install ./RLSOK-v1.0.3-runtime-1.1.0.tgz
     npx rlsok ros2 doctor
 
 Start with the [product quickstart](docs/PRODUCT_QUICKSTART.md), then review the

@@ -1,6 +1,6 @@
 # Product quickstart
 
-RLSOK v1.0.2 supports Node.js 22.12 or later for the ReleaseGate and a real DDS
+RLSOK v1.0.3 supports Node.js 22.12 or later for the ReleaseGate and a real DDS
 reference path with ROS 2 Jazzy on Ubuntu 24.04. Validation covers a live
 `FollowJointTrajectory` interface in official UR5e URSim and Gazebo Harmonic
 with the official Universal Robots ROS 2 driver. Simulator acceptance is not
@@ -15,11 +15,11 @@ mechanical safeguards, site procedures, and hazard analysis remain required.
 
 ## Standalone Shadow
 
-Prerequisites: Node.js 22.12+, npm 10.5+, and the installed v1.0.2 runtime
+Prerequisites: Node.js 22.12+, npm 10.5+, and the installed v1.0.3 runtime
 asset. A source checkout is not required.
 
 ```bash
-npm install ./RLSOK-v1.0.2-runtime-1.0.1.tgz
+npm install ./RLSOK-v1.0.3-runtime-1.1.0.tgz
 npx rlsok shadow \
   examples/ros2-reference/release.shadow.yaml \
   examples/standalone-shadow/proposal.json \
@@ -57,7 +57,7 @@ administrator revokes it, so replacement cannot silently invalidate another
 running process.
 
 The manual environment-based flow below is retained for advanced self-hosted
-deployments. Install the v1.0.2 Windows package with the published setup script,
+deployments. Install the v1.0.3 Windows package with the published setup script,
 create separate release-manager, approver, runtime, and auditor identities, and
 keep the runtime credential in a protected file. A source checkout is not
 required.
