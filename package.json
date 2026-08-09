@@ -21,14 +21,16 @@
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:releasegate && npm run test:cloud && npm run ros2:test",
+    "test": "npm run test:releasegate && npm run test:decision-conformance && npm run test:cloud && npm run ros2:test",
     "verify": "npm run typecheck && npm run build && npm test",
     "prepack": "npm run build",
     "package:smoke": "node scripts/package-smoke.cjs",
     "sbom": "node scripts/generate-sbom.cjs",
     "licenses": "node scripts/license-inventory.cjs",
+    "test:mutation": "stryker run",
     "rlsok": "node scripts/run-rlsok.cjs",
     "test:releasegate": "node scripts/run-rlsok.cjs --test tests/releasegate/releaseGate.test.ts",
+    "test:decision-conformance": "node scripts/run-rlsok.cjs --test tests/releasegate/decisionConformance.test.ts",
     "test:cloud": "node scripts/run-rlsok.cjs --test tests/cloud/cloudClient.test.ts",
     "ros2:test": "node scripts/run-rlsok.cjs --test tests/ros2-reference/ros2Reference.test.ts",
     "ros2:dds-test": "node scripts/run-rlsok.cjs --test tests/ros2-dds/ros2Dds.test.ts"
@@ -38,8 +40,12 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "9.6.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.12.12",
     "typescript": "^5.4.5"
+  },
+  "overrides": {
+    "qs": "6.15.3"
   }
 }

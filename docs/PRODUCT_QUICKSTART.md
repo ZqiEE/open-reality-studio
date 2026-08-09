@@ -1,10 +1,11 @@
 # Product quickstart
 
 RLSOK v1.0.3 supports Node.js 22.12 or later for the ReleaseGate and a real DDS
-reference path with ROS 2 Jazzy on Ubuntu 24.04. Validation covers a live
-`FollowJointTrajectory` interface in official UR5e URSim and Gazebo Harmonic
-with the official Universal Robots ROS 2 driver. Simulator acceptance is not
-physical motion.
+reference path with ROS 2 Jazzy on Ubuntu 24.04. Exact-commit v1.0.3 validation
+covers the packaged runtime and a live reference `FollowJointTrajectory` test
+server. Official UR5e URSim, Gazebo Harmonic, and the official Universal Robots
+ROS 2 driver are historical v1.0.2 validation and were not rerun from the exact
+v1.0.3 commit. Simulator or reference-server acceptance is not physical motion.
 
 RLSOK determines whether a specific release is eligible for the configured controller path.
 

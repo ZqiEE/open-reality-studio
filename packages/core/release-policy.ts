@@ -2,7 +2,7 @@ import type { ExecutablePolicySpec } from './exec-spec';
 import { executablePolicyHash } from './exec-spec';
 import type { ExecutionEvidence } from './evidence';
 
-type ReleaseState =
+export type ReleaseState =
   | 'draft'
   | 'tested'
   | 'approved'

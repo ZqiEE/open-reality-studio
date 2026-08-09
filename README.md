@@ -34,13 +34,18 @@ source checkout.
 
 - robot side: Ubuntu 24.04 x64, ROS 2 Jazzy, rclpy, rmw_fastrtps_cpp
 - control plane: Windows 11 x64 and PostgreSQL 16
-- validated simulators: official UR5e URSim and Gazebo Harmonic with the
-  official Universal Robots ROS 2 driver
 
-Live DDS JointState, Shadow zero-dispatch, single-use Permit consumption,
-FollowJointTrajectory terminal results, post-revocation denial, Evidence,
-restart persistence, backup/restore, upgrade/rollback, and endurance passed.
-No physical hardware was used.
+The exact v1.0.3 runtime commit
+`a0ccb421b0687656bdb142052299442017564d20` passed package smoke,
+typecheck/build/tests, clean-directory installation, and the ROS 2 Jazzy real
+DDS reference `FollowJointTrajectory` test-server path, including Shadow
+zero-dispatch, Permit consumption, terminal result recording, post-revocation
+denial, and Evidence verification.
+
+Official UR5e URSim, Gazebo Harmonic, and the official Universal Robots ROS 2
+driver were validated historically for v1.0.2. That simulator matrix was not
+rerun from the exact v1.0.3 commit and is not presented as v1.0.3 exact-commit
+evidence. No physical hardware was used in either validation set.
 
 ## Install the runtime package
 

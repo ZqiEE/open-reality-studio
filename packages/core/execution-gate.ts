@@ -199,20 +199,28 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       throw new Error('execution_permit_invalid');
     }
     const eligible = executionEligibility(request.release, currentReleaseRecord, request.deviceId, now);
-    if (
-      !record
-      || record.expiresAt < now.getTime()
-      || record.actionHash !== request.actionHash
-      || record.releaseId !== request.release.metadata.releaseId
-      || record.deviceId !== request.deviceId
-      || record.controllerIdentity !== (request.controllerIdentity ?? request.release.robot.controllerConfigSha256)
-      || this.hashAction(request.action) !== request.actionHash
-      || !eligible.allowed
-    ) {
+    const invalidReason = !record
+      ? 'permit_unknown_or_reused'
+      : record.expiresAt <= now.getTime()
+        ? 'permit_expired'
+        : record.actionHash !== request.actionHash
+          ? 'permit_action_binding_mismatch'
+          : record.releaseId !== request.release.metadata.releaseId
+            ? 'permit_release_binding_mismatch'
+            : record.deviceId !== request.deviceId
+              ? 'permit_device_binding_mismatch'
+              : record.controllerIdentity !== (request.controllerIdentity ?? request.release.robot.controllerConfigSha256)
+                ? 'permit_controller_binding_mismatch'
+                : this.hashAction(request.action) !== request.actionHash
+                  ? 'action_hash_mismatch'
+                  : !eligible.allowed
+                    ? eligible.reason
+                    : null;
+    if (invalidReason) {
       await this.evidence.append(this.evidenceFor(
         request,
         'failed',
-        'permit_invalid_expired_reused_or_action_changed',
+        invalidReason,
         ['single_use_permit']
       ));
       throw new Error('execution_permit_invalid');
@@ -261,7 +269,9 @@ export class ShadowExecutionGate<TAction, TState> {
     let status: 'allowed' | 'blocked' = 'blocked';
     const identity = executablePolicyHash(request.release);
     let reason =
-      request.releaseRecord.state !== 'shadow'
+      request.releaseRecord.state === 'revoked' || request.release.evidence.status === 'revoked'
+        ? 'release_revoked'
+        : request.releaseRecord.state !== 'shadow'
         ? 'release_not_in_shadow_state'
         : request.releaseRecord.releaseId !== request.release.metadata.releaseId
           ? 'release_id_mismatch'
