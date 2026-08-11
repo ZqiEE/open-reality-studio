@@ -18,6 +18,20 @@ jobs:
       - run: npm ci
       - run: npm run verify
       - run: npm run package:smoke
+      - run: npm run bundle:linux-x64
+      - name: Clean install, upgrade, and uninstall Linux bundle
+        shell: bash
+        run: |
+          acceptance_root="$(mktemp -d)"
+          export RLSOK_RELEASE_DIR="$PWD/artifacts"
+          export RLSOK_INSTALL_ROOT="$acceptance_root/opt/rlsok"
+          export RLSOK_BIN_DIR="$acceptance_root/bin"
+          sh packaging/install.sh
+          "$RLSOK_BIN_DIR/rlsok" --version
+          "$RLSOK_BIN_DIR/rlsok" setup --help
+          sh packaging/install.sh
+          "$RLSOK_INSTALL_ROOT/uninstall.sh"
+          test ! -e "$RLSOK_BIN_DIR/rlsok"
       - run: npm run sbom
       - run: npm run licenses
       - run: npm audit --omit=dev --audit-level=high
@@ -26,8 +40,11 @@ jobs:
           name: distribution-proof
           path: |
             artifacts/*.tgz
+            artifacts/*linux-x64.tar.gz
+            artifacts/*linux-x64.tar.gz.sha256
             artifacts/*.sha256
             artifacts/*.json
+            packaging/install.sh
 
   ros2-jazzy-dds:
     runs-on: ubuntu-24.04

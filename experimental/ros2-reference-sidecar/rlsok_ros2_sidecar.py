@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional
 
 try:
     import rclpy
+    from rclpy.utilities import get_rmw_implementation_identifier
     from builtin_interfaces.msg import Duration
     from control_msgs.action import FollowJointTrajectory
     from rclpy.action import ActionClient
@@ -160,7 +161,7 @@ class ReferenceTransportNode(NodeBase):
         return {
             "rosAvailable": True,
             "rosDistro": os.environ.get("ROS_DISTRO"),
-            "rmwImplementation": os.environ.get("RMW_IMPLEMENTATION"),
+            "rmwImplementation": get_rmw_implementation_identifier(),
             "rosDomainId": os.environ.get("ROS_DOMAIN_ID", "0"),
             "proposalTopic": self.args.proposal_topic,
             "jointStateTopic": self.args.joint_state_topic,
@@ -178,6 +179,70 @@ class ReferenceTransportNode(NodeBase):
                 "not_hard_realtime",
                 "protective_stop_requires_independent_safety_system",
             ],
+        }
+
+
+class DiscoveryNode(NodeBase):
+    """Read-only ROS graph discovery used by the first-run product flow."""
+
+    def __init__(self) -> None:
+        super().__init__("rlsok_environment_discovery")
+        self.samples: Dict[str, Dict[str, Any]] = {}
+        self.subscriptions = []
+
+    def subscribe_joint_states(self) -> None:
+        for name, types in self.get_topic_names_and_types():
+            if "sensor_msgs/msg/JointState" not in types:
+                continue
+            self.subscriptions.append(
+                self.create_subscription(
+                    JointState,
+                    name,
+                    lambda message, topic=name: self._sample(topic, message),
+                    10,
+                )
+            )
+
+    def _sample(self, topic: str, message: Any) -> None:
+        self.samples[topic] = {
+            "jointNames": list(message.name),
+            "positions": list(message.position),
+            "observedAt": datetime.now(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
+        }
+
+    def report(self) -> Dict[str, Any]:
+        topics = [
+            {"name": name, "types": sorted(types)}
+            for name, types in self.get_topic_names_and_types()
+        ]
+        actions = [
+            {"name": name, "types": sorted(types)}
+            for name, types in self.get_action_names_and_types()
+        ]
+        return {
+            "rosAvailable": True,
+            "rosDistro": os.environ.get("ROS_DISTRO"),
+            "rmwImplementation": get_rmw_implementation_identifier(),
+            "rosDomainId": os.environ.get("ROS_DOMAIN_ID", "0"),
+            "jointStateSources": [
+                {
+                    "name": topic["name"],
+                    "types": topic["types"],
+                    "sample": self.samples.get(topic["name"]),
+                }
+                for topic in topics
+                if "sensor_msgs/msg/JointState" in topic["types"]
+            ],
+            "trajectoryActionServers": [
+                action
+                for action in actions
+                if "control_msgs/action/FollowJointTrajectory" in action["types"]
+            ],
+            "nodes": sorted(
+                name for name, _namespace in self.get_node_names_and_namespaces()
+            ),
         }
 
     def inspect_graph(self) -> Dict[str, Any]:
@@ -226,6 +291,7 @@ def main() -> int:
     )
     parser.add_argument("--doctor", action="store_true")
     parser.add_argument("--inspect", action="store_true")
+    parser.add_argument("--discover", action="store_true")
     parser.add_argument("--result-timeout-seconds", type=float, default=30.0)
     parser.add_argument("--discovery-timeout-seconds", type=float, default=15.0)
     args = parser.parse_args()
@@ -234,13 +300,44 @@ def main() -> int:
 
     if rclpy is None:
         report = unavailable_report(args)
-        if args.doctor or args.inspect:
+        if args.doctor or args.inspect or args.discover:
             print(json.dumps(report, indent=2))
         else:
             emit({"event": "unavailable", "report": report})
         return 2
 
     rclpy.init()
+    if args.discover:
+        node = DiscoveryNode()
+        # First discover graph endpoints, then subscribe to every standard
+        # JointState source and wait a bounded period for a real sample.
+        discovery_deadline = (
+            datetime.now(timezone.utc).timestamp()
+            + args.discovery_timeout_seconds
+        )
+        warmup_deadline = min(
+            discovery_deadline,
+            datetime.now(timezone.utc).timestamp()
+            + min(2.0, args.discovery_timeout_seconds / 2),
+        )
+        while datetime.now(timezone.utc).timestamp() < warmup_deadline:
+            rclpy.spin_once(node, timeout_sec=0.1)
+        node.subscribe_joint_states()
+        while datetime.now(timezone.utc).timestamp() < discovery_deadline:
+            rclpy.spin_once(node, timeout_sec=0.1)
+            report = node.report()
+            sources = report["jointStateSources"]
+            if (
+                sources
+                and all(source["sample"] for source in sources)
+                and report["trajectoryActionServers"]
+            ):
+                break
+        print(json.dumps(node.report(), indent=2))
+        node.destroy_node()
+        rclpy.shutdown()
+        return 0
+
     node = ReferenceTransportNode(args)
     if args.doctor:
         print(json.dumps(node.doctor(), indent=2))
