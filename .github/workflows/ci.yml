@@ -81,6 +81,7 @@ jobs:
             ur_type:=ur5e \
             robot_ip:=127.0.0.1 \
             use_mock_hardware:=true \
+            initial_joint_controller:=scaled_joint_trajectory_controller \
             launch_rviz:=false \
             > /tmp/ur5e-driver.log 2>&1 &
           driver_pid=$!

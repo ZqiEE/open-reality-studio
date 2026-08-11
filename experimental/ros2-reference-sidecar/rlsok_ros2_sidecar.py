@@ -223,12 +223,12 @@ class DiscoveryNode(NodeBase):
         self.controller_managers: Dict[str, Dict[str, Any]] = {}
         self.controller_futures: Dict[str, Any] = {}
         self.controller_clients = []
-        self.subscriptions = []
+        self.graph_subscriptions = []
 
     def subscribe_graph_sources(self) -> None:
         for name, types in self.get_topic_names_and_types():
             if "sensor_msgs/msg/JointState" in types:
-                self.subscriptions.append(
+                self.graph_subscriptions.append(
                     self.create_subscription(
                         JointState,
                         name,
@@ -242,7 +242,7 @@ class DiscoveryNode(NodeBase):
                     durability=DurabilityPolicy.TRANSIENT_LOCAL,
                     reliability=ReliabilityPolicy.RELIABLE,
                 )
-                self.subscriptions.append(
+                self.graph_subscriptions.append(
                     self.create_subscription(
                         String,
                         name,
