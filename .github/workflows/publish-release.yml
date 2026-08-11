@@ -1,0 +1,70 @@
+name: Publish verified release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing draft release tag
+        required: true
+      run_id:
+        description: Successful main CI run containing distribution-proof
+        required: true
+      source_sha:
+        description: Exact source commit bound by the release
+        required: true
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate release inputs and CI provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RUN_ID: ${{ inputs.run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "${#SOURCE_SHA}" -eq 40
+          test "$(gh run view "$RUN_ID" --json conclusion --jq .conclusion)" = "success"
+          test "$(gh run view "$RUN_ID" --json headSha --jq .headSha)" = "$SOURCE_SHA"
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = "true"
+          test "$(gh release view "$RELEASE_TAG" --json targetCommitish --jq .targetCommitish)" = "$SOURCE_SHA"
+
+      - name: Download and verify the main CI distribution
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ inputs.run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          gh run download "$RUN_ID" --name distribution-proof --dir release-proof
+          cd release-proof/artifacts
+          sha256sum -c rlsok-runtime-1.2.0-linux-x64.tar.gz.sha256
+          sha256sum -c realitywarden-rlsok-1.2.0.tgz.sha256
+          test "$(jq -r .sourceCommit realitywarden-rlsok-1.2.0.tgz.manifest.json)" = "$SOURCE_SHA"
+
+      - name: Upload the main bundle and publish the verified draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          archive=release-proof/artifacts/rlsok-runtime-1.2.0-linux-x64.tar.gz
+          expected="sha256:$(sha256sum "$archive" | cut -d' ' -f1)"
+          gh release upload "$RELEASE_TAG" "$archive" --clobber
+          actual="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[] | select(.name == "rlsok-runtime-1.2.0-linux-x64.tar.gz") | .digest')"
+          test "$actual" = "$expected"
+          gh release edit "$RELEASE_TAG" --draft=false --latest
