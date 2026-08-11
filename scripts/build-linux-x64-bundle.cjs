@@ -1,0 +1,89 @@
+#!/usr/bin/env node
+"use strict";
+
+const { execFileSync } = require("node:child_process");
+const {
+  chmodSync,
+  copyFileSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} = require("node:fs");
+const { tmpdir } = require("node:os");
+const { basename, dirname, join, resolve } = require("node:path");
+const { createHash } = require("node:crypto");
+
+if (process.platform !== "linux" || process.arch !== "x64") {
+  throw new Error("linux_x64_bundle_must_be_built_on_linux_x64");
+}
+
+const root = resolve(__dirname, "..");
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const version = pkg.version;
+const archiveName = `rlsok-runtime-${version}-linux-x64.tar.gz`;
+const artifacts = join(root, "artifacts");
+const temporary = mkdtempSync(join(tmpdir(), "rlsok-linux-bundle-"));
+const stage = join(temporary, `rlsok-runtime-${version}`);
+
+function copy(source, target) {
+  mkdirSync(dirname(target), { recursive: true });
+  cpSync(source, target, { recursive: true });
+}
+
+try {
+  execFileSync(process.execPath, [require.resolve("typescript/bin/tsc"), "-p", "tsconfig.build.json"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  mkdirSync(join(stage, "bin"), { recursive: true });
+  copyFileSync(process.execPath, join(stage, "bin", "node"));
+  chmodSync(join(stage, "bin", "node"), 0o755);
+  copy(join(root, "dist"), join(stage, "lib", "rlsok", "dist"));
+  copy(
+    join(root, "experimental", "ros2-reference-sidecar"),
+    join(stage, "lib", "rlsok", "experimental", "ros2-reference-sidecar"),
+  );
+  for (const dependency of ["js-yaml", "argparse", "zod"]) {
+    copy(
+      join(root, "node_modules", dependency),
+      join(stage, "lib", "rlsok", "node_modules", dependency),
+    );
+  }
+  copyFileSync(join(root, "LICENSE"), join(stage, "LICENSE"));
+  writeFileSync(join(stage, "VERSION"), `${version}\n`, "utf8");
+  const launcher = `#!/bin/sh
+set -eu
+RLSOK_LAUNCHER=$(readlink -f -- "$0")
+RLSOK_RUNTIME_ROOT=$(CDPATH= cd -- "$(dirname -- "$RLSOK_LAUNCHER")/.." && pwd)
+exec "$RLSOK_RUNTIME_ROOT/bin/node" "$RLSOK_RUNTIME_ROOT/lib/rlsok/dist/apps/cli/rlsok.js" "$@"
+`;
+  writeFileSync(join(stage, "bin", "rlsok"), launcher, "utf8");
+  chmodSync(join(stage, "bin", "rlsok"), 0o755);
+  const uninstall = `#!/bin/sh
+set -eu
+INSTALL_ROOT=\${RLSOK_INSTALL_ROOT:-/opt/rlsok}
+BIN_DIR=\${RLSOK_BIN_DIR:-/usr/local/bin}
+if [ "$(id -u)" -ne 0 ] && [ "$INSTALL_ROOT" = "/opt/rlsok" ]; then
+  echo "Re-run with sudo: sudo $0" >&2
+  exit 1
+fi
+rm -f "$BIN_DIR/rlsok"
+rm -rf "$INSTALL_ROOT"
+echo "RLSOK runtime removed. User configuration and Evidence were preserved under ~/.config/rlsok and ~/.local/share/rlsok."
+`;
+  writeFileSync(join(stage, "uninstall.sh"), uninstall, "utf8");
+  chmodSync(join(stage, "uninstall.sh"), 0o755);
+  mkdirSync(artifacts, { recursive: true });
+  execFileSync("tar", ["-czf", join(artifacts, archiveName), "-C", temporary, basename(stage)]);
+  const bytes = readFileSync(join(artifacts, archiveName));
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  writeFileSync(join(artifacts, `${archiveName}.sha256`), `${digest}  ${archiveName}\n`, "utf8");
+  process.stdout.write(
+    `${JSON.stringify({ archive: archiveName, version, sizeBytes: bytes.length, sha256: digest })}\n`,
+  );
+} finally {
+  rmSync(temporary, { recursive: true, force: true });
+}

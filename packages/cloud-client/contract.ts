@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { executablePolicySpecSchema } from "../core/exec-spec";
+import {
+  executablePolicySpecSchema,
+  type ExecutablePolicySpec,
+} from "../core/exec-spec";
 
 export const cloudContractVersion = "rlsok-cloud/v1" as const;
 export const cloudApiPathVersion = "v1" as const;
@@ -39,6 +42,38 @@ export const registerReleaseResponseSchema = z
     contentHash: hash,
   })
   .strict();
+
+export const zeroToShadowDraftResponseSchema = z
+  .object({
+    apiVersion: z.literal(cloudContractVersion),
+    releaseId: z.string().min(1),
+    contentHash: hash,
+    state: z.literal("draft"),
+    approvalUrl: z.string().url(),
+  })
+  .strict();
+
+export interface ZeroToShadowDraft {
+  artifact: {
+    name: string;
+    mediaType: string;
+    sha256: string;
+    sizeBytes: number;
+  };
+  controller: {
+    controllerId: string;
+    displayName: string;
+    profileSha256: string;
+    rosActionName: string;
+  };
+  robot: {
+    robotId: string;
+    displayName: string;
+    profileSha256: string;
+    controllerId: string;
+  };
+  execSpec: ExecutablePolicySpec;
+}
 
 export const permitRequestSchema = z
   .object({

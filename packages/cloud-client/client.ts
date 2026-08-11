@@ -7,6 +7,7 @@ import {
   evidenceExportPageSchema,
   permitResponseSchema,
   registerReleaseResponseSchema,
+  zeroToShadowDraftResponseSchema,
   releaseResponseSchema,
   revokeReleaseResponseSchema,
   type CloudEvidence,
@@ -15,6 +16,7 @@ import {
   type PermitRequest,
   type SubmitEvidence,
   type EvidenceExport,
+  type ZeroToShadowDraft,
   consumePermitRequestSchema,
   permitRequestSchema,
   submitEvidenceSchema,
@@ -176,6 +178,15 @@ export class RlsokCloudClient {
           retryIdempotentMutation: true,
         },
       ),
+    );
+  }
+
+  async createZeroToShadowDraft(draft: ZeroToShadowDraft) {
+    return zeroToShadowDraftResponseSchema.parse(
+      await this.request("POST", "onboarding/shadow-drafts", draft, {
+        idempotencyKey: randomUUID(),
+        retryIdempotentMutation: true,
+      }),
     );
   }
 

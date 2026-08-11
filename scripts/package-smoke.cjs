@@ -47,6 +47,10 @@ try {
   );
   const executable = resolve(packageRoot, 'dist', 'apps', 'cli', 'rlsok.js');
   run(process.execPath, [executable, '--help'], temporary);
+  const setupHelp = run(process.execPath, [executable, 'setup', '--help'], temporary);
+  if (!setupHelp.includes('Zero-to-Shadow') || !setupHelp.includes('--artifact')) {
+    throw new Error('packaged_setup_help_unavailable');
+  }
   const doctor = spawnSync(process.execPath, [executable, 'ros2', 'doctor'], {
     cwd: temporary,
     encoding: 'utf8',
@@ -102,6 +106,7 @@ try {
     ...manifest,
     files: manifest.files.length,
     help: 'passed',
+    setupHelp: 'passed',
     check: 'passed',
     standaloneShadow: 'passed',
     packagedRos2Sidecar: 'passed',
