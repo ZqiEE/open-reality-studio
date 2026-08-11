@@ -26,9 +26,11 @@ jobs:
           export RLSOK_RELEASE_DIR="$PWD/artifacts"
           export RLSOK_INSTALL_ROOT="$acceptance_root/opt/rlsok"
           export RLSOK_BIN_DIR="$acceptance_root/bin"
+          export RLSOK_PYTHON_SITE="$acceptance_root/python-site"
           sh packaging/install.sh
           "$RLSOK_BIN_DIR/rlsok" --version
           "$RLSOK_BIN_DIR/rlsok" setup --help
+          PYTHONPATH="$RLSOK_PYTHON_SITE" python3 -c "from rlsok import propose; assert callable(propose)"
           sh packaging/install.sh
           "$RLSOK_INSTALL_ROOT/uninstall.sh"
           test ! -e "$RLSOK_BIN_DIR/rlsok"
@@ -59,6 +61,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             ros-jazzy-control-msgs \
+            ros-jazzy-ur \
             ros-jazzy-sensor-msgs \
             ros-jazzy-std-msgs \
             ros-jazzy-trajectory-msgs
@@ -70,10 +73,35 @@ jobs:
           python3 experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py --doctor
           npm run ros2:test
           npm run ros2:dds-test
+      - name: Validate automatic UR5e integration against the official driver
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          ros2 launch ur_robot_driver ur_control.launch.py \
+            ur_type:=ur5e \
+            robot_ip:=127.0.0.1 \
+            use_mock_hardware:=true \
+            launch_rviz:=false \
+            > /tmp/ur5e-driver.log 2>&1 &
+          driver_pid=$!
+          trap 'kill "$driver_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 40); do
+            ros2 control list_controllers 2>/dev/null | grep -q scaled_joint_trajectory_controller && break
+            sleep 1
+          done
+          RLSOK_OFFICIAL_UR5E_TEST=1 npm run test:official-ur5e || {
+            cat /tmp/ur5e-driver.log
+            exit 1
+          }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: sanitized-ros2-dds-evidence
           path: artifacts/ros2-dds/*.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: official-ur5e-integration-proof
+          path: artifacts/official-ur5e-integration.json
 
   secret-scan:
     runs-on: ubuntu-24.04

@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-RLSOK_PRODUCT_VERSION="1.1.0"
-RLSOK_RUNTIME_VERSION="1.2.0"
+RLSOK_PRODUCT_VERSION="1.2.0"
+RLSOK_RUNTIME_VERSION="1.3.0"
 ARCHIVE="rlsok-runtime-${RLSOK_RUNTIME_VERSION}-linux-x64.tar.gz"
 RELEASE_BASE="${RLSOK_RELEASE_BASE:-https://github.com/realitywarden/rlsok/releases/download/v${RLSOK_PRODUCT_VERSION}}"
 INSTALL_ROOT="${RLSOK_INSTALL_ROOT:-/opt/rlsok}"
@@ -24,6 +24,7 @@ fi
 command -v curl >/dev/null 2>&1 || fail "curl is required. Install it with: sudo apt-get install curl"
 command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required (package: coreutils)."
 command -v tar >/dev/null 2>&1 || fail "tar is required."
+command -v python3 >/dev/null 2>&1 || fail "python3 is required (ROS 2 Jazzy uses it for the policy proposal SDK)."
 
 if [ "$(id -u)" -ne 0 ] && [ "$INSTALL_ROOT" = "/opt/rlsok" ]; then
   fail "system installation needs root. Use: curl -fsSL https://rlsok.com/install.sh | sudo sh"
@@ -49,7 +50,19 @@ rm -rf "$VERSION_ROOT"
 mv "$VERSION_ROOT.new" "$VERSION_ROOT"
 ln -sfn "$VERSION_ROOT/bin/rlsok" "$BIN_DIR/rlsok"
 ln -sfn "$VERSION_ROOT/uninstall.sh" "$INSTALL_ROOT/uninstall.sh"
+if [ -n "${RLSOK_PYTHON_SITE:-}" ]; then
+  PYTHON_SITE="$RLSOK_PYTHON_SITE"
+elif [ "$INSTALL_ROOT" = "/opt/rlsok" ]; then
+  PYTHON_SITE=$(python3 -c 'import site; print(site.getsitepackages()[0])')
+else
+  PYTHON_SITE="$INSTALL_ROOT/python-site"
+fi
+mkdir -p "$PYTHON_SITE"
+PYTHON_PTH="$PYTHON_SITE/rlsok.pth"
+printf '%s\n' "$VERSION_ROOT/lib/rlsok/sdk/python" > "$PYTHON_PTH"
+printf '%s\n' "$PYTHON_PTH" > "$INSTALL_ROOT/.python-pth-path"
 
 "$BIN_DIR/rlsok" --version
 echo "RLSOK runtime $RLSOK_RUNTIME_VERSION (product v$RLSOK_PRODUCT_VERSION) installed at $VERSION_ROOT"
+echo "Python proposal SDK installed for: $PYTHON_SITE"
 echo "Next: source /opt/ros/jazzy/setup.bash && rlsok setup"

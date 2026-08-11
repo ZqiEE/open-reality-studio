@@ -8,6 +8,7 @@
 - `sensor_msgs/msg/JointState`
 - `control_msgs/action/FollowJointTrajectory`
 - Hosted RLSOK Cloud
+- Official integration: Universal Robots UR5e with the official ROS 2 driver
 
 Install and begin:
 
@@ -17,8 +18,10 @@ source /opt/ros/jazzy/setup.bash
 rlsok setup
 ```
 
-The setup flow validates the platform and loaded RMW, discovers live interfaces,
-reads a current JointState sample, hashes and protects the selected policy
+The setup flow validates the platform and loaded RMW, identifies the UR5e model,
+namespace, stable six-joint order, official controller family, active scaled
+trajectory controller, state source, and action without asking for ROS names;
+it then reads a current JointState sample, hashes and protects the selected policy
 artifact, generates exact robot/controller/release bindings, and opens Hosted
 Cloud pairing.
 
@@ -40,6 +43,23 @@ Success explicitly reports:
 The local result and protected configuration paths are printed at completion.
 Cloud receives artifact metadata and the exact digest, not the policy bytes.
 
+Start continuous Shadow evaluation and connect the learned policy:
+
+```bash
+rlsok observe
+```
+
+```python
+from rlsok import propose
+propose(next_joint_positions)
+```
+
+`propose` reads the exact joint order and proposal channel written by setup. It
+does not own release eligibility or controller authority. A recognized but
+incomplete or unsupported Universal Robots graph fails closed; an unrelated
+valid ROS graph is labeled generic protocol support rather than official robot
+support.
+
 ## Common recovery
 
 - ROS unavailable: `source /opt/ros/jazzy/setup.bash` in the same terminal.
@@ -48,6 +68,9 @@ Cloud receives artifact metadata and the exact digest, not the policy bytes.
   `ros2 topic echo --once <joint-state-topic>`.
 - No controller: verify `ros2 control list_controllers` and
   `ros2 action list -t`.
+- Recognized UR but unsupported boundary: activate the official scaled trajectory
+  controller and keep the robot description, controller manager, JointState, and
+  action in one namespace; RLSOK will not silently downgrade it to generic.
 - Pairing expired: run `rlsok pair` again and approve within ten minutes.
 - Artifact changed: create a new setup Draft; previous approval is never reused.
 
@@ -68,3 +91,7 @@ controller path. It does not determine whether physical motion is safe. It is
 not functional-safety software or a hard real-time controller. Independent
 E-stops, safety PLCs, certified controllers, motion limits, mechanical
 safeguards, site procedures, and hazard analysis remain required.
+
+The official UR5e claim is validated with the official driver's mock-hardware
+simulation on Ubuntu 24.04 / Jazzy / Fast DDS. Physical UR5e motion is not
+claimed by this release.

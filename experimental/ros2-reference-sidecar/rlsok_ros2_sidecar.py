@@ -23,6 +23,7 @@ try:
     from control_msgs.action import FollowJointTrajectory
     from rclpy.action import ActionClient
     from rclpy.node import Node
+    from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
     from sensor_msgs.msg import JointState
     from std_msgs.msg import String
     from trajectory_msgs.msg import JointTrajectoryPoint
@@ -31,6 +32,14 @@ except ImportError as import_error:
     ROS_IMPORT_ERROR = str(import_error)
 else:
     ROS_IMPORT_ERROR = ""
+
+if rclpy is not None:
+    try:
+        from controller_manager_msgs.srv import ListControllers
+    except ImportError:
+        ListControllers = None
+else:
+    ListControllers = None
 
 NodeBase = globals().get("Node", object)
 
@@ -66,9 +75,16 @@ class ReferenceTransportNode(NodeBase):
         # stamps can use simulation time (for example Gazebo starts at epoch 0)
         # and therefore must not be interpreted as UTC wall clock time.
         observed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        names = list(message.name)
+        positions = list(message.position)
+        requested_order = self.args.joint_order
+        if requested_order and set(names) == set(requested_order):
+            by_name = dict(zip(names, positions))
+            names = list(requested_order)
+            positions = [by_name[name] for name in requested_order]
         state = {
-            "names": list(message.name),
-            "positions": list(message.position),
+            "names": names,
+            "positions": positions,
             "observedAt": observed_at,
         }
         if seconds > 0:
@@ -203,20 +219,49 @@ class DiscoveryNode(NodeBase):
     def __init__(self) -> None:
         super().__init__("rlsok_environment_discovery")
         self.samples: Dict[str, Dict[str, Any]] = {}
+        self.robot_descriptions: Dict[str, str] = {}
+        self.controller_managers: Dict[str, Dict[str, Any]] = {}
+        self.controller_futures: Dict[str, Any] = {}
+        self.controller_clients = []
         self.subscriptions = []
 
-    def subscribe_joint_states(self) -> None:
+    def subscribe_graph_sources(self) -> None:
         for name, types in self.get_topic_names_and_types():
-            if "sensor_msgs/msg/JointState" not in types:
-                continue
-            self.subscriptions.append(
-                self.create_subscription(
-                    JointState,
-                    name,
-                    lambda message, topic=name: self._sample(topic, message),
-                    10,
+            if "sensor_msgs/msg/JointState" in types:
+                self.subscriptions.append(
+                    self.create_subscription(
+                        JointState,
+                        name,
+                        lambda message, topic=name: self._sample(topic, message),
+                        10,
+                    )
                 )
-            )
+            if "std_msgs/msg/String" in types and name.endswith("/robot_description"):
+                qos = QoSProfile(
+                    depth=1,
+                    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                    reliability=ReliabilityPolicy.RELIABLE,
+                )
+                self.subscriptions.append(
+                    self.create_subscription(
+                        String,
+                        name,
+                        lambda message, topic=name: self._robot_description(
+                            topic, message
+                        ),
+                        qos,
+                    )
+                )
+        if ListControllers is not None:
+            for name, types in self.get_service_names_and_types():
+                if "controller_manager_msgs/srv/ListControllers" not in types:
+                    continue
+                client = self.create_client(ListControllers, name)
+                self.controller_clients.append(client)
+                if client.wait_for_service(timeout_sec=0.0):
+                    self.controller_futures[name] = client.call_async(
+                        ListControllers.Request()
+                    )
 
     def _sample(self, topic: str, message: Any) -> None:
         self.samples[topic] = {
@@ -227,6 +272,70 @@ class DiscoveryNode(NodeBase):
             .replace("+00:00", "Z"),
         }
 
+    def _robot_description(self, topic: str, message: Any) -> None:
+        self.robot_descriptions[topic] = str(message.data)
+
+    @staticmethod
+    def _namespace_for_controller_service(service_name: str) -> str:
+        suffix = "/controller_manager/list_controllers"
+        namespace = service_name[: -len(suffix)] if service_name.endswith(suffix) else ""
+        return namespace or "/"
+
+    def collect_controller_responses(self) -> None:
+        for service_name, future in list(self.controller_futures.items()):
+            if not future.done():
+                continue
+            response = future.result()
+            if response is not None:
+                self.controller_managers[service_name] = {
+                    "namespace": self._namespace_for_controller_service(service_name),
+                    "serviceName": service_name,
+                    "controllers": [
+                        {
+                            "name": controller.name,
+                            "type": controller.type,
+                            "state": controller.state,
+                            "claimedInterfaces": list(controller.claimed_interfaces),
+                        }
+                        for controller in response.controller
+                    ],
+                }
+            del self.controller_futures[service_name]
+
+    def publishers(self, topic: str) -> list[Dict[str, str]]:
+        return [
+            {
+                "nodeName": endpoint.node_name,
+                "nodeNamespace": endpoint.node_namespace,
+            }
+            for endpoint in self.get_publishers_info_by_topic(topic)
+        ]
+
+    def action_servers(self, action_name: str) -> list[Dict[str, str]]:
+        servers = []
+        for node_name, node_namespace in self.get_node_names_and_namespaces():
+            try:
+                actions = self.get_action_names_and_types_by_node(
+                    node_name, node_namespace
+                )
+            except Exception:
+                continue
+            if any(name == action_name for name, _types in actions):
+                servers.append(
+                    {"nodeName": node_name, "nodeNamespace": node_namespace}
+                )
+        return servers
+
+    def auxiliary_discovery_complete(self) -> bool:
+        robot_description_topics = [
+            name
+            for name, types in self.get_topic_names_and_types()
+            if "std_msgs/msg/String" in types and name.endswith("/robot_description")
+        ]
+        return not self.controller_futures and all(
+            topic in self.robot_descriptions for topic in robot_description_topics
+        )
+
     def report(self) -> Dict[str, Any]:
         topics = [
             {"name": name, "types": sorted(types)}
@@ -236,6 +345,7 @@ class DiscoveryNode(NodeBase):
             {"name": name, "types": sorted(types)}
             for name, types in self.get_action_names_and_types()
         ]
+        self.collect_controller_responses()
         return {
             "rosAvailable": True,
             "rosDistro": os.environ.get("ROS_DISTRO"),
@@ -245,19 +355,43 @@ class DiscoveryNode(NodeBase):
                 {
                     "name": topic["name"],
                     "types": topic["types"],
+                    "publishers": self.publishers(topic["name"]),
                     "sample": self.samples.get(topic["name"]),
                 }
                 for topic in topics
                 if "sensor_msgs/msg/JointState" in topic["types"]
             ],
             "trajectoryActionServers": [
-                action
+                {
+                    **action,
+                    "servers": self.action_servers(action["name"]),
+                }
                 for action in actions
                 if "control_msgs/action/FollowJointTrajectory" in action["types"]
             ],
             "nodes": sorted(
-                name for name, _namespace in self.get_node_names_and_namespaces()
+                [
+                    {"name": name, "namespace": namespace}
+                    for name, namespace in self.get_node_names_and_namespaces()
+                ],
+                key=lambda node: (node["namespace"], node["name"]),
             ),
+            "services": [
+                {"name": name, "types": sorted(types)}
+                for name, types in self.get_service_names_and_types()
+            ],
+            "controllerManagers": sorted(
+                self.controller_managers.values(),
+                key=lambda manager: manager["serviceName"],
+            ),
+            "robotDescriptions": [
+                {
+                    "topic": topic,
+                    "publishers": self.publishers(topic),
+                    "xml": xml,
+                }
+                for topic, xml in sorted(self.robot_descriptions.items())
+            ],
         }
 
 def unavailable_report(args: argparse.Namespace) -> Dict[str, Any]:
@@ -299,7 +433,18 @@ def main() -> int:
     parser.add_argument("--discover", action="store_true")
     parser.add_argument("--result-timeout-seconds", type=float, default=30.0)
     parser.add_argument("--discovery-timeout-seconds", type=float, default=15.0)
+    parser.add_argument("--joint-order-json")
     args = parser.parse_args()
+    args.joint_order = (
+        json.loads(args.joint_order_json) if args.joint_order_json else None
+    )
+    if args.joint_order is not None and (
+        not isinstance(args.joint_order, list)
+        or not args.joint_order
+        or not all(isinstance(name, str) and name for name in args.joint_order)
+        or len(set(args.joint_order)) != len(args.joint_order)
+    ):
+        parser.error("--joint-order-json must be a non-empty unique string array")
     if not 1.0 <= args.discovery_timeout_seconds <= 120.0:
         parser.error("--discovery-timeout-seconds must be between 1 and 120")
 
@@ -327,7 +472,7 @@ def main() -> int:
         )
         while datetime.now(timezone.utc).timestamp() < warmup_deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
-        node.subscribe_joint_states()
+        node.subscribe_graph_sources()
         while datetime.now(timezone.utc).timestamp() < discovery_deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
             report = node.report()
@@ -336,6 +481,7 @@ def main() -> int:
                 sources
                 and all(source["sample"] for source in sources)
                 and report["trajectoryActionServers"]
+                and node.auxiliary_discovery_complete()
             ):
                 break
         print(json.dumps(node.report(), indent=2))

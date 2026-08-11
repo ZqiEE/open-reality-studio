@@ -172,6 +172,7 @@ async function runCloudConnectedGateway(
     proposalTopic: options["proposal-topic"],
     jointStateTopic: options["joint-state-topic"],
     controllerAction: options["controller-action"],
+    jointOrder: spec.actionContract.jointOrder,
     discoveryTimeoutMs: discoveryTimeout,
   });
   let doctor = await transport.doctor();
@@ -354,6 +355,7 @@ async function runGateway(
     proposalTopic: options["proposal-topic"],
     jointStateTopic: options["joint-state-topic"],
     controllerAction: options["controller-action"],
+    jointOrder: spec.actionContract.jointOrder,
     discoveryTimeoutMs: discoveryTimeout,
   });
   const evidencePath = resolve(

@@ -51,9 +51,9 @@ jobs:
           set -euo pipefail
           gh run download "$RUN_ID" --name distribution-proof --dir release-proof
           cd release-proof/artifacts
-          sha256sum -c rlsok-runtime-1.2.0-linux-x64.tar.gz.sha256
-          sha256sum -c realitywarden-rlsok-1.2.0.tgz.sha256
-          test "$(jq -r .sourceCommit realitywarden-rlsok-1.2.0.tgz.manifest.json)" = "$SOURCE_SHA"
+          sha256sum -c rlsok-runtime-1.3.0-linux-x64.tar.gz.sha256
+          sha256sum -c realitywarden-rlsok-1.3.0.tgz.sha256
+          test "$(jq -r .sourceCommit realitywarden-rlsok-1.3.0.tgz.manifest.json)" = "$SOURCE_SHA"
 
       - name: Upload the main bundle and publish the verified draft
         env:
@@ -62,9 +62,9 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          archive=release-proof/artifacts/rlsok-runtime-1.2.0-linux-x64.tar.gz
+          archive=release-proof/artifacts/rlsok-runtime-1.3.0-linux-x64.tar.gz
           expected="sha256:$(sha256sum "$archive" | cut -d' ' -f1)"
           gh release upload "$RELEASE_TAG" "$archive" --clobber
-          actual="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[] | select(.name == "rlsok-runtime-1.2.0-linux-x64.tar.gz") | .digest')"
+          actual="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[] | select(.name == "rlsok-runtime-1.3.0-linux-x64.tar.gz") | .digest')"
           test "$actual" = "$expected"
           gh release edit "$RELEASE_TAG" --draft=false --latest

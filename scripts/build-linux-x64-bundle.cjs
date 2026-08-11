@@ -46,6 +46,10 @@ try {
     join(root, "experimental", "ros2-reference-sidecar"),
     join(stage, "lib", "rlsok", "experimental", "ros2-reference-sidecar"),
   );
+  copy(
+    join(root, "sdk", "python", "rlsok"),
+    join(stage, "lib", "rlsok", "sdk", "python", "rlsok"),
+  );
   for (const dependency of ["js-yaml", "argparse", "zod"]) {
     copy(
       join(root, "node_modules", dependency),
@@ -71,6 +75,10 @@ if [ "$(id -u)" -ne 0 ] && [ "$INSTALL_ROOT" = "/opt/rlsok" ]; then
   exit 1
 fi
 rm -f "$BIN_DIR/rlsok"
+if [ -f "$INSTALL_ROOT/.python-pth-path" ]; then
+  PYTHON_PTH=$(cat "$INSTALL_ROOT/.python-pth-path")
+  [ ! -f "$PYTHON_PTH" ] || rm -f "$PYTHON_PTH"
+fi
 rm -rf "$INSTALL_ROOT"
 echo "RLSOK runtime removed. User configuration and Evidence were preserved under ~/.config/rlsok and ~/.local/share/rlsok."
 `;

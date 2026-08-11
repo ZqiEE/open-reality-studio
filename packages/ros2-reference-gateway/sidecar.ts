@@ -23,6 +23,7 @@ interface PythonRos2SidecarOptions {
   proposalTopic?: string;
   jointStateTopic?: string;
   controllerAction?: string;
+  jointOrder?: string[];
   discoveryTimeoutMs?: number;
 }
 
@@ -130,6 +131,9 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
       "--discovery-timeout-seconds",
       String(this.discoveryTimeoutMs / 1_000),
     ];
+    if (this.options.jointOrder) {
+      args.push("--joint-order-json", JSON.stringify(this.options.jointOrder));
+    }
     const child = spawn(this.options.pythonExecutable, args, {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,

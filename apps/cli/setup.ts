@@ -24,31 +24,20 @@ import {
   type ExecutablePolicySpec,
 } from "../../packages/core/exec-spec";
 import { readStoredCloudCredentials } from "../../packages/cloud-client/credentials";
+import {
+  assessOfficialRobotIntegrations,
+  type OfficialRobotIntegration,
+  type Ros2DiscoveryReport,
+} from "../../packages/robot-integrations";
 import { openBrowser, runPairCommand } from "./pair";
 import { runRos2Command } from "./ros2";
 
 type Options = Record<string, string | true>;
 
-interface DiscoveryReport {
-  rosAvailable: boolean;
-  rosDistro: string | null;
-  rmwImplementation: string | null;
-  rosDomainId: string;
-  jointStateSources: Array<{
-    name: string;
-    types: string[];
-    sample: {
-      jointNames: string[];
-      positions: number[];
-      observedAt: string;
-    } | null;
-  }>;
-  trajectoryActionServers: Array<{ name: string; types: string[] }>;
-  nodes: string[];
-}
+type DiscoveryReport = Ros2DiscoveryReport;
 
 interface SetupState {
-  version: 1;
+  version: 2;
   releaseId: string;
   deviceId: string;
   controllerId: string;
@@ -56,6 +45,19 @@ interface SetupState {
   artifactSha256: string;
   jointStateTopic: string;
   controllerAction: string;
+  jointNames: string[];
+  proposalTopic: string;
+  proposerIdentity: string;
+  integration: {
+    supportLevel: "official" | "generic";
+    profileId: string;
+    displayName: string;
+    vendor: string | null;
+    model: string | null;
+    namespace: string;
+    validatedEnvironment: string | null;
+    physicalValidation: false;
+  };
   releasePath: string;
   proposalPath: string;
   evidencePath: string;
@@ -244,6 +246,61 @@ function slug(value: string): string {
   );
 }
 
+function positionsInJointOrder(
+  source: NonNullable<DiscoveryReport["jointStateSources"][number]["sample"]>,
+  jointNames: string[],
+): number[] {
+  const positions = new Map(
+    source.jointNames.map((name, index) => [name, source.positions[index]!] as const),
+  );
+  const ordered = jointNames.map((name) => positions.get(name));
+  if (ordered.some((value) => value === undefined))
+    throw new Error(
+      "The observed JointState changed while setup was binding the robot boundary. RLSOK failed closed; retry while the driver is stable.",
+    );
+  return ordered as number[];
+}
+
+async function chooseOfficialIntegration(
+  integrations: OfficialRobotIntegration[],
+  namespace: string | undefined,
+  nonInteractive: boolean,
+): Promise<OfficialRobotIntegration> {
+  const normalizedNamespace = namespace
+    ? `/${namespace}`.replace(/\/+/g, "/").replace(/\/$/, "") || "/"
+    : undefined;
+  if (normalizedNamespace) {
+    const match = integrations.find(
+      (integration) => integration.namespace === normalizedNamespace,
+    );
+    if (!match)
+      throw new Error(
+        `--robot-namespace '${namespace}' did not identify an official integration. Detected: ${integrations.map((integration) => `${integration.model} at ${integration.namespace}`).join(", ")}.`,
+      );
+    return match;
+  }
+  if (integrations.length === 1) return integrations[0]!;
+  if (nonInteractive || !process.stdin.isTTY)
+    throw new Error(
+      `Multiple official robot integrations were detected. Re-run with --robot-namespace. Choices: ${integrations.map((integration) => `${integration.model} at ${integration.namespace}`).join(", ")}.`,
+    );
+  process.stdout.write("\nChoose the robot integration:\n");
+  integrations.forEach((integration, index) =>
+    process.stdout.write(
+      `  ${index + 1}. ${integration.vendor} ${integration.model} at ${integration.namespace}\n`,
+    ),
+  );
+  const terminal = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await terminal.question(`Selection [1-${integrations.length}]: `);
+    const selected = integrations[Number(answer) - 1];
+    if (!selected) throw new Error("Invalid selection. Run rlsok setup again.");
+    return selected;
+  } finally {
+    terminal.close();
+  }
+}
+
 function writeProtected(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileSync(path, content, { encoding: "utf8", mode: 0o600 });
@@ -257,8 +314,11 @@ function createSpec(input: {
   controllerHash: string;
   robotHash: string;
   boundaryHash: string;
+  urdfSha256: string;
   jointNames: string[];
   releaseId: string;
+  integrationProfileId: string;
+  controllerType: string;
 }): ExecutablePolicySpec {
   const identityTransform = sha256(
     canonicalJson({ kind: "identity-transform", version: 1 }),
@@ -288,10 +348,10 @@ function createSpec(input: {
       postprocessorSha256: identityTransform,
     },
     robot: {
-      profileId: input.deviceId,
+      profileId: input.integrationProfileId,
       profileSha256: input.robotHash,
-      urdfSha256: input.boundaryHash,
-      controllerType: "FollowJointTrajectory",
+      urdfSha256: input.urdfSha256,
+      controllerType: input.controllerType,
       controllerConfigSha256: input.controllerHash,
     },
     runtimePolicy: {
@@ -351,6 +411,7 @@ export function setupUsage(): string {
     "environment discovery through Hosted Cloud pairing and verified Shadow.",
     "",
     "  --artifact <file>              policy artifact to bind",
+    "  --robot-namespace <name>       select a robot only when several are detected",
     "  --joint-state-topic <name>     choose a discovered JointState source",
     "  --controller-action <name>     choose a discovered FollowJointTrajectory server",
     "  --device-name <name>           human-readable robot/device name",
@@ -394,25 +455,71 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     throw new Error(
       "RLSOK expected a control_msgs/action/FollowJointTrajectory server but found none. Start ros2_control, confirm the controller is active with 'ros2 control list_controllers', then inspect 'ros2 action list -t'.",
     );
-  const jointSource = await choose(
-    "JointState source (--joint-state-topic)",
-    report.jointStateSources.filter(
-      (source) =>
-        source.sample &&
-        source.sample.jointNames.length > 0 &&
-        source.sample.jointNames.length === source.sample.positions.length,
-    ),
-    option(options, "joint-state-topic"),
-    nonInteractive,
-  );
-  const controller = await choose(
-    "FollowJointTrajectory server (--controller-action)",
-    report.trajectoryActionServers,
-    option(options, "controller-action"),
-    nonInteractive,
-  );
+  const assessment = assessOfficialRobotIntegrations(report);
+  if (assessment.status === "unsupported")
+    throw new Error(
+      `RLSOK recognized a robot family but could not prove a supported boundary. It will not silently downgrade to generic ROS 2.\n${assessment.diagnostics.map((diagnostic) => `  - ${diagnostic}`).join("\n")}`,
+    );
+  const integration =
+    assessment.status === "matched"
+      ? await chooseOfficialIntegration(
+          assessment.integrations,
+          option(options, "robot-namespace"),
+          nonInteractive,
+        )
+      : null;
+  const jointSource = integration
+    ? report.jointStateSources.find(
+        (source) => source.name === integration.jointStateTopic,
+      )!
+    : await choose(
+        "JointState source (--joint-state-topic)",
+        report.jointStateSources.filter(
+          (source) =>
+            source.sample &&
+            source.sample.jointNames.length > 0 &&
+            source.sample.jointNames.length === source.sample.positions.length,
+        ),
+        option(options, "joint-state-topic"),
+        nonInteractive,
+      );
+  const controller = integration
+    ? report.trajectoryActionServers.find(
+        (action) => action.name === integration.controllerAction,
+      )!
+    : await choose(
+        "FollowJointTrajectory server (--controller-action)",
+        report.trajectoryActionServers,
+        option(options, "controller-action"),
+        nonInteractive,
+      );
+  const jointNames = integration
+    ? integration.jointNames
+    : jointSource.sample!.jointNames;
+  const observedPositions = positionsInJointOrder(jointSource.sample!, jointNames);
+  const integrationState: SetupState["integration"] = integration
+    ? {
+        supportLevel: "official",
+        profileId: integration.profileId,
+        displayName: integration.displayName,
+        vendor: integration.vendor,
+        model: integration.model,
+        namespace: integration.namespace,
+        validatedEnvironment: integration.validatedEnvironment,
+        physicalValidation: false,
+      }
+    : {
+        supportLevel: "generic",
+        profileId: "generic-ros2-follow-joint-trajectory-v1",
+        displayName: "Generic ROS 2 protocol boundary (not an official robot integration)",
+        vendor: null,
+        model: null,
+        namespace: "/",
+        validatedEnvironment: null,
+        physicalValidation: false,
+      };
   process.stdout.write(
-    `  [ok] Ubuntu 24.04 x86_64\n  [ok] ROS 2 Jazzy\n  [ok] Fast DDS\n  [ok] ${jointSource.name} (${jointSource.sample!.jointNames.length} joints)\n  [ok] ${controller.name}\n`,
+    `  [ok] Ubuntu 24.04 x86_64\n  [ok] ROS 2 Jazzy\n  [ok] Fast DDS\n  [ok] ${integration ? `Official ${integration.vendor} ${integration.model} integration at ${integration.namespace}` : integrationState.displayName}\n  [ok] ${jointNames.length}-joint execution boundary verified\n`,
   );
 
   process.stdout.write("\n[2/6] Binding the policy artifact and ROS boundary...\n");
@@ -423,24 +530,40 @@ export async function runSetupCommand(args: string[]): Promise<number> {
   const artifactSize = lstatSync(sourceArtifact).size;
   if (artifactSize < 1)
     throw new Error("The policy artifact is empty. Choose the actual policy file and retry.");
-  const deviceName = option(options, "device-name") ?? hostname();
+  const deviceName =
+    option(options, "device-name") ??
+    (integration
+      ? `${integration.vendor} ${integration.model} ${integration.namespace}`
+      : hostname());
+  const proposalTopic =
+    integration && integration.namespace !== "/"
+      ? `${integration.namespace}/rlsok/action_proposals`
+      : "/rlsok/action_proposals";
+  const proposerIdentity = `policy-${artifactSha256.slice(0, 12)}`;
   const boundary = {
-    version: 1,
+    version: 2,
     rosDistro: report.rosDistro,
     rmwImplementation: report.rmwImplementation,
     rosDomainId: report.rosDomainId,
     jointStateTopic: jointSource.name,
-    jointNames: jointSource.sample!.jointNames,
+    jointNames,
     controllerAction: controller.name,
+    integrationProfileId: integrationState.profileId,
+    robotNamespace: integrationState.namespace,
+    robotDescriptionSha256: integration?.robotDescriptionSha256 ?? null,
+    controllerManagerService: integration?.controllerManagerService ?? null,
+    controllerType:
+      integration?.controllerType ?? "control_msgs/action/FollowJointTrajectory",
   };
   const boundaryHash = sha256(canonicalJson(boundary));
   const deviceId = `${slug(deviceName)}-${boundaryHash.slice(0, 8)}`;
-  const controllerId = `trajectory-${sha256(canonicalJson({ action: controller.name, joints: jointSource.sample!.jointNames })).slice(0, 12)}`;
+  const controllerId = `trajectory-${sha256(canonicalJson({ action: controller.name, joints: jointNames, type: integration?.controllerType ?? null })).slice(0, 12)}`;
   const controllerHash = sha256(
     canonicalJson({
       action: controller.name,
       actionType: "control_msgs/action/FollowJointTrajectory",
-      joints: jointSource.sample!.jointNames,
+      joints: jointNames,
+      controllerType: integration?.controllerType ?? null,
       rmwImplementation: report.rmwImplementation,
     }),
   );
@@ -457,8 +580,12 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     controllerHash,
     robotHash,
     boundaryHash,
-    jointNames: jointSource.sample!.jointNames,
+    urdfSha256: integration?.robotDescriptionSha256 ?? boundaryHash,
+    jointNames,
     releaseId,
+    integrationProfileId: integrationState.profileId,
+    controllerType:
+      integration?.controllerType ?? "control_msgs/action/FollowJointTrajectory",
   });
   const root = dataRoot();
   const artifactPath = join(root, "artifacts", artifactSha256);
@@ -546,15 +673,15 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     proposalId: `first-shadow-${randomUUID()}`,
     releaseId,
     deviceId,
-    proposerIdentity: "rlsok-zero-to-shadow",
+    proposerIdentity,
     actionRepresentation: "trajectory",
     actionPayload: {
       representation: "trajectory",
-      jointNames: jointSource.sample!.jointNames,
+      jointNames,
       points: [
         {
-          positions: jointSource.sample!.positions,
-          velocities: jointSource.sample!.positions.map(() => 0),
+          positions: observedPositions,
+          velocities: observedPositions.map(() => 0),
           timeFromStartMs: 1000,
         },
       ],
@@ -570,11 +697,13 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     "--device",
     deviceId,
     "--proposer",
-    "rlsok-zero-to-shadow",
+    proposerIdentity,
     "--joint-state-topic",
     jointSource.name,
     "--controller-action",
     controller.name,
+    "--proposal-topic",
+    proposalTopic,
     "--proposal-file",
     proposalPath,
     "--once",
@@ -604,7 +733,7 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     throw new Error("Shadow returned an unexpected Evidence result. RLSOK kept dispatch disabled; run with RLSOK_DEBUG=1 and contact support.");
 
   const state: SetupState = {
-    version: 1,
+    version: 2,
     releaseId,
     deviceId,
     controllerId,
@@ -612,6 +741,10 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     artifactSha256,
     jointStateTopic: jointSource.name,
     controllerAction: controller.name,
+    jointNames,
+    proposalTopic,
+    proposerIdentity,
+    integration: integrationState,
     releasePath,
     proposalPath,
     evidencePath,
@@ -621,7 +754,7 @@ export async function runSetupCommand(args: string[]): Promise<number> {
   const statePath = join(configRoot(), "setup.json");
   writeProtected(statePath, `${JSON.stringify(state, null, 2)}\n`);
   process.stdout.write(
-    `\n[6/6] Zero-to-Shadow complete.\n  ✓ Live JointState observed\n  ✓ Exact approved release evaluated\n  ✓ Controller goals attempted: 0\n  ✓ Hardware signal sent: false\n  ✓ Evidence verified by hash\n  Evidence: ${evidencePath}\n  Configuration: ${statePath}\n\nRLSOK is now observing this ROS 2 execution boundary in Shadow. Keep Shadow enabled while you review Evidence; moving to canary requires a separate explicit release decision and independent safety controls.\n`,
+    `\n[6/6] Zero-to-Shadow complete.\n  ✓ Live JointState observed\n  ✓ Exact approved release evaluated\n  ✓ Controller goals attempted: 0\n  ✓ Hardware signal sent: false\n  ✓ Evidence verified by hash\n  Evidence: ${evidencePath}\n  Configuration: ${statePath}\n\nStart continuous policy observation with 'rlsok observe'. Your policy can call 'from rlsok import propose; propose(action)' without ROS topic or action names. Shadow never sends a hardware signal; moving to canary remains a separate explicit release decision with independent safety controls.\n`,
   );
   return 0;
 }
