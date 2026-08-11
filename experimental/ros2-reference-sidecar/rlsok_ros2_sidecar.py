@@ -22,6 +22,10 @@ try:
     from builtin_interfaces.msg import Duration
     from control_msgs.action import FollowJointTrajectory
     from rclpy.action import ActionClient
+    from rclpy.action.graph import (
+        get_action_names_and_types,
+        get_action_server_names_and_types_by_node,
+    )
     from rclpy.node import Node
     from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
     from sensor_msgs.msg import JointState
@@ -315,8 +319,8 @@ class DiscoveryNode(NodeBase):
         servers = []
         for node_name, node_namespace in self.get_node_names_and_namespaces():
             try:
-                actions = self.get_action_names_and_types_by_node(
-                    node_name, node_namespace
+                actions = get_action_server_names_and_types_by_node(
+                    self, node_name, node_namespace
                 )
             except Exception:
                 continue
@@ -343,7 +347,7 @@ class DiscoveryNode(NodeBase):
         ]
         actions = [
             {"name": name, "types": sorted(types)}
-            for name, types in self.get_action_names_and_types()
+            for name, types in get_action_names_and_types(self)
         ]
         self.collect_controller_responses()
         return {
