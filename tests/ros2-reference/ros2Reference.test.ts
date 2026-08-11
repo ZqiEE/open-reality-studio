@@ -407,6 +407,24 @@ async function testNoBypass(): Promise<void> {
     sidecar.includes("sourceTimestamp"),
     "the source header timestamp must remain available for diagnostics",
   );
+  const referenceNode = sidecar.slice(
+    sidecar.indexOf("class ReferenceTransportNode"),
+    sidecar.indexOf("class DiscoveryNode"),
+  );
+  const discoveryNode = sidecar.slice(
+    sidecar.indexOf("class DiscoveryNode"),
+    sidecar.indexOf("def unavailable_report"),
+  );
+  assert.match(
+    referenceNode,
+    /def inspect_graph\(/,
+    "live graph inspection must remain on ReferenceTransportNode",
+  );
+  assert.doesNotMatch(
+    discoveryNode,
+    /self\.action_client|self\.latest_state/,
+    "read-only discovery must not depend on transport-only state",
+  );
   assert.throws(
     () => new PythonRos2SidecarTransport({
       pythonExecutable: "python3",

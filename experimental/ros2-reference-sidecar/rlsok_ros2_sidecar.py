@@ -181,6 +181,21 @@ class ReferenceTransportNode(NodeBase):
             ],
         }
 
+    def inspect_graph(self) -> Dict[str, Any]:
+        return {
+            "nodes": sorted(
+                name for name, _namespace in self.get_node_names_and_namespaces()
+            ),
+            "topics": sorted(
+                name for name, _types in self.get_topic_names_and_types()
+            ),
+            "services": sorted(
+                name for name, _types in self.get_service_names_and_types()
+            ),
+            "actionServerAvailable": self.action_client.server_is_ready(),
+            "latestJointState": self.latest_state,
+        }
+
 
 class DiscoveryNode(NodeBase):
     """Read-only ROS graph discovery used by the first-run product flow."""
@@ -244,16 +259,6 @@ class DiscoveryNode(NodeBase):
                 name for name, _namespace in self.get_node_names_and_namespaces()
             ),
         }
-
-    def inspect_graph(self) -> Dict[str, Any]:
-        return {
-            "nodes": sorted(name for name, _namespace in self.get_node_names_and_namespaces()),
-            "topics": sorted(name for name, _types in self.get_topic_names_and_types()),
-            "services": sorted(name for name, _types in self.get_service_names_and_types()),
-            "actionServerAvailable": self.action_client.server_is_ready(),
-            "latestJointState": self.latest_state,
-        }
-
 
 def unavailable_report(args: argparse.Namespace) -> Dict[str, Any]:
     return {
