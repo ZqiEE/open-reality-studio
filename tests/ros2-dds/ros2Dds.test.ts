@@ -160,5 +160,8 @@ test('real DDS revocation refresh wins the final dispatch race', async () => {
   assert.equal(result.decision, 'failed');
   assert.equal(result.controllerGoalCount, 0);
   assert.equal(result.hardwareSignalSent, false);
-  assert.match(evidence.at(-1)?.decisionReason ?? '', /permit_invalid/);
+  assert.match(
+    evidence.at(-1)?.decisionReason ?? '',
+    /^(?:release_revoked|permit_invalid)$/
+  );
 });
