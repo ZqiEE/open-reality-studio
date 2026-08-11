@@ -30,7 +30,7 @@ jobs:
           sh packaging/install.sh
           "$RLSOK_BIN_DIR/rlsok" --version
           "$RLSOK_BIN_DIR/rlsok" setup --help
-          PYTHONPATH="$RLSOK_PYTHON_SITE" python3 -c "from rlsok import propose; assert callable(propose)"
+          RLSOK_PYTHON_SITE="$RLSOK_PYTHON_SITE" python3 -c "import os, site; site.addsitedir(os.environ['RLSOK_PYTHON_SITE']); from rlsok import propose; assert callable(propose)"
           sh packaging/install.sh
           "$RLSOK_INSTALL_ROOT/uninstall.sh"
           test ! -e "$RLSOK_BIN_DIR/rlsok"
