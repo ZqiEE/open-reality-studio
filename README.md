@@ -10,7 +10,7 @@ ROS 2 dispatch and writes verifiable Evidence.
 
 ## Zero-to-Shadow
 
-The official v1.2.0 robot integration is Universal Robots UR5e on Ubuntu 24.04
+The official v1.2.1 robot integration is Universal Robots UR5e on Ubuntu 24.04
 x86_64, ROS 2 Jazzy, Fast DDS, and the official Universal Robots ROS 2 driver.
 It is validated in the driver's mock-hardware simulation; no physical-robot
 validation is claimed. Other valid JointState/FollowJointTrajectory graphs are
@@ -22,7 +22,7 @@ source /opt/ros/jazzy/setup.bash
 rlsok setup
 ```
 
-The released runtime 1.3.0 bundle is self-contained. Normal users do not need
+The released runtime 1.3.1 bundle is self-contained. Normal users do not need
 Node.js, npm, a source checkout, API keys, Workspace IDs, hand-calculated
 hashes, or a blank ExecSpec.
 
@@ -77,6 +77,11 @@ See [Product quickstart](docs/PRODUCT_QUICKSTART.md),
 [ROS 2 setup](docs/ROS2_REFERENCE_SETUP.md),
 [architecture](docs/ARCHITECTURE.md), and
 [Cloud contract](docs/CLOUD_CONTRACT_V1.md).
+
+Physical UR5e validation remains pending. External hardware operators should
+use the [authoritative physical UR5e validation runbook](docs/PHYSICAL_UR5E_VALIDATION.md),
+which produces automatic-discovery, exact-binding, zero-dispatch, negative
+authority, revocation, and checksum-verifiable evidence.
 
 ## Responsibility boundary
 
