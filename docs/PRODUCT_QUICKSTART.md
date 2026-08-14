@@ -95,3 +95,6 @@ safeguards, site procedures, and hazard analysis remain required.
 The official UR5e claim is validated with the official driver's mock-hardware
 simulation on Ubuntu 24.04 / Jazzy / Fast DDS. Physical UR5e motion is not
 claimed by this release.
+
+The complete physical-hardware procedure and reproducible evidence format are
+defined in [Physical UR5e validation runbook](PHYSICAL_UR5E_VALIDATION.md).

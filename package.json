@@ -1,6 +1,6 @@
 {
   "name": "@realitywarden/rlsok",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "private": false,
   "description": "Release control and execution gating for learned robot policies.",
   "engines": {
@@ -36,7 +36,7 @@
     "test:decision-conformance": "node scripts/run-rlsok.cjs --test tests/releasegate/decisionConformance.test.ts",
     "test:cloud": "node scripts/run-rlsok.cjs --test tests/cloud/cloudClient.test.ts",
     "test:setup": "node scripts/run-rlsok.cjs --test tests/setup/zeroToShadow.test.ts",
-    "test:integrations": "node scripts/run-rlsok.cjs --test tests/robot-integrations/ur5e.test.ts",
+    "test:integrations": "node scripts/run-rlsok.cjs --test tests/robot-integrations/ur5e.test.ts && node scripts/run-rlsok.cjs --test tests/robot-integrations/ur5eValidation.test.ts",
     "test:official-ur5e": "node scripts/run-rlsok.cjs --test tests/robot-integrations/officialUr5eGraph.test.ts",
     "test:python-sdk": "node scripts/test-python-sdk.cjs",
     "ros2:test": "node scripts/run-rlsok.cjs --test tests/ros2-reference/ros2Reference.test.ts",

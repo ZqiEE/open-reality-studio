@@ -422,6 +422,70 @@ test("initial revoked release denial writes and verifies Evidence without a Perm
   assert.equal(localResults.length, 2);
 });
 
+test("expired and mode-mismatched local authority fail before Cloud or controller access", async () => {
+  const base = executablePolicySpecSchema.parse(fixture.execSpec);
+  let cloudReads = 0;
+  let stateReads = 0;
+  let dispatches = 0;
+  const cloud = {
+    async getRelease() {
+      cloudReads += 1;
+      throw new Error("cloud_must_not_be_read");
+    },
+  } as unknown as RlsokCloudClient;
+  const transport = {
+    async getFreshJointState() {
+      stateReads += 1;
+      throw new Error("state_must_not_be_read");
+    },
+    async dispatchTrajectory() {
+      dispatches += 1;
+      throw new Error("dispatch_must_not_happen");
+    },
+  } as unknown as Ros2ReferenceTransport;
+  const payload = JSON.stringify({
+    proposalId: "authority-negative-001",
+    releaseId: base.metadata.releaseId,
+    deviceId: base.deployment.allowedDeviceIds[0],
+    proposerIdentity: "fixture-policy",
+    actionRepresentation: "trajectory",
+    actionPayload: fixture.action,
+    createdAt: "2026-01-01T00:02:00.000Z",
+  });
+  const cases = [
+    {
+      expected: /release_expired/,
+      mode: "shadow" as const,
+      release: {
+        ...base,
+        deployment: {
+          ...base.deployment,
+          expiresAt: "2020-01-01T00:00:00.000Z",
+        },
+      },
+    },
+    {
+      expected: /release_deployment_mode_mismatch/,
+      mode: "run" as const,
+      release: base,
+    },
+  ];
+  for (const validationCase of cases) {
+    const workflow = new CloudConnectedRos2Workflow({
+      mode: validationCase.mode,
+      release: executablePolicySpecSchema.parse(validationCase.release),
+      cloud,
+      transport,
+      controllerIdentity: base.robot.controllerConfigSha256,
+      localEvidence: () => undefined,
+    });
+    await assert.rejects(workflow.runProposal(payload), validationCase.expected);
+  }
+  assert.equal(cloudReads, 0);
+  assert.equal(stateReads, 0);
+  assert.equal(dispatches, 0);
+});
+
 function evidenceExport(count = 205): EvidenceExport {
   const organizationFingerprint = "a".repeat(64);
   const records: EvidenceExport["records"] = [];

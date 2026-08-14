@@ -54,11 +54,29 @@ interface EvidenceContext {
   controllerId: string;
 }
 
-function assertLocalEligibility(
+export function assertLocalRos2Eligibility(
   release: ExecutablePolicySpec,
   proposal: ReturnType<typeof ros2ProposalEnvelopeSchema.parse>,
   controllerIdentity: string,
+  mode: "shadow" | "run",
+  now = new Date(),
 ): JointTrajectoryAction {
+  if (release.evidence.status !== "approved") {
+    throw new Error(
+      release.evidence.status === "revoked"
+        ? "release_revoked"
+        : "release_not_approved",
+    );
+  }
+  if (Date.parse(release.deployment.expiresAt) <= now.getTime()) {
+    throw new Error("release_expired");
+  }
+  if (
+    (mode === "shadow" && release.deployment.mode !== "shadow") ||
+    (mode === "run" && release.deployment.mode === "shadow")
+  ) {
+    throw new Error("release_deployment_mode_mismatch");
+  }
   if (proposal.releaseId !== release.metadata.releaseId) {
     throw new Error("release_id_mismatch");
   }
@@ -79,6 +97,21 @@ function assertLocalEligibility(
     throw new Error("action_contract_mismatch");
   }
   return action;
+}
+
+export function assertFreshStateTimestamp(
+  observedAt: string,
+  maxStateAgeMs: number,
+  now = new Date(),
+): void {
+  const stateAge = now.getTime() - Date.parse(observedAt);
+  if (
+    !Number.isFinite(stateAge) ||
+    stateAge < 0 ||
+    stateAge > maxStateAgeMs
+  ) {
+    throw new Error("state_stale_or_invalid");
+  }
 }
 
 export class CloudConnectedRos2Workflow {
@@ -124,10 +157,11 @@ export class CloudConnectedRos2Workflow {
 
   async runProposal(payload: string): Promise<CloudConnectedRos2Result> {
     const proposal = ros2ProposalEnvelopeSchema.parse(JSON.parse(payload));
-    const action = assertLocalEligibility(
+    const action = assertLocalRos2Eligibility(
       this.options.release,
       proposal,
       this.options.controllerIdentity,
+      this.options.mode,
     );
     const contentHash = executablePolicyHash(this.options.release);
     const actionHash = sha256(canonicalJson(action));
@@ -170,14 +204,10 @@ export class CloudConnectedRos2Workflow {
     const state = await this.options.transport.getFreshJointState(
       this.options.release.runtimePolicy.maxStateAgeMs,
     );
-    const stateAge = Date.now() - Date.parse(state.observedAt);
-    if (
-      !Number.isFinite(stateAge) ||
-      stateAge < 0 ||
-      stateAge > this.options.release.runtimePolicy.maxStateAgeMs
-    ) {
-      throw new Error("state_stale_or_invalid");
-    }
+    assertFreshStateTimestamp(
+      state.observedAt,
+      this.options.release.runtimePolicy.maxStateAgeMs,
+    );
     const binding = {
       releaseId: this.options.release.metadata.releaseId,
       contentHash,
