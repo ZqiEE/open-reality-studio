@@ -76,7 +76,9 @@ not claim physical-robot validation.
 See [Product quickstart](docs/PRODUCT_QUICKSTART.md),
 [ROS 2 setup](docs/ROS2_REFERENCE_SETUP.md),
 [architecture](docs/ARCHITECTURE.md), and
-[Cloud contract](docs/CLOUD_CONTRACT_V1.md).
+[Cloud contract](docs/CLOUD_CONTRACT_V1.md). Integrators should also read the
+[Fleet/OTA authorization boundary](docs/FLEET_OTA_AUTHORIZATION_BOUNDARY.md)
+and [external compatibility runbook](docs/EXTERNAL_COMPATIBILITY_RUNBOOK.md).
 
 Physical UR5e validation remains pending. External hardware operators should
 use the [authoritative physical UR5e validation runbook](docs/PHYSICAL_UR5E_VALIDATION.md),
