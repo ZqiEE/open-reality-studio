@@ -82,6 +82,7 @@ export const permitRequestSchema = z
     actionHash: hash,
     deviceId: z.string().min(1).max(200),
     controllerId: z.string().min(1).max(200),
+    configurationDigest: hash,
     expiresInSeconds: z.number().int().min(1).max(60).default(30),
   })
   .strict();
@@ -134,6 +135,8 @@ export const submitEvidenceSchema = z
         actionHash: hash,
         deviceId: z.string().min(1).max(200),
         controllerId: z.string().min(1).max(200),
+        expectedConfigurationDigest: hash,
+        observedConfigurationDigest: hash.nullable(),
         localPermitConsumed: z.boolean(),
         controllerGoalsAttempted: z.number().int().min(0).max(1),
         reason: z.string().min(1).max(500),
