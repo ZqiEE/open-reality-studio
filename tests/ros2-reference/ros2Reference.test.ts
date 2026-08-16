@@ -16,6 +16,11 @@ import {
 } from "../../packages/core/exec-spec";
 import type { ReleaseRecord } from "../../packages/core/release-policy";
 import {
+  configurationDigest,
+  executionConfigurationSchema,
+  type ExecutionConfiguration,
+} from "../../packages/core/execution-configuration";
+import {
   InMemoryReleaseResolver,
   InMemoryReleaseRecordStore,
   Ros2ReferenceGateway,
@@ -30,9 +35,36 @@ import { PythonRos2SidecarTransport } from "../../packages/ros2-reference-gatewa
 const H = (character: string) => character.repeat(64);
 const NOW = new Date("2026-07-26T12:00:00.000Z");
 
+function configuration(
+  overrides: Partial<ExecutionConfiguration> = {},
+): ExecutionConfiguration {
+  return executionConfigurationSchema.parse({
+    schemaVersion: 1,
+    deviceIdentity: "arm-01",
+    robotIdentity: "reference-arm",
+    rosDistro: "test",
+    rmwImplementation: "rmw_test_cpp",
+    jointState: {
+      topic: "/joint_states",
+      messageType: "sensor_msgs/msg/JointState",
+    },
+    controller: {
+      name: "joint_trajectory_controller",
+      followJointTrajectoryAction:
+        "/joint_trajectory_controller/follow_joint_trajectory",
+      actionType: "control_msgs/action/FollowJointTrajectory",
+    },
+    jointOrder: ["joint_a", "joint_b"],
+    adapter: { identity: "ros2-reference-gateway", version: "1.3.1" },
+    observedAt: NOW.toISOString(),
+    ...overrides,
+  });
+}
+
 function release(
   mode: "shadow" | "canary" | "released" = "shadow",
 ): ExecutablePolicySpec {
+  const boundConfiguration = configuration();
   return executablePolicySpecSchema.parse({
     apiVersion: "realitywarden.io/v1alpha1",
     kind: "ExecutablePolicy",
@@ -67,8 +99,11 @@ function release(
     runtimePolicy: {
       policySha256: H("2"),
       maxStateAgeMs: 500,
+      maxConfigurationAgeMs: 500,
       failClosed: true,
     },
+    executionConfiguration: boundConfiguration,
+    approvedConfigurationDigest: configurationDigest(boundConfiguration),
     evidence: {
       scenarioPackId: "ros2-reference-v1",
       testReportSha256: H("3"),
@@ -91,6 +126,7 @@ function record(spec: ExecutablePolicySpec): ReleaseRecord {
     state: spec.deployment.mode,
     executablePolicyHash: identity,
     approvedIdentityHash: identity,
+    approvedConfigurationDigest: spec.approvedConfigurationDigest,
     approvedBy: "release@example.test",
     approvedAt: "2026-07-25T01:00:00.000Z",
   };
@@ -190,6 +226,7 @@ function setup(mode: "shadow" | "run") {
   );
   const transport = new SpyTransport();
   const entries: ExecutionEvidence[] = [];
+  let configurationObservations = [spec.executionConfiguration!];
   const gateway = new Ros2ReferenceGateway({
     mode,
     controllerIdentity: spec.robot.controllerConfigSha256,
@@ -201,9 +238,24 @@ function setup(mode: "shadow" | "run") {
         entries.push(entry);
       },
     },
+    executionConfiguration: async () => (
+      configurationObservations.length > 1
+        ? configurationObservations.shift()
+        : configurationObservations[0]
+    ),
     now: () => NOW,
   });
-  return { spec, resolver, store, transport, entries, gateway };
+  return {
+    spec,
+    resolver,
+    store,
+    transport,
+    entries,
+    gateway,
+    observeConfigurations: (...observations: ExecutionConfiguration[]) => {
+      configurationObservations = observations;
+    },
+  };
 }
 
 async function testContract(): Promise<void> {
@@ -285,6 +337,23 @@ async function testReferenceRun(): Promise<void> {
   assert.equal(result.decision, "allowed");
   assert.equal(passing.transport.dispatches, 1);
   assert.equal(result.controllerGoalCount, 1);
+
+  const drift = setup("run");
+  drift.observeConfigurations(
+    drift.spec.executionConfiguration!,
+    configuration({
+      controller: {
+        ...drift.spec.executionConfiguration!.controller,
+        followJointTrajectoryAction: "/changed/follow_joint_trajectory",
+      },
+    }),
+  );
+  const drifted = await drift.gateway.handlePayload(proposal(drift.spec));
+  assert.equal(drifted.decision, "failed");
+  assert.match(drifted.reason, /execution_permit_invalid/);
+  assert.equal(drift.transport.dispatches, 0);
+  assert.equal(drift.entries.at(-1)?.decisionReason, "configuration_mismatch");
+  assert.equal(drift.entries.at(-1)?.hardwareSignalSent, false);
 
   const mismatch = setup("run");
   const raw = JSON.parse(proposal(mismatch.spec)) as Record<string, unknown>;

@@ -15,6 +15,7 @@ import {
   type ExecutablePolicySpec
 } from '../core/exec-spec';
 import type { ReleaseRecord } from '../core/release-policy';
+import type { ExecutionConfiguration } from '../core/execution-configuration';
 
 const isoTimestamp = z.string().datetime({ offset: true });
 
@@ -160,6 +161,8 @@ interface Ros2GatewayOptions {
   releaseRecords: InMemoryReleaseRecordStore;
   transport: Ros2ReferenceTransport;
   evidence: EvidenceSink;
+  /** Read-only observation of the current graph/runtime binding. */
+  executionConfiguration?: () => Promise<ExecutionConfiguration | undefined>;
   now?: () => Date;
 }
 
@@ -213,6 +216,15 @@ export class Ros2ReferenceGateway {
 
   constructor(private readonly options: Ros2GatewayOptions) {
     this.mode = options.mode ?? 'shadow';
+  }
+
+  private async observeExecutionConfiguration(): Promise<ExecutionConfiguration | undefined> {
+    if (!this.options.executionConfiguration) return undefined;
+    try {
+      return await this.options.executionConfiguration();
+    } catch {
+      return undefined;
+    }
   }
 
   async start(onResult?: (result: Ros2GatewayResult) => void): Promise<void> {
@@ -283,6 +295,7 @@ export class Ros2ReferenceGateway {
       return this.blocked(proposal, 'joint_state_order_mismatch');
     }
     const record = await this.options.releaseRecords.get(release.metadata.releaseId);
+    const executionConfiguration = await this.observeExecutionConfiguration();
     const now = this.options.now?.() ?? new Date();
     const actionHash = sha256(canonicalJson(action));
     const policy: ActionPolicy<JointTrajectoryAction, JointStateSnapshot> = async () => ({
@@ -305,6 +318,7 @@ export class Ros2ReferenceGateway {
         state,
         stateObservedAt: state.observedAt,
         controllerIdentity: this.options.controllerIdentity,
+        executionConfiguration,
         now
       });
       const observedAllowed = decision.reason.startsWith('shadow_observation_only:');
@@ -343,7 +357,10 @@ export class Ros2ReferenceGateway {
       this.options.evidence,
       policy,
       (candidate) => sha256(canonicalJson(candidate)),
-      async () => this.options.releaseRecords.get(release.metadata.releaseId)
+      async () => this.options.releaseRecords.get(release.metadata.releaseId),
+      this.options.executionConfiguration
+        ? async () => this.observeExecutionConfiguration()
+        : undefined
     );
     const decision = await gate.evaluate({
       release,
@@ -355,6 +372,7 @@ export class Ros2ReferenceGateway {
       state,
       stateObservedAt: state.observedAt,
       controllerIdentity: this.options.controllerIdentity,
+      executionConfiguration,
       now
     });
     if (decision.status !== 'allowed') {
@@ -368,7 +386,10 @@ export class Ros2ReferenceGateway {
     }
     const goalsBeforeExecution = this.goalCount;
     try {
-      await gate.execute(decision.authorizedRequest);
+      await gate.execute({
+        ...decision.authorizedRequest,
+        now: this.options.now ? this.options.now() : undefined
+      });
       return {
         proposalId: proposal.proposalId,
         decision: 'allowed',
@@ -421,6 +442,7 @@ export class Ros2ReferenceGateway {
       proposal.proposerIdentity
     );
     const record = await this.options.releaseRecords.get(release.metadata.releaseId);
+    const executionConfiguration = await this.observeExecutionConfiguration();
     const now = this.options.now?.() ?? new Date();
     const gate = this.mode === 'shadow'
       ? new ShadowExecutionGate<JointTrajectoryAction, JointStateSnapshot>(
@@ -444,6 +466,7 @@ export class Ros2ReferenceGateway {
       state: { names: [], positions: [], observedAt: now.toISOString() },
       stateObservedAt: now.toISOString(),
       controllerIdentity: this.options.controllerIdentity,
+      executionConfiguration,
       now
     });
     return {

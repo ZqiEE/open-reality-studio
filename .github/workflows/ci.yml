@@ -77,6 +77,10 @@ jobs:
         shell: bash
         run: |
           source /opt/ros/jazzy/setup.bash
+          # Isolate this long-lived official-driver graph from the preceding
+          # short-lived DDS fixtures and force a fresh discovery participant.
+          export ROS_DOMAIN_ID=77
+          ros2 daemon stop >/dev/null 2>&1 || true
           ros2 launch ur_robot_driver ur_control.launch.py \
             ur_type:=ur5e \
             robot_ip:=127.0.0.1 \
@@ -86,10 +90,18 @@ jobs:
             > /tmp/ur5e-driver.log 2>&1 &
           driver_pid=$!
           trap 'kill "$driver_pid" 2>/dev/null || true' EXIT
+          controller_ready=false
           for attempt in $(seq 1 40); do
-            ros2 control list_controllers 2>/dev/null | grep -q scaled_joint_trajectory_controller && break
+            if grep -q "Configured and activated scaled_joint_trajectory_controller" /tmp/ur5e-driver.log; then
+              controller_ready=true
+              break
+            fi
             sleep 1
           done
+          if [ "$controller_ready" != true ]; then
+            cat /tmp/ur5e-driver.log
+            exit 1
+          fi
           RLSOK_OFFICIAL_UR5E_TEST=1 npm run test:official-ur5e || {
             cat /tmp/ur5e-driver.log
             exit 1

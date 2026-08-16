@@ -15,6 +15,10 @@ import {
   type ExecutablePolicySpec
 } from '../../packages/core/exec-spec';
 import {
+  configurationDigest,
+  executionConfigurationSchema
+} from '../../packages/core/execution-configuration';
+import {
   ReleaseExecutionGate,
   ShadowExecutionGate,
   type ExecutionRequest
@@ -29,6 +33,22 @@ const H = (character: string) => character.repeat(64);
 const NOW = new Date('2026-07-26T00:00:00.000Z');
 
 function spec(overrides: Partial<ExecutablePolicySpec> = {}): ExecutablePolicySpec {
+  const executionConfiguration = executionConfigurationSchema.parse({
+    schemaVersion: 1,
+    deviceIdentity: 'arm-03',
+    robotIdentity: H('e'),
+    rosDistro: 'jazzy',
+    rmwImplementation: 'rmw_fastrtps_cpp',
+    jointState: { topic: '/joint_states', messageType: 'sensor_msgs/msg/JointState' },
+    controller: {
+      name: 'joint_trajectory_controller',
+      followJointTrajectoryAction: '/joint_trajectory_controller/follow_joint_trajectory',
+      actionType: 'control_msgs/action/FollowJointTrajectory'
+    },
+    jointOrder: ['shoulder', 'elbow'],
+    adapter: { identity: 'rlsok-test-adapter', version: '1' },
+    observedAt: NOW.toISOString()
+  });
   return executablePolicySpecSchema.parse({
     apiVersion: 'realitywarden.io/v1alpha1',
     kind: 'ExecutablePolicy',
@@ -63,8 +83,11 @@ function spec(overrides: Partial<ExecutablePolicySpec> = {}): ExecutablePolicySp
     runtimePolicy: {
       policySha256: H('2'),
       maxStateAgeMs: 1000,
+      maxConfigurationAgeMs: 60_000,
       failClosed: true
     },
+    executionConfiguration,
+    approvedConfigurationDigest: configurationDigest(executionConfiguration),
     evidence: {
       scenarioPackId: 'pick-v3',
       testReportSha256: H('3'),
@@ -88,6 +111,7 @@ function releasedRecord(release: ExecutablePolicySpec): ReleaseRecord {
     state: 'released',
     executablePolicyHash: identity,
     approvedIdentityHash: identity,
+    approvedConfigurationDigest: release.approvedConfigurationDigest,
     approvedBy: 'release@example.test',
     approvedAt: '2026-07-25T01:00:00.000Z'
   };
@@ -159,6 +183,31 @@ async function testReleasePolicyAndDiff(): Promise<void> {
     evidence: [evidenceFor(release)]
   });
   assert.equal(record.approvedIdentityHash, identity);
+  assert.equal(record.approvedConfigurationDigest, release.approvedConfigurationDigest);
+
+  const legacySource = structuredClone(release) as Record<string, unknown>;
+  delete legacySource.executionConfiguration;
+  delete legacySource.approvedConfigurationDigest;
+  const legacy = executablePolicySpecSchema.parse(legacySource);
+  assert.throws(() => transitionRelease({
+    releaseId: legacy.metadata.releaseId,
+    state: 'tested',
+    executablePolicyHash: executablePolicyHash(legacy)
+  }, 'approved', {
+    actor: 'approver',
+    occurredAt: NOW.toISOString(),
+    reason: 'legacy approval',
+    spec: legacy,
+    evidence: [evidenceFor(legacy)]
+  }), /approval_requires_configuration_binding/);
+
+  assert.deepEqual(executionEligibility(release, {
+    ...releasedRecord(release),
+    approvedConfigurationDigest: H('9')
+  }, 'arm-03', NOW), {
+    allowed: false,
+    reason: 'configuration_mismatch'
+  });
   assert.throws(() => transitionRelease(record, 'released', {
     actor: 'operator',
     occurredAt: NOW.toISOString(),
@@ -235,6 +284,7 @@ async function testGateAndShadow(): Promise<void> {
   const base: ExecutionRequest<typeof action, { ready: boolean }> = {
     release,
     releaseRecord: currentRecord,
+    executionConfiguration: release.executionConfiguration,
     deviceId: 'arm-03',
     proposalId: 'proposal-gate',
     action,
