@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-RLSOK_PRODUCT_VERSION="1.2.1"
-RLSOK_RUNTIME_VERSION="1.3.1"
+RLSOK_PRODUCT_VERSION="1.3.0"
+RLSOK_RUNTIME_VERSION="1.4.0"
 ARCHIVE="rlsok-runtime-${RLSOK_RUNTIME_VERSION}-linux-x64.tar.gz"
 RELEASE_BASE="${RLSOK_RELEASE_BASE:-https://github.com/realitywarden/rlsok/releases/download/v${RLSOK_PRODUCT_VERSION}}"
 INSTALL_ROOT="${RLSOK_INSTALL_ROOT:-/opt/rlsok}"

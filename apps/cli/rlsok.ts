@@ -80,7 +80,7 @@ function usage(exitCode = 1): never {
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   if (command === '--version' || command === '-V' || command === 'version') {
-    process.stdout.write('rlsok runtime 1.3.1 (product v1.2.1)\n');
+    process.stdout.write('rlsok runtime 1.4.0 (product v1.3.0)\n');
   }
   else if (command === '--help' || command === '-h' || command === 'help') usage(0);
   else if (command === 'check' && args.length === 1) check(args[0]);
