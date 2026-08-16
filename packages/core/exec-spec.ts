@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { canonicalJson, sha256 } from './evidence';
+import {
+  configurationDigest,
+  executionConfigurationSchema
+} from './execution-configuration';
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/, 'expected lowercase SHA-256');
 const timestamp = z.string().datetime({ offset: true });
@@ -49,8 +53,11 @@ export const executablePolicySpecSchema = z.object({
   runtimePolicy: z.object({
     policySha256: hash,
     maxStateAgeMs: z.number().int().positive(),
+    maxConfigurationAgeMs: z.number().int().positive().optional(),
     failClosed: z.literal(true)
   }).strict(),
+  executionConfiguration: executionConfigurationSchema.optional(),
+  approvedConfigurationDigest: hash.optional(),
   evidence: z.object({
     scenarioPackId: z.string().min(1),
     testReportSha256: hash,
@@ -86,6 +93,17 @@ export const executablePolicySpecSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['evidence'],
       message: 'approval identity is only valid for approved releases'
+    });
+  }
+  if (
+    spec.executionConfiguration
+    && spec.approvedConfigurationDigest
+    && configurationDigest(spec.executionConfiguration) !== spec.approvedConfigurationDigest
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['approvedConfigurationDigest'],
+      message: 'approved configuration digest does not match executionConfiguration'
     });
   }
 });
@@ -145,6 +163,8 @@ export function diffExecutablePolicies(
     ['robot profile', previous.robot.profileSha256, next.robot.profileSha256],
     ['controller', previous.robot.controllerConfigSha256, next.robot.controllerConfigSha256],
     ['runtime policy', previous.runtimePolicy.policySha256, next.runtimePolicy.policySha256],
+    ['execution configuration', previous.executionConfiguration, next.executionConfiguration],
+    ['approved configuration digest', previous.approvedConfigurationDigest, next.approvedConfigurationDigest],
     ['scenario evidence', previous.evidence.testReportSha256, next.evidence.testReportSha256]
   ];
   const changes = fields

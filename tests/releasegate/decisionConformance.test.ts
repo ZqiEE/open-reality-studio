@@ -3,6 +3,10 @@ import { canonicalJson, sha256, type ExecutionEvidence } from '../../packages/co
 import { executablePolicyHash, executablePolicySpecSchema, type ExecutablePolicySpec } from '../../packages/core/exec-spec';
 import { ReleaseExecutionGate, ShadowExecutionGate, type ExecutionRequest } from '../../packages/core/execution-gate';
 import { executionEligibility, transitionRelease, type ReleaseRecord, type ReleaseState } from '../../packages/core/release-policy';
+import {
+  configurationDigest,
+  executionConfigurationSchema
+} from '../../packages/core/execution-configuration';
 
 const H = (value: string) => value.repeat(64);
 const NOW = new Date('2026-08-09T00:00:00.000Z');
@@ -18,13 +22,31 @@ const allowedTransitions: Record<ReleaseState, ReleaseState[]> = {
 };
 
 function makeSpec(): ExecutablePolicySpec {
+  const executionConfiguration = executionConfigurationSchema.parse({
+    schemaVersion: 1,
+    deviceIdentity: 'reference-device',
+    robotIdentity: 'reference-sandbox',
+    rosDistro: 'test',
+    rmwImplementation: 'rmw_test_cpp',
+    jointState: { topic: '/joint_states', messageType: 'sensor_msgs/msg/JointState' },
+    controller: {
+      name: 'reference_controller',
+      followJointTrajectoryAction: '/reference_controller/follow_joint_trajectory',
+      actionType: 'control_msgs/action/FollowJointTrajectory'
+    },
+    jointOrder: ['a', 'b'],
+    adapter: { identity: 'decision-oracle', version: '1.0.0' },
+    observedAt: NOW.toISOString()
+  });
   return executablePolicySpecSchema.parse({
     apiVersion: 'realitywarden.io/v1alpha1', kind: 'ExecutablePolicy',
     metadata: { name: 'oracle-reference', releaseId: 'oracle-release', createdAt: '2026-08-08T00:00:00.000Z' },
     model: { artifact: 'reference', sha256: H('a'), framework: 'custom', policyType: 'shadow', codeRevision: 'oracle' },
     actionContract: { representation: 'joint_position', dimension: 2, jointOrder: ['a', 'b'], units: { position: 'radian', velocity: 'radian_per_second' }, normalizerSha256: H('b'), preprocessorSha256: H('c'), postprocessorSha256: H('d') },
     robot: { profileId: 'reference-sandbox', profileSha256: H('e'), urdfSha256: H('f'), controllerType: 'reference_only', controllerConfigSha256: H('1') },
-    runtimePolicy: { policySha256: H('2'), maxStateAgeMs: 1000, failClosed: true },
+    runtimePolicy: { policySha256: H('2'), maxStateAgeMs: 1000, maxConfigurationAgeMs: 1000, failClosed: true },
+    executionConfiguration,
+    approvedConfigurationDigest: configurationDigest(executionConfiguration),
     evidence: { scenarioPackId: 'oracle', testReportSha256: H('3'), status: 'approved', approvedBy: 'oracle', approvedAt: '2026-08-08T01:00:00.000Z' },
     deployment: { allowedDeviceIds: ['reference-device'], mode: 'released', expiresAt: '2099-01-01T00:00:00.000Z' }
   });
@@ -32,7 +54,7 @@ function makeSpec(): ExecutablePolicySpec {
 
 function recordFor(release: ExecutablePolicySpec, state: ReleaseState = 'released'): ReleaseRecord {
   const identity = executablePolicyHash(release);
-  return { releaseId: release.metadata.releaseId, state, executablePolicyHash: identity, approvedIdentityHash: identity };
+  return { releaseId: release.metadata.releaseId, state, executablePolicyHash: identity, approvedIdentityHash: identity, approvedConfigurationDigest: release.approvedConfigurationDigest };
 }
 
 function transitionEvidence(release: ExecutablePolicySpec): ExecutionEvidence {
@@ -136,7 +158,7 @@ async function testExecutionAndPermitBranches(): Promise<number> {
     hashAction,
     async () => { if (refreshFailure) throw new Error('offline'); return refreshed; }
   );
-  const base: ExecutionRequest<typeof action, { ready: true }> = { release, releaseRecord: refreshed, deviceId: 'reference-device', proposalId: 'oracle', action, actionHash: hashAction(action), state: { ready: true }, stateObservedAt: NOW.toISOString(), now: NOW };
+  const base: ExecutionRequest<typeof action, { ready: true }> = { release, releaseRecord: refreshed, executionConfiguration: release.executionConfiguration, deviceId: 'reference-device', proposalId: 'oracle', action, actionHash: hashAction(action), state: { ready: true }, stateObservedAt: NOW.toISOString(), now: NOW };
 
   const evaluateCases: Array<[string, Partial<typeof base>, string, string]> = [
     ['state-missing', { state: undefined }, 'blocked', 'state_missing'],
@@ -266,8 +288,8 @@ async function testShadowBranches(): Promise<number> {
     async (value: typeof action) => ({ allowed: value.safe, reason: value.safe ? 'policy_allowed' : 'policy_denied', matchedRuleIds: ['safe-only'] }),
     hashAction
   );
-  const record: ReleaseRecord = { releaseId: shadowRelease.metadata.releaseId, state: 'shadow', executablePolicyHash: identity, approvedIdentityHash: identity };
-  const base: ExecutionRequest<typeof action, { ready: true }> = { release: shadowRelease, releaseRecord: record, deviceId: 'reference-device', proposalId: 'shadow', action, actionHash: hashAction(action), state: { ready: true }, stateObservedAt: NOW.toISOString(), now: NOW };
+  const record: ReleaseRecord = { releaseId: shadowRelease.metadata.releaseId, state: 'shadow', executablePolicyHash: identity, approvedIdentityHash: identity, approvedConfigurationDigest: shadowRelease.approvedConfigurationDigest };
+  const base: ExecutionRequest<typeof action, { ready: true }> = { release: shadowRelease, releaseRecord: record, executionConfiguration: shadowRelease.executionConfiguration, deviceId: 'reference-device', proposalId: 'shadow', action, actionHash: hashAction(action), state: { ready: true }, stateObservedAt: NOW.toISOString(), now: NOW };
   const cases: Array<[string, Partial<typeof base>, string]> = [
     ['revoked-record', { releaseRecord: { ...record, state: 'revoked' } }, 'release_revoked'],
     ['revoked-spec', { release: { ...shadowRelease, evidence: { ...shadowRelease.evidence, status: 'revoked', approvedBy: '', approvedAt: '' } } }, 'release_revoked'],
@@ -325,7 +347,7 @@ async function testDecisionProperties(): Promise<number> {
     hashAction
   );
   const base: ExecutionRequest<typeof action, { ready: true }> = {
-    release, releaseRecord: record, deviceId: 'reference-device', proposalId: 'property', action,
+    release, releaseRecord: record, executionConfiguration: release.executionConfiguration, deviceId: 'reference-device', proposalId: 'property', action,
     actionHash: hashAction(action), state: { ready: true }, stateObservedAt: NOW.toISOString(), now: NOW
   };
   let seed = 0x5eed1234;

@@ -3,6 +3,11 @@ import { executablePolicyHash } from './exec-spec';
 import { canonicalJson, sha256, type ExecutionEvidence } from './evidence';
 import type { ReleaseRecord } from './release-policy';
 import { executionEligibility } from './release-policy';
+import {
+  configurationDigest,
+  evaluateConfigurationBinding,
+  type ExecutionConfiguration
+} from './execution-configuration';
 
 declare const permitBrand: unique symbol;
 
@@ -22,6 +27,7 @@ export interface ExecutionRequest<TAction, TState> {
   stateObservedAt?: string;
   /** Deployment-local controller identity; defaults to the controller profile hash. */
   controllerIdentity?: string;
+  executionConfiguration?: ExecutionConfiguration;
   now?: Date;
 }
 
@@ -62,6 +68,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     releaseId: string;
     deviceId: string;
     controllerIdentity: string;
+    configurationDigest: string;
   }>();
 
   constructor(
@@ -71,7 +78,10 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     private readonly hashAction: (action: TAction) => string,
     private readonly refreshReleaseRecord?: (
       request: AuthorizedExecutionRequest<TAction, TState>
-    ) => Promise<ReleaseRecord>
+    ) => Promise<ReleaseRecord>,
+    private readonly refreshExecutionConfiguration?: (
+      request: AuthorizedExecutionRequest<TAction, TState>
+    ) => Promise<ExecutionConfiguration | undefined>
   ) {}
 
   private evidenceFor(
@@ -91,6 +101,10 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       actionContractHash: sha256(canonicalJson(request.release.actionContract)),
       robotProfileHash: request.release.robot.profileSha256,
       controllerProfileHash: request.release.robot.controllerConfigSha256,
+      expectedConfigurationDigest: request.release.approvedConfigurationDigest ?? null,
+      observedConfigurationDigest: request.executionConfiguration
+        ? configurationDigest(request.executionConfiguration)
+        : null,
       runtimePolicyHash: request.release.runtimePolicy.policySha256,
       deviceId: request.deviceId,
       proposalId: request.proposalId,
@@ -125,6 +139,22 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
         status: approvalRequired ? 'approval_required' : 'blocked',
         reason: eligible.reason
       };
+    }
+    const configuration = evaluateConfigurationBinding({
+      approvedConfigurationDigest: request.release.approvedConfigurationDigest,
+      observedConfiguration: request.executionConfiguration,
+      mode: 'run',
+      maxAgeMs: request.release.runtimePolicy.maxConfigurationAgeMs ?? 300_000,
+      now
+    });
+    if (!configuration.allowed) {
+      await this.evidence.append(this.evidenceFor(
+        request,
+        'blocked',
+        configuration.reason!,
+        ['configuration_binding']
+      ));
+      return { status: 'blocked', reason: configuration.reason! };
     }
     if (request.state === undefined || !request.stateObservedAt) {
       await this.evidence.append(this.evidenceFor(
@@ -170,7 +200,8 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       expiresAt: now.getTime() + Math.min(1_000, request.release.runtimePolicy.maxStateAgeMs),
       releaseId: request.release.metadata.releaseId,
       deviceId: request.deviceId,
-      controllerIdentity: request.controllerIdentity ?? request.release.robot.controllerConfigSha256
+      controllerIdentity: request.controllerIdentity ?? request.release.robot.controllerConfigSha256,
+      configurationDigest: configuration.observedDigest!
     });
     return {
       status: 'allowed',
@@ -183,8 +214,8 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     const permit = request.permit as object;
     const record = this.permits.get(permit);
     this.permits.delete(permit);
-    const now = request.now ?? new Date();
     let currentReleaseRecord = request.releaseRecord;
+    let currentExecutionConfiguration = request.executionConfiguration;
     try {
       currentReleaseRecord = this.refreshReleaseRecord
         ? await this.refreshReleaseRecord(request)
@@ -198,6 +229,25 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       ));
       throw new Error('execution_permit_invalid');
     }
+    if (this.refreshExecutionConfiguration) {
+      try {
+        currentExecutionConfiguration = await this.refreshExecutionConfiguration(request);
+      } catch {
+        currentExecutionConfiguration = undefined;
+      }
+    }
+    const now = request.now ?? new Date();
+    const currentRequest = {
+      ...request,
+      executionConfiguration: currentExecutionConfiguration
+    };
+    const configuration = evaluateConfigurationBinding({
+      approvedConfigurationDigest: request.release.approvedConfigurationDigest,
+      observedConfiguration: currentExecutionConfiguration,
+      mode: 'run',
+      maxAgeMs: request.release.runtimePolicy.maxConfigurationAgeMs ?? 300_000,
+      now
+    });
     const eligible = executionEligibility(request.release, currentReleaseRecord, request.deviceId, now);
     const invalidReason = !record
       ? 'permit_unknown_or_reused'
@@ -211,19 +261,26 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
               ? 'permit_device_binding_mismatch'
               : record.controllerIdentity !== (request.controllerIdentity ?? request.release.robot.controllerConfigSha256)
                 ? 'permit_controller_binding_mismatch'
-                : this.hashAction(request.action) !== request.actionHash
-                  ? 'action_hash_mismatch'
-                  : !eligible.allowed
-                    ? eligible.reason
-                    : null;
+                : !configuration.allowed
+                  ? configuration.reason
+                  : record.configurationDigest !== configuration.observedDigest
+                    ? 'configuration_mismatch'
+                    : this.hashAction(request.action) !== request.actionHash
+                      ? 'action_hash_mismatch'
+                      : !eligible.allowed
+                        ? eligible.reason
+                        : null;
     if (invalidReason) {
+      const configurationBlocked = invalidReason.startsWith('configuration_');
       await this.evidence.append(this.evidenceFor(
-        request,
-        'failed',
+        currentRequest,
+        configurationBlocked ? 'blocked' : 'failed',
         invalidReason,
-        ['single_use_permit']
+        configurationBlocked
+          ? ['configuration_binding', 'single_use_permit']
+          : ['single_use_permit']
       ));
-      throw new Error('execution_permit_invalid');
+      throw new Error(`execution_permit_invalid:${invalidReason}`);
     }
     try {
       const dispatchedAt = now.toISOString();
@@ -268,8 +325,17 @@ export class ShadowExecutionGate<TAction, TState> {
     const now = request.now ?? new Date();
     let status: 'allowed' | 'blocked' = 'blocked';
     const identity = executablePolicyHash(request.release);
+    const configuration = evaluateConfigurationBinding({
+      approvedConfigurationDigest: request.release.approvedConfigurationDigest,
+      observedConfiguration: request.executionConfiguration,
+      mode: 'shadow',
+      maxAgeMs: request.release.runtimePolicy.maxConfigurationAgeMs ?? 300_000,
+      now
+    });
     let reason =
-      request.releaseRecord.state === 'revoked' || request.release.evidence.status === 'revoked'
+      !configuration.allowed
+        ? configuration.reason!
+      : request.releaseRecord.state === 'revoked' || request.release.evidence.status === 'revoked'
         ? 'release_revoked'
         : request.releaseRecord.state !== 'shadow'
         ? 'release_not_in_shadow_state'
@@ -296,7 +362,9 @@ export class ShadowExecutionGate<TAction, TState> {
         if (this.hashAction(request.action) === request.actionHash) {
           const result = await this.policy(request.action, request.state);
           status = result.allowed ? 'allowed' : 'blocked';
-          reason = result.reason;
+          reason = result.allowed && configuration.legacyUnbound
+            ? 'configuration_unbound'
+            : result.reason;
           matchedRuleIds = result.matchedRuleIds;
         } else {
           reason = 'action_hash_mismatch';
@@ -313,6 +381,8 @@ export class ShadowExecutionGate<TAction, TState> {
       actionContractHash: sha256(canonicalJson(request.release.actionContract)),
       robotProfileHash: request.release.robot.profileSha256,
       controllerProfileHash: request.release.robot.controllerConfigSha256,
+      expectedConfigurationDigest: configuration.expectedDigest,
+      observedConfigurationDigest: configuration.observedDigest,
       runtimePolicyHash: request.release.runtimePolicy.policySha256,
       deviceId: request.deviceId,
       proposalId: request.proposalId,

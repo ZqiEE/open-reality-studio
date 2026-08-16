@@ -26,6 +26,7 @@ export interface ReleaseRecord {
   state: ReleaseState;
   executablePolicyHash: string;
   approvedIdentityHash?: string;
+  approvedConfigurationDigest?: string;
   approvedBy?: string;
   approvedAt?: string;
   revokedAt?: string;
@@ -54,6 +55,9 @@ export function transitionRelease(
     if (!context.actor || context.evidence.length === 0) {
       throw new Error('approval_requires_identity_and_evidence');
     }
+    if (!context.spec.approvedConfigurationDigest) {
+      throw new Error('approval_requires_configuration_binding');
+    }
   }
   const next: ReleaseRecord = {
     ...record,
@@ -61,6 +65,9 @@ export function transitionRelease(
     approvedBy: to === 'approved' ? context.actor : record.approvedBy,
     approvedAt: to === 'approved' ? context.occurredAt : record.approvedAt,
     approvedIdentityHash: to === 'approved' ? currentHash : record.approvedIdentityHash,
+    approvedConfigurationDigest: to === 'approved'
+      ? context.spec.approvedConfigurationDigest
+      : record.approvedConfigurationDigest,
     revokedAt: to === 'revoked' ? context.occurredAt : record.revokedAt,
     revokedReason: to === 'revoked' ? context.reason : record.revokedReason
   };
@@ -87,6 +94,12 @@ export function executionEligibility(
   }
   if (record.approvedIdentityHash !== record.executablePolicyHash) {
     return { allowed: false, reason: 'release_approval_identity_mismatch' };
+  }
+  if (!spec.approvedConfigurationDigest || !record.approvedConfigurationDigest) {
+    return { allowed: false, reason: 'configuration_unbound' };
+  }
+  if (record.approvedConfigurationDigest !== spec.approvedConfigurationDigest) {
+    return { allowed: false, reason: 'configuration_mismatch' };
   }
   if (spec.evidence.status !== 'approved') {
     return { allowed: false, reason: 'release_not_approved' };

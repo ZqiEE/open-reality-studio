@@ -18,6 +18,10 @@ import {
   type ExecutablePolicySpec
 } from '../../packages/core/exec-spec';
 import type { ReleaseRecord } from '../../packages/core/release-policy';
+import {
+  configurationDigest,
+  executionConfigurationSchema
+} from '../../packages/core/execution-configuration';
 
 const fixture = JSON.parse(
   readFileSync('fixtures/cloud-contract/v1/release.json', 'utf8')
@@ -42,11 +46,35 @@ class RevokeOnRefreshStore extends InMemoryReleaseRecordStore {
 async function runCase(
   name: string,
   mode: 'shadow' | 'run',
-  revokeOnRefresh = false
+  revokeOnRefresh = false,
+  configurationDrift = false
 ) {
   const source = structuredClone(fixture.execSpec);
+  const topicPrefix = `/rlsok_ci/${name}`;
   source.metadata.releaseId = `dds-${name}`;
   source.deployment.mode = mode === 'shadow' ? 'shadow' : 'canary';
+  const boundConfiguration = executionConfigurationSchema.parse({
+    schemaVersion: 1,
+    deviceIdentity: 'fixture-arm-01',
+    robotIdentity: 'fixture-arm',
+    rosDistro: 'jazzy',
+    rmwImplementation: 'rmw_fastrtps_cpp',
+    jointState: {
+      topic: `${topicPrefix}/joint_states`,
+      messageType: 'sensor_msgs/msg/JointState'
+    },
+    controller: {
+      name: `${name}_controller`,
+      followJointTrajectoryAction: `${topicPrefix}/follow_joint_trajectory`,
+      actionType: 'control_msgs/action/FollowJointTrajectory'
+    },
+    jointOrder: ['joint_a', 'joint_b'],
+    adapter: { identity: 'ros2-reference-gateway', version: '1.3.1' },
+    observedAt: new Date().toISOString()
+  });
+  source.runtimePolicy.maxConfigurationAgeMs = 60_000;
+  source.executionConfiguration = boundConfiguration;
+  source.approvedConfigurationDigest = configurationDigest(boundConfiguration);
   const spec = executablePolicySpecSchema.parse(source);
   const identity = executablePolicyHash(spec);
   const record: ReleaseRecord = {
@@ -54,6 +82,7 @@ async function runCase(
     state: source.deployment.mode,
     executablePolicyHash: identity,
     approvedIdentityHash: identity,
+    approvedConfigurationDigest: spec.approvedConfigurationDigest,
     approvedBy: 'dds-ci',
     approvedAt: '2026-01-01T00:01:00.000Z'
   };
@@ -62,7 +91,6 @@ async function runCase(
     : new InMemoryReleaseRecordStore(new Map([[record.releaseId, record]]));
   const resolver = new InMemoryReleaseResolver();
   resolver.bind('fixture-arm-01', 'dds-proposer', spec);
-  const topicPrefix = `/rlsok_ci/${name}`;
   const transport = new PythonRos2SidecarTransport({
     pythonExecutable: 'python3',
     sidecarPath: resolve('experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py'),
@@ -71,13 +99,30 @@ async function runCase(
     controllerAction: `${topicPrefix}/follow_joint_trajectory`
   });
   const evidence = new CollectingEvidence();
+  let configurationReads = 0;
   const gateway = new Ros2ReferenceGateway({
     mode,
     controllerIdentity: spec.robot.controllerConfigSha256,
     releaseResolver: resolver,
     releaseRecords: records,
     transport,
-    evidence
+    evidence,
+    executionConfiguration: async () => {
+      configurationReads += 1;
+      const observed = configurationDrift && configurationReads >= 2
+        ? {
+            ...boundConfiguration,
+            controller: {
+              ...boundConfiguration.controller,
+              followJointTrajectoryAction: `${topicPrefix}/changed_follow_joint_trajectory`
+            }
+          }
+        : boundConfiguration;
+      return executionConfigurationSchema.parse({
+        ...observed,
+        observedAt: new Date().toISOString()
+      });
+    }
   });
   const proposal = {
     proposalId: `proposal-${name}`,
@@ -164,4 +209,13 @@ test('real DDS revocation refresh wins the final dispatch race', async () => {
     evidence.at(-1)?.decisionReason ?? '',
     /^(?:release_revoked|permit_invalid)$/
   );
+});
+
+test('real DDS configuration drift blocks before the fake controller goal', async () => {
+  const { result, evidence } = await runCase('configuration_drift', 'run', false, true);
+  assert.equal(result.decision, 'failed');
+  assert.equal(result.controllerGoalCount, 0);
+  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(evidence.at(-1)?.decisionReason, 'configuration_mismatch');
+  assert.equal(evidence.at(-1)?.hardwareSignalSent, false);
 });

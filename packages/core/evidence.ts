@@ -13,6 +13,8 @@ export interface ExecutionEvidence {
   actionContractHash: string;
   robotProfileHash: string;
   controllerProfileHash: string;
+  expectedConfigurationDigest?: string | null;
+  observedConfigurationDigest?: string | null;
   runtimePolicyHash: string;
   deviceId: string;
   proposalId: string;
