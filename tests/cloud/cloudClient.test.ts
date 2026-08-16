@@ -21,6 +21,7 @@ import {
   executablePolicySpecSchema,
 } from "../../packages/core/exec-spec";
 import { canonicalJson, sha256 } from "../../packages/core/evidence";
+import { configurationDigest as digestConfiguration } from "../../packages/core/execution-configuration";
 
 const fixture = JSON.parse(
   readFileSync("fixtures/cloud-contract/v1/release.json", "utf8"),
@@ -38,6 +39,16 @@ const config = {
   maxResponseBytes: 1_024,
   safeRetryCount: 1,
 };
+const configurationDigest =
+  "a0813bd26e47d0fdddbc1e116606650c3356c26833bd663a38b0b250773fdc15";
+
+function currentExecutionConfiguration() {
+  const spec = executablePolicySpecSchema.parse(fixture.execSpec);
+  return {
+    ...spec.executionConfiguration!,
+    observedAt: new Date().toISOString(),
+  };
+}
 
 function json(
   value: unknown,
@@ -154,6 +165,7 @@ test("idempotent mutations retry an ambiguous transport failure with one stable 
             actionHash: fixture.expected.actionHash,
             deviceId: "fixture-arm-01",
             controllerId: spec.robot.controllerConfigSha256,
+            configurationDigest,
             expiresInSeconds: 30,
           },
           "permit-ambiguous-result-000001",
@@ -179,6 +191,8 @@ test("idempotent mutations retry an ambiguous transport failure with one stable 
               actionHash: fixture.expected.actionHash,
               deviceId: "fixture-arm-01",
               controllerId: spec.robot.controllerConfigSha256,
+              expectedConfigurationDigest: configurationDigest,
+              observedConfigurationDigest: configurationDigest,
               localPermitConsumed: true,
               controllerGoalsAttempted: 0,
               reason: "shadow_permit_evaluated_no_controller_call",
@@ -276,6 +290,7 @@ test("cloud dispatch boundary refreshes state and consumes exactly once before d
       deviceId: "fixture-arm-01",
       controllerId:
         "1111111111111111111111111111111111111111111111111111111111111111",
+      configurationDigest,
     },
     {
       async dispatch() {
@@ -284,6 +299,7 @@ test("cloud dispatch boundary refreshes state and consumes exactly once before d
         return "accepted";
       },
     },
+    async () => configurationDigest,
   );
   assert.equal(await boundary.dispatch(fixture.action, {}), "accepted");
   assert.deepEqual(calls, [
@@ -318,18 +334,125 @@ test("revocation refresh denies before permit consumption or controller dispatch
       actionHash: fixture.expected.actionHash,
       deviceId: "fixture-arm-01",
       controllerId: "controller",
+      configurationDigest,
     },
     {
       async dispatch() {
         throw new Error("must_not_dispatch");
       },
     },
+    async () => configurationDigest,
   );
   await assert.rejects(
     boundary.dispatch(fixture.action, {}),
     /cloud_release_not_currently_approved/,
   );
   assert.equal(calls, 1);
+});
+
+test("cloud configuration drift after Permit issuance blocks before cloud consumption and dispatch", async () => {
+  const spec = executablePolicySpecSchema.parse(fixture.execSpec);
+  const current = currentExecutionConfiguration();
+  const drifted = {
+    ...current,
+    controller: {
+      ...current.controller,
+      followJointTrajectoryAction: "/changed/follow_joint_trajectory",
+    },
+  };
+  let observations = 0;
+  let permitConsumptions = 0;
+  let dispatches = 0;
+  let submitted: any;
+  const evidenceId = "22222222-2222-4222-8222-222222222222";
+  const createdAt = new Date().toISOString();
+  const cloud = {
+    async getRelease() {
+      return {
+        releaseId: spec.metadata.releaseId,
+        contentHash: executablePolicyHash(spec),
+        state: "approved" as const,
+      };
+    },
+    async requestPermit(request: any) {
+      assert.equal(request.configurationDigest, configurationDigest);
+      return {
+        permitId: "11111111-1111-4111-8111-111111111111",
+        expiresAt: new Date(Date.now() + 30_000).toISOString(),
+      };
+    },
+    async consumePermit() {
+      permitConsumptions += 1;
+      throw new Error("permit_must_not_be_consumed_after_drift");
+    },
+    async submitEvidence(value: any) {
+      submitted = value;
+      return {
+        evidenceId,
+        sequence: 0,
+        previousHash: null,
+        evidenceHash: "0".repeat(64),
+        createdAt,
+      };
+    },
+    async getEvidence() {
+      const body = {
+        sequence: 0,
+        previousHash: null,
+        releaseId: submitted.releaseId,
+        permitId: submitted.permitId,
+        decision: submitted.decision,
+        hardwareSignalSent: submitted.hardwareSignalSent,
+        payload: submitted.payload,
+        createdAt,
+      };
+      return { id: evidenceId, ...body, evidenceHash: sha256(canonicalJson(body)) };
+    },
+  } as unknown as RlsokCloudClient;
+  const transport = {
+    async getFreshJointState() {
+      return {
+        names: ["joint_a", "joint_b"],
+        positions: [0, 0],
+        observedAt: new Date().toISOString(),
+      };
+    },
+    async dispatchTrajectory() {
+      dispatches += 1;
+      throw new Error("dispatch_must_not_happen_after_drift");
+    },
+  } as unknown as Ros2ReferenceTransport;
+  const workflow = new CloudConnectedRos2Workflow({
+    mode: "shadow",
+    release: spec,
+    cloud,
+    transport,
+    controllerIdentity: spec.robot.controllerConfigSha256,
+    executionConfiguration: async () => {
+      observations += 1;
+      return observations === 1 ? current : drifted;
+    },
+    localEvidence: () => undefined,
+  });
+  const result = await workflow.runProposal(JSON.stringify({
+    proposalId: "cloud-configuration-drift",
+    releaseId: spec.metadata.releaseId,
+    deviceId: spec.deployment.allowedDeviceIds[0],
+    proposerIdentity: "fixture-policy",
+    actionRepresentation: "trajectory",
+    actionPayload: fixture.action,
+    createdAt,
+  }));
+  assert.equal(result.decision, "blocked");
+  assert.equal(result.reason, "configuration_mismatch");
+  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(permitConsumptions, 0);
+  assert.equal(dispatches, 0);
+  assert.equal(submitted.payload.expectedConfigurationDigest, configurationDigest);
+  assert.equal(
+    submitted.payload.observedConfigurationDigest,
+    digestConfiguration(drifted),
+  );
 });
 
 test("initial revoked release denial writes and verifies Evidence without a Permit or dispatch", async () => {
@@ -395,6 +518,7 @@ test("initial revoked release denial writes and verifies Evidence without a Perm
     cloud,
     transport,
     controllerIdentity: spec.robot.controllerConfigSha256,
+    executionConfiguration: async () => currentExecutionConfiguration(),
     localEvidence: (result) => {
       localResults.push(structuredClone(result));
     },
@@ -477,6 +601,7 @@ test("expired and mode-mismatched local authority fail before Cloud or controlle
       cloud,
       transport,
       controllerIdentity: base.robot.controllerConfigSha256,
+      executionConfiguration: async () => currentExecutionConfiguration(),
       localEvidence: () => undefined,
     });
     await assert.rejects(workflow.runProposal(payload), validationCase.expected);
@@ -505,6 +630,8 @@ function evidenceExport(count = 205): EvidenceExport {
         actionHash: fixture.expected.actionHash,
         deviceId: "fixture-arm-01",
         controllerId: "1".repeat(64),
+        expectedConfigurationDigest: configurationDigest,
+        observedConfigurationDigest: configurationDigest,
         localPermitConsumed: false,
         controllerGoalsAttempted: 0,
         reason: `fixture-${sequence}`,

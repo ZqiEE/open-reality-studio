@@ -20,6 +20,10 @@ import {
   type ExecutablePolicySpec,
 } from "../../packages/core/exec-spec";
 import type { EvidenceSink } from "../../packages/core/execution-gate";
+import {
+  executionConfigurationSchema,
+  type ExecutionConfiguration,
+} from "../../packages/core/execution-configuration";
 import type { ReleaseRecord } from "../../packages/core/release-policy";
 import {
   InMemoryReleaseResolver,
@@ -89,6 +93,36 @@ async function waitForControllerDiscovery(
     report = await transport.doctor();
   }
   return report;
+}
+
+async function observeExecutionConfiguration(
+  spec: ExecutablePolicySpec,
+  transport: PythonRos2SidecarTransport,
+  deviceId: string,
+): Promise<ExecutionConfiguration | undefined> {
+  const approved = spec.executionConfiguration;
+  if (!approved) return undefined;
+  const doctor = await transport.doctor();
+  const state = await transport.getFreshJointState(
+    spec.runtimePolicy.maxStateAgeMs,
+  );
+  if (!doctor.rosDistro || !doctor.rmwImplementation) return undefined;
+  return executionConfigurationSchema.parse({
+    ...approved,
+    deviceIdentity: deviceId,
+    rosDistro: doctor.rosDistro,
+    rmwImplementation: doctor.rmwImplementation,
+    jointState: {
+      topic: doctor.jointStateTopic,
+      messageType: "sensor_msgs/msg/JointState",
+    },
+    controller: {
+      ...approved.controller,
+      followJointTrajectoryAction: doctor.controllerAction,
+    },
+    jointOrder: state.names,
+    observedAt: new Date().toISOString(),
+  });
 }
 
 function runOneShot(operation: "doctor" | "inspect", options: Options): number {
@@ -203,6 +237,8 @@ async function runCloudConnectedGateway(
     transport,
     controllerIdentity:
       options["controller-identity"] ?? spec.robot.controllerConfigSha256,
+    executionConfiguration: () =>
+      observeExecutionConfiguration(spec, transport, deviceId),
     beforeFinalBoundary:
       process.env.RLSOK_TEST_FINAL_BOUNDARY_READY_FILE &&
       process.env.RLSOK_TEST_FINAL_BOUNDARY_CONTINUE_FILE
@@ -341,6 +377,7 @@ async function runGateway(
     approvedIdentityHash: identity,
     approvedBy: spec.evidence.approvedBy,
     approvedAt: spec.evidence.approvedAt,
+    approvedConfigurationDigest: spec.approvedConfigurationDigest,
   };
   const resolver = new InMemoryReleaseResolver();
   resolver.bind(deviceId, proposerIdentity, spec);
@@ -369,6 +406,8 @@ async function runGateway(
     releaseRecords: records,
     transport,
     evidence: new FileEvidenceSink(spec, evidencePath),
+    executionConfiguration: () =>
+      observeExecutionConfiguration(spec, transport, deviceId),
   });
   let report = await transport.doctor();
   if (mode === "run" && !report.actionServerAvailable) {

@@ -37,8 +37,32 @@
     "runtimePolicy": {
       "policySha256": "2222222222222222222222222222222222222222222222222222222222222222",
       "maxStateAgeMs": 1000,
+      "maxConfigurationAgeMs": 1000,
       "failClosed": true
     },
+    "executionConfiguration": {
+      "schemaVersion": 1,
+      "deviceIdentity": "fixture-arm-01",
+      "robotIdentity": "fixture-arm",
+      "rosDistro": "jazzy",
+      "rmwImplementation": "rmw_fastrtps_cpp",
+      "jointState": {
+        "topic": "/joint_states",
+        "messageType": "sensor_msgs/msg/JointState"
+      },
+      "controller": {
+        "name": "joint_trajectory_controller",
+        "followJointTrajectoryAction": "/joint_trajectory_controller/follow_joint_trajectory",
+        "actionType": "control_msgs/action/FollowJointTrajectory"
+      },
+      "jointOrder": ["joint_a", "joint_b"],
+      "adapter": {
+        "identity": "ros2-reference-gateway",
+        "version": "1.3.1"
+      },
+      "observedAt": "2026-01-01T00:01:00.000Z"
+    },
+    "approvedConfigurationDigest": "a0813bd26e47d0fdddbc1e116606650c3356c26833bd663a38b0b250773fdc15",
     "evidence": {
       "scenarioPackId": "cross-repository-v1",
       "testReportSha256": "3333333333333333333333333333333333333333333333333333333333333333",
@@ -67,7 +91,7 @@
     }
   },
   "expected": {
-    "contentHash": "d193591e0d72767def9ca243a0a8e8bdbb9e074467e77975ca61dd2b75e2b6d7",
+    "contentHash": "8b9b0871e83399a99021fc1414cee3f47831683ece46eccc8ab64252af13a33c",
     "actionHash": "3564118f9d5767cbe2e4a087ef2e687c6665861bc34457877912710b88a3c7eb"
   }
 }

@@ -23,6 +23,7 @@ async function main(): Promise<void> {
   let draft: { execSpec: ExecutablePolicySpec } | undefined;
   let approvedSpec: ExecutablePolicySpec | undefined;
   let evidenceBody: Record<string, unknown> | undefined;
+  let permitBody: Record<string, unknown> | undefined;
   const permitId = "11111111-1111-4111-8111-111111111111";
   const evidenceId = "22222222-2222-4222-8222-222222222222";
   const server = createServer(async (request, response) => {
@@ -63,6 +64,7 @@ async function main(): Promise<void> {
         execSpec: approvedSpec,
       };
     } else if (request.method === "POST" && path === "/v1/permits") {
+      permitBody = body;
       status = 201;
       result = {
         apiVersion,
@@ -187,6 +189,8 @@ async function main(): Promise<void> {
           RLSOK_SETUP_ACCEPTANCE: "1",
           RLSOK_SETUP_DISCOVERY_FIXTURE: discoveryPath,
           RLSOK_DATA_HOME: data,
+          ROS_DISTRO: "jazzy",
+          RMW_IMPLEMENTATION: "rmw_fastrtps_cpp",
           XDG_CONFIG_HOME: config,
           LOCALAPPDATA: config,
         },
@@ -211,6 +215,11 @@ async function main(): Promise<void> {
     assert.match(stdout, /Evidence verified by hash/);
     assert(draft);
     assert.equal(draft.execSpec.evidence.status, "tested");
+    assert.match(draft.execSpec.approvedConfigurationDigest ?? "", /^[a-f0-9]{64}$/);
+    assert.equal(
+      permitBody?.configurationDigest,
+      draft.execSpec.approvedConfigurationDigest,
+    );
     const setup = JSON.parse(
       readFileSync(join(config, "rlsok", "setup.json"), "utf8"),
     ) as { evidencePath: string; artifactPath: string };

@@ -25,6 +25,7 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
     {
       actionHash: string;
       expiresAt: number;
+      configurationDigest: string;
     }
   >();
 
@@ -33,6 +34,7 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
     private readonly permitId: string,
     private readonly binding: ConsumePermitRequest,
     private readonly dispatcher: LocalDispatcher<TAction, TResult>,
+    private readonly currentConfigurationDigest: () => Promise<string | null>,
   ) {}
 
   get localPermitWasConsumed(): boolean {
@@ -51,6 +53,7 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
     this.localPermits.set(permit, {
       actionHash: this.binding.actionHash,
       expiresAt: now + 1_000,
+      configurationDigest: this.binding.configurationDigest,
     });
     return permit;
   }
@@ -72,6 +75,7 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
     if (
       record.expiresAt < now ||
       record.actionHash !== this.binding.actionHash ||
+      record.configurationDigest !== this.binding.configurationDigest ||
       sha256(canonicalJson(action)) !== record.actionHash
     ) {
       throw new Error("local_execution_permit_invalid");
@@ -88,6 +92,13 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
     this.consumeLocalPermit(action, localPermit);
     if (sha256(canonicalJson(action)) !== this.binding.actionHash) {
       throw new Error("cloud_action_hash_mismatch");
+    }
+    const configurationDigest = await this.currentConfigurationDigest();
+    if (!configurationDigest) {
+      throw new Error("configuration_missing");
+    }
+    if (configurationDigest !== this.binding.configurationDigest) {
+      throw new Error("configuration_mismatch");
     }
     const release = await this.cloud.getRelease(this.binding.releaseId);
     if (

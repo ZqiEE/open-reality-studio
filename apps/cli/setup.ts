@@ -22,6 +22,10 @@ import {
   executablePolicySpecSchema,
   type ExecutablePolicySpec,
 } from "../../packages/core/exec-spec";
+import {
+  configurationDigest,
+  executionConfigurationSchema,
+} from "../../packages/core/execution-configuration";
 import { readStoredCloudCredentials } from "../../packages/cloud-client/credentials";
 import {
   assessOfficialRobotIntegrations,
@@ -279,10 +283,34 @@ function createSpec(input: {
   releaseId: string;
   integrationProfileId: string;
   controllerType: string;
+  rosDistro: string;
+  rmwImplementation: string;
+  jointStateTopic: string;
+  controllerName: string;
+  controllerAction: string;
 }): ExecutablePolicySpec {
   const identityTransform = sha256(
     canonicalJson({ kind: "identity-transform", version: 1 }),
   );
+  const executionConfiguration = executionConfigurationSchema.parse({
+    schemaVersion: 1,
+    deviceIdentity: input.deviceId,
+    robotIdentity: input.robotHash,
+    rosDistro: input.rosDistro,
+    rmwImplementation: input.rmwImplementation,
+    jointState: {
+      topic: input.jointStateTopic,
+      messageType: "sensor_msgs/msg/JointState",
+    },
+    controller: {
+      name: input.controllerName,
+      followJointTrajectoryAction: input.controllerAction,
+      actionType: "control_msgs/action/FollowJointTrajectory",
+    },
+    jointOrder: input.jointNames,
+    adapter: { identity: "rlsok-ros2-sidecar", version: "1.3.1" },
+    observedAt: new Date().toISOString(),
+  });
   return executablePolicySpecSchema.parse({
     apiVersion: "realitywarden.io/v1alpha1",
     kind: "ExecutablePolicy",
@@ -319,8 +347,11 @@ function createSpec(input: {
         canonicalJson({ failClosed: true, maxStateAgeMs: 1000, version: 1 }),
       ),
       maxStateAgeMs: 1000,
+      maxConfigurationAgeMs: 5000,
       failClosed: true,
     },
+    executionConfiguration,
+    approvedConfigurationDigest: configurationDigest(executionConfiguration),
     evidence: {
       scenarioPackId: "zero-to-shadow-v1",
       testReportSha256: input.boundaryHash,
@@ -551,6 +582,14 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     integrationProfileId: integrationState.profileId,
     controllerType:
       integration?.controllerType ?? "control_msgs/action/FollowJointTrajectory",
+    rosDistro: report.rosDistro!,
+    rmwImplementation: report.rmwImplementation!,
+    jointStateTopic: jointSource.name,
+    controllerName:
+      integration?.controllerName ??
+      controller.name.split("/").filter(Boolean).at(-2) ??
+      controller.name,
+    controllerAction: controller.name,
   });
   const root = dataRoot();
   const artifactPath = join(root, "artifacts", artifactSha256);

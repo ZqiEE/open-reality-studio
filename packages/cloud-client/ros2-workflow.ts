@@ -4,6 +4,10 @@ import {
 } from "../core/exec-spec";
 import { canonicalJson, sha256 } from "../core/evidence";
 import {
+  evaluateConfigurationBinding,
+  type ExecutionConfiguration,
+} from "../core/execution-configuration";
+import {
   ros2ProposalEnvelopeSchema,
   type JointTrajectoryAction,
   type Ros2ReferenceTransport,
@@ -43,6 +47,7 @@ interface WorkflowOptions {
   cloud: RlsokCloudClient;
   transport: Ros2ReferenceTransport;
   controllerIdentity: string;
+  executionConfiguration: () => Promise<ExecutionConfiguration | undefined>;
   beforeFinalBoundary?: () => Promise<void>;
   localEvidence: (result: CloudConnectedRos2Result) => void | Promise<void>;
 }
@@ -52,6 +57,8 @@ interface EvidenceContext {
   actionHash: string;
   deviceId: string;
   controllerId: string;
+  expectedConfigurationDigest: string;
+  observedConfigurationDigest: string | null;
 }
 
 export function assertLocalRos2Eligibility(
@@ -139,6 +146,8 @@ export class CloudConnectedRos2Workflow {
         actionHash: context.actionHash,
         deviceId: context.deviceId,
         controllerId: context.controllerId,
+        expectedConfigurationDigest: context.expectedConfigurationDigest,
+        observedConfigurationDigest: context.observedConfigurationDigest,
         localPermitConsumed: result.localPermitConsumed,
         controllerGoalsAttempted: result.controllerGoalsAttempted,
         reason: result.reason,
@@ -165,6 +174,23 @@ export class CloudConnectedRos2Workflow {
     );
     const contentHash = executablePolicyHash(this.options.release);
     const actionHash = sha256(canonicalJson(action));
+    const expectedConfigurationDigest =
+      this.options.release.approvedConfigurationDigest;
+    if (!expectedConfigurationDigest) {
+      throw new Error("configuration_unbound");
+    }
+    const observeConfiguration = async () => {
+      const observed = await this.options.executionConfiguration();
+      return evaluateConfigurationBinding({
+        approvedConfigurationDigest: expectedConfigurationDigest,
+        observedConfiguration: observed,
+        mode: this.options.mode,
+        maxAgeMs:
+          this.options.release.runtimePolicy.maxConfigurationAgeMs ?? 300_000,
+      });
+    };
+    const configuration = await observeConfiguration();
+    let latestConfiguration = configuration;
     const initial = await this.options.cloud.getRelease(
       this.options.release.metadata.releaseId,
     );
@@ -175,6 +201,8 @@ export class CloudConnectedRos2Workflow {
       denialReason = "cloud_release_content_hash_mismatch";
     } else if (initial.state !== "approved") {
       denialReason = `cloud_release_not_eligible:${initial.state}`;
+    } else if (!configuration.allowed) {
+      denialReason = configuration.reason;
     }
     if (denialReason) {
       return this.persistEvidence(
@@ -198,6 +226,8 @@ export class CloudConnectedRos2Workflow {
           actionHash,
           deviceId: proposal.deviceId,
           controllerId: this.options.controllerIdentity,
+          expectedConfigurationDigest,
+          observedConfigurationDigest: configuration.observedDigest,
         },
       );
     }
@@ -214,6 +244,7 @@ export class CloudConnectedRos2Workflow {
       actionHash,
       deviceId: proposal.deviceId,
       controllerId: this.options.controllerIdentity,
+      configurationDigest: configuration.observedDigest!,
     };
     const cloudPermit = await this.options.cloud.requestPermit({
       ...binding,
@@ -256,6 +287,12 @@ export class CloudConnectedRos2Workflow {
           accepted: true,
           detail: "shadow_adapter_observation_only",
         }),
+      },
+      async () => {
+        const current = await observeConfiguration();
+        latestConfiguration = current;
+        if (!current.allowed) throw new Error(current.reason!);
+        return current.observedDigest;
       },
     );
     const localPermit = boundary.issueLocalPermit(action);
@@ -302,6 +339,8 @@ export class CloudConnectedRos2Workflow {
       actionHash,
       deviceId: binding.deviceId,
       controllerId: binding.controllerId,
+      expectedConfigurationDigest,
+      observedConfigurationDigest: latestConfiguration.observedDigest,
     });
   }
 }
