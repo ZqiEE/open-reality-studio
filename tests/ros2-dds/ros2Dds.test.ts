@@ -144,6 +144,10 @@ async function runCase(
     ],
     { stdio: ['ignore', 'pipe', 'pipe'] }
   );
+  const fixtureExit = new Promise<void>((resolveExit) => {
+    fixtureNode.once('exit', () => resolveExit());
+  });
+  let caseTimeout: NodeJS.Timeout | undefined;
   try {
     const result = await Promise.race([
       new Promise<{
@@ -154,7 +158,7 @@ async function runCase(
         await gateway.start(resolveResult);
       }),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`dds_${name}_timeout`)), 20_000)
+        { caseTimeout = setTimeout(() => reject(new Error(`dds_${name}_timeout`)), 20_000); }
       )
     ]);
     const sanitizedEvidence = evidence.entries.map((entry) => ({
@@ -169,7 +173,19 @@ async function runCase(
     );
     return { result, evidence: evidence.entries };
   } finally {
+    if (caseTimeout) clearTimeout(caseTimeout);
     fixtureNode.kill('SIGTERM');
+    if (fixtureNode.exitCode === null) {
+      let cleanupTimeout: NodeJS.Timeout | undefined;
+      await Promise.race([
+        fixtureExit,
+        new Promise<void>((resolveWait) => {
+          cleanupTimeout = setTimeout(resolveWait, 5_000);
+        })
+      ]);
+      if (cleanupTimeout) clearTimeout(cleanupTimeout);
+    }
+    if (fixtureNode.exitCode === null) fixtureNode.kill('SIGKILL');
     await transport.close();
   }
 }

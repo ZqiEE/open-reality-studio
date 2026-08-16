@@ -19,6 +19,7 @@ import { runPairCommand } from './pair';
 import { runSetupCommand } from './setup';
 import { runObserveCommand } from './observe';
 import { runUr5eValidationCommand } from './validate-ur5e';
+import { runCompatibilityCommand } from './compatibility';
 
 function fail(message: string): never {
   process.stderr.write(`ERROR: ${message}\n`);
@@ -71,7 +72,7 @@ function usage(exitCode = 1): never {
   process.stdout.write(
     'RLSOK ReleaseGate CLI\n' +
     'Release control for executable robot policies.\n\n' +
-    'usage: rlsok setup | rlsok observe | rlsok validate-ur5e ... | rlsok pair | rlsok check <release> | rlsok diff <old> <new> | rlsok shadow <release> <proposal> <evidence> | rlsok verify-evidence <bundle> | rlsok ros2 ... | rlsok cloud ...\n'
+    'usage: rlsok setup | rlsok compatibility inspect ... | rlsok observe | rlsok validate-ur5e ... | rlsok pair | rlsok check <release> | rlsok diff <old> <new> | rlsok shadow <release> <proposal> <evidence> | rlsok verify-evidence <bundle> | rlsok ros2 ... | rlsok cloud ...\n'
   );
   process.exit(exitCode);
 }
@@ -92,6 +93,7 @@ async function main(): Promise<void> {
   else if (command === 'setup') process.exitCode = await runSetupCommand(args);
   else if (command === 'observe') process.exitCode = await runObserveCommand(args);
   else if (command === 'validate-ur5e') process.exitCode = await runUr5eValidationCommand(args);
+  else if (command === 'compatibility') process.exitCode = await runCompatibilityCommand(args);
   else if (command === 'ros2') process.exitCode = await runRos2Command(args);
   else if (command === 'cloud') process.exitCode = await runCloudCommand(args);
   else usage();

@@ -23,7 +23,7 @@
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:releasegate && npm run test:decision-conformance && npm run test:cloud && npm run test:integrations && npm run test:setup && npm run test:python-sdk && npm run ros2:test",
+    "test": "npm run test:releasegate && npm run test:decision-conformance && npm run test:cloud && npm run test:integrations && npm run test:setup && npm run test:compatibility && npm run test:python-sdk && npm run ros2:test",
     "verify": "npm run typecheck && npm run build && npm test",
     "prepack": "npm run build",
     "package:smoke": "node scripts/package-smoke.cjs",
@@ -36,6 +36,7 @@
     "test:decision-conformance": "node scripts/run-rlsok.cjs --test tests/releasegate/decisionConformance.test.ts",
     "test:cloud": "node scripts/run-rlsok.cjs --test tests/cloud/cloudClient.test.ts",
     "test:setup": "node scripts/run-rlsok.cjs --test tests/setup/zeroToShadow.test.ts",
+    "test:compatibility": "node scripts/run-rlsok.cjs --test tests/compatibility/compatibilityInspect.test.ts",
     "test:integrations": "node scripts/run-rlsok.cjs --test tests/robot-integrations/ur5e.test.ts && node scripts/run-rlsok.cjs --test tests/robot-integrations/ur5eValidation.test.ts",
     "test:official-ur5e": "node scripts/run-rlsok.cjs --test tests/robot-integrations/officialUr5eGraph.test.ts",
     "test:python-sdk": "node scripts/test-python-sdk.cjs",

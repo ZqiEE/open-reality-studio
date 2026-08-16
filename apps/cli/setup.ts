@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
@@ -31,6 +30,7 @@ import {
 } from "../../packages/robot-integrations";
 import { openBrowser, runPairCommand } from "./pair";
 import { runRos2Command } from "./ros2";
+import { discoverRos2Environment } from "./ros-discovery";
 
 type Options = Record<string, string | true>;
 
@@ -101,13 +101,6 @@ function configRoot(source: NodeJS.ProcessEnv = process.env): string {
   return join(homedir(), ".config", "rlsok");
 }
 
-function defaultSidecarPath(): string {
-  return resolve(
-    __dirname,
-    "../../../experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py",
-  );
-}
-
 function linuxRelease(): Record<string, string> {
   if (!existsSync("/etc/os-release")) return {};
   return Object.fromEntries(
@@ -137,39 +130,6 @@ function assertSupportedPlatform(): void {
       `This Zero-to-Shadow release supports Ubuntu 24.04 x86_64. Found ${process.platform}/${process.arch}${release.PRETTY_NAME ? ` (${release.PRETTY_NAME})` : ""}. Use a supported machine; RLSOK will not guess across unvalidated robot environments.`,
     );
   }
-}
-
-function discover(options: Options): DiscoveryReport {
-  const fixture = process.env.RLSOK_SETUP_DISCOVERY_FIXTURE;
-  if (fixture) return JSON.parse(readFileSync(fixture, "utf8")) as DiscoveryReport;
-  const timeout = Number(option(options, "discovery-timeout-ms") ?? "15000");
-  if (!Number.isInteger(timeout) || timeout < 1_000 || timeout > 120_000)
-    throw new Error("Discovery timeout must be between 1000 and 120000 ms.");
-  const python = option(options, "python") ?? "python3";
-  const sidecar = resolve(option(options, "sidecar") ?? defaultSidecarPath());
-  const result = spawnSync(
-    python,
-    [
-      sidecar,
-      "--discover",
-      "--discovery-timeout-seconds",
-      String(timeout / 1_000),
-    ],
-    { encoding: "utf8", windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
-  );
-  if (result.error)
-    throw new Error(
-      `RLSOK could not start Python 3 (${result.error.message}). Install python3 and source /opt/ros/jazzy/setup.bash, then run rlsok setup again.`,
-    );
-  let report: DiscoveryReport;
-  try {
-    report = JSON.parse(result.stdout) as DiscoveryReport;
-  } catch {
-    throw new Error(
-      `ROS discovery did not return a valid report. Run 'rlsok ros2 doctor' for technical diagnostics.${result.stderr.trim() ? ` Detail: ${result.stderr.trim()}` : ""}`,
-    );
-  }
-  return report;
 }
 
 async function choose<T extends { name: string }>(
@@ -429,7 +389,12 @@ export async function runSetupCommand(args: string[]): Promise<number> {
   }
   assertSupportedPlatform();
   process.stdout.write("RLSOK Zero-to-Shadow\n\n[1/6] Detecting the supported environment...\n");
-  const report = discover(options);
+  const report = discoverRos2Environment({
+    fixturePath: process.env.RLSOK_SETUP_DISCOVERY_FIXTURE,
+    timeoutMs: Number(option(options, "discovery-timeout-ms") ?? "15000"),
+    pythonExecutable: option(options, "python"),
+    sidecarPath: option(options, "sidecar"),
+  });
   if (!report.rosAvailable)
     throw new Error(
       "ROS 2 is not available in this terminal. Install ROS 2 Jazzy, then run 'source /opt/ros/jazzy/setup.bash' and retry.",
