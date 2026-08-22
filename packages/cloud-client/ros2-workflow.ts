@@ -330,6 +330,12 @@ export class CloudConnectedRos2Workflow {
             throw new Error(currentAttestation.reason!);
           }
           if (
+            canonicalJson(attestation.attestation?.source)
+            !== canonicalJson(currentAttestation.attestation?.source)
+          ) {
+            throw new Error("runtime_attestation_changed");
+          }
+          if (
             attestation.attestation?.continuityToken
             !== currentAttestation.attestation?.continuityToken
           ) {

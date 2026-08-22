@@ -525,7 +525,7 @@ async function testNoBypass(): Promise<void> {
   assert.equal(
     (await cachedTransport.getFreshJointState(1_000)).names[0],
     "joint_a",
-    "a publishing sidecar must be allowed to replace a stale cached sample",
+    "an active publisher may replace a stale cached sample within the bounded wait",
   );
   mutableTransport.state = {
     names: ["joint_a"],

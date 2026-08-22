@@ -114,6 +114,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     controllerIdentity: string;
     configurationDigest: string;
     runtimeAttestationDigest?: string;
+    runtimeAttestationSourceDigest?: string;
     continuityToken?: string;
   }>();
 
@@ -268,6 +269,9 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       controllerIdentity: request.controllerIdentity ?? request.release.robot.controllerConfigSha256,
       configurationDigest: configuration.observedDigest!,
       runtimeAttestationDigest: attestation.digest ?? undefined,
+      runtimeAttestationSourceDigest: attestation.attestation
+        ? sha256(canonicalJson(attestation.attestation.source))
+        : undefined,
       continuityToken: attestation.attestation?.continuityToken
     });
     return {
@@ -340,6 +344,9 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       maxAgeMs: attestationMaxAgeMs(request.release),
       now
     });
+    // The full issuance digest protects the authorized request from mutation.
+    // A refreshed observation is intentionally not compared by full digest:
+    // observedAt and non-required capabilities may legitimately change.
     let invalidReason: string | null = null;
     if (!record) invalidReason = 'permit_unknown_or_reused';
     else if (record.expiresAt <= now.getTime()) invalidReason = 'permit_expired';
@@ -358,6 +365,12 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     else if (!attestation.allowed) {
       invalidReason = attestation.reason ?? 'runtime_attestation_stale';
     } else if (record.runtimeAttestationDigest !== (issuedAttestation.digest ?? undefined)) {
+      invalidReason = 'runtime_attestation_changed';
+    } else if (
+      record.runtimeAttestationSourceDigest !== (attestation.attestation
+        ? sha256(canonicalJson(attestation.attestation.source))
+        : undefined)
+    ) {
       invalidReason = 'runtime_attestation_changed';
     } else if (record.continuityToken !== attestation.attestation?.continuityToken) {
       invalidReason = 'runtime_continuity_changed';

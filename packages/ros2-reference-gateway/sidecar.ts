@@ -65,8 +65,8 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
 
   async getFreshJointState(maxAgeMs: number): Promise<JointStateSnapshot> {
     // DDS discovery is asynchronous for every new sidecar participant. Give
-    // the first or next fresh sample a bounded startup window without
-    // weakening the release's freshness check applied below.
+    // the first or next fresh sample a bounded startup window. A cached stale
+    // sample can race an active publisher; only a newly fresh sample succeeds.
     const deadline = Date.now() + this.discoveryTimeoutMs;
     let observedState = false;
     while (Date.now() < deadline) {

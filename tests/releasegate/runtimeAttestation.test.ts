@@ -8,6 +8,7 @@ import {
   type ExecutionEvidence
 } from '../../packages/core/evidence';
 import {
+  diffExecutablePolicies,
   executablePolicyHash,
   executablePolicySpecSchema,
   type ExecutablePolicySpec
@@ -229,6 +230,36 @@ test('capability arrays are canonical and duplicates are rejected', () => {
   assert.deepEqual(trimmed.availableCapabilities, ['controller.available']);
 });
 
+test('runtime policy changes invalidate approval without ordering-only false diffs', () => {
+  const baseline = release(['controller.available']);
+  const changedCapabilities = release(['controller.available', 'state.fresh']);
+  assert.notEqual(executablePolicyHash(baseline), executablePolicyHash(changedCapabilities));
+  assert.deepEqual(diffExecutablePolicies(baseline, changedCapabilities), {
+    changes: ['runtime policy'],
+    invalidatesApproval: true
+  });
+
+  const changedMaxAge = executablePolicySpecSchema.parse({
+    ...baseline,
+    runtimePolicy: {
+      ...baseline.runtimePolicy,
+      maxAttestationAgeMs: baseline.runtimePolicy.maxAttestationAgeMs! + 1
+    }
+  });
+  assert.notEqual(executablePolicyHash(baseline), executablePolicyHash(changedMaxAge));
+  assert.deepEqual(diffExecutablePolicies(baseline, changedMaxAge), {
+    changes: ['runtime policy'],
+    invalidatesApproval: true
+  });
+
+  const reordered = release(['state.fresh', 'controller.available']);
+  assert.equal(executablePolicyHash(changedCapabilities), executablePolicyHash(reordered));
+  assert.deepEqual(diffExecutablePolicies(changedCapabilities, reordered), {
+    changes: [],
+    invalidatesApproval: false
+  });
+});
+
 test('legacy ExecSpec without capability requirements preserves gate behavior', async () => {
   const spec = release();
   const entries: ExecutionEvidence[] = [];
@@ -271,6 +302,14 @@ test('attestation evaluation allows a subset and blocks missing, stale, future, 
   assert.equal(evaluateRuntimeAttestation({
     requiredCapabilities,
     attestation: attestation(),
+    maxAgeMs: 5_000,
+    now: NOW
+  }).reason, null);
+  assert.equal(evaluateRuntimeAttestation({
+    requiredCapabilities,
+    attestation: attestation({
+      observedAt: new Date(NOW.getTime() - 5_000).toISOString()
+    }),
     maxAgeMs: 5_000,
     now: NOW
   }).reason, null);
@@ -385,6 +424,35 @@ test('gate records deterministic attestation evidence and verifies its hash chai
   }), { ok: true });
 });
 
+test('permit refresh allows a newer observation and irrelevant capability changes', async () => {
+  const spec = release(['controller.available']);
+  const issued = attestation({
+    observedAt: new Date(NOW.getTime() - 1_000).toISOString()
+  });
+  const refreshed = attestation({
+    observedAt: NOW.toISOString(),
+    availableCapabilities: ['controller.available', 'faults.clear']
+  });
+  const entries: ExecutionEvidence[] = [];
+  let dispatches = 0;
+  const executionGate = gate({
+    spec,
+    entries,
+    dispatch: () => { dispatches += 1; },
+    refreshedAttestation: async () => refreshed
+  });
+  const decision = await executionGate.evaluate(request(spec, issued));
+  assert.equal(decision.status, 'allowed');
+  if (decision.status !== 'allowed') throw new Error('expected permit');
+  await executionGate.execute(decision.authorizedRequest);
+  assert.equal(dispatches, 1);
+  assert.equal(entries.at(-1)?.attestationObservedAt, refreshed.observedAt);
+  assert.deepEqual(
+    entries.at(-1)?.observedAvailableCapabilities,
+    refreshed.availableCapabilities
+  );
+});
+
 test('permit refresh fails closed on continuity, capability, refresh, or attestation mutation', async () => {
   const spec = release(['controller.available']);
   const cases: Array<{
@@ -402,6 +470,27 @@ test('permit refresh fails closed on continuity, capability, refresh, or attesta
       name: 'capability',
       refresh: async () => attestation({ availableCapabilities: ['state.fresh'] }),
       reason: 'runtime_capability_missing'
+    },
+    {
+      name: 'source identity',
+      refresh: async () => attestation({
+        source: { identity: 'replacement-monitor', kind: 'external-monitor', version: '1' }
+      }),
+      reason: 'runtime_attestation_changed'
+    },
+    {
+      name: 'source kind',
+      refresh: async () => attestation({
+        source: { identity: 'trusted-runtime-monitor', kind: 'replacement-kind', version: '1' }
+      }),
+      reason: 'runtime_attestation_changed'
+    },
+    {
+      name: 'source version',
+      refresh: async () => attestation({
+        source: { identity: 'trusted-runtime-monitor', kind: 'external-monitor', version: '2' }
+      }),
+      reason: 'runtime_attestation_changed'
     },
     {
       name: 'refresh failure',

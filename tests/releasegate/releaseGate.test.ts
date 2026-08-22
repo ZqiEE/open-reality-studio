@@ -185,6 +185,18 @@ async function testReleasePolicyAndDiff(): Promise<void> {
   assert.equal(record.approvedIdentityHash, identity);
   assert.equal(record.approvedConfigurationDigest, release.approvedConfigurationDigest);
 
+  const shadowRecord = transitionRelease({
+    ...record,
+    approvedConfigurationDigest: H('9')
+  }, 'shadow', {
+    actor: 'operator',
+    occurredAt: NOW.toISOString(),
+    reason: 'preserve approval binding',
+    spec: release,
+    evidence: [evidenceFor(release)]
+  });
+  assert.equal(shadowRecord.approvedConfigurationDigest, H('9'));
+
   const legacySource = structuredClone(release) as Record<string, unknown>;
   delete legacySource.executionConfiguration;
   delete legacySource.approvedConfigurationDigest;
@@ -207,6 +219,13 @@ async function testReleasePolicyAndDiff(): Promise<void> {
   }, 'arm-03', NOW), {
     allowed: false,
     reason: 'configuration_mismatch'
+  });
+  assert.deepEqual(executionEligibility(release, {
+    ...releasedRecord(release),
+    approvedConfigurationDigest: undefined
+  }, 'arm-03', NOW), {
+    allowed: false,
+    reason: 'configuration_unbound'
   });
   assert.throws(() => transitionRelease(record, 'released', {
     actor: 'operator',
