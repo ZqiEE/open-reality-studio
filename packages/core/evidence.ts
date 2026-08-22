@@ -15,6 +15,12 @@ export interface ExecutionEvidence {
   controllerProfileHash: string;
   expectedConfigurationDigest?: string | null;
   observedConfigurationDigest?: string | null;
+  attestationSourceIdentity?: string | null;
+  attestationObservedAt?: string | null;
+  expectedRequiredCapabilities?: string[];
+  observedAvailableCapabilities?: string[] | null;
+  runtimeAttestationDigest?: string | null;
+  runtimeContinuityTokenHash?: string | null;
   runtimePolicyHash: string;
   deviceId: string;
   proposalId: string;

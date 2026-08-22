@@ -4,6 +4,7 @@ import {
   configurationDigest,
   executionConfigurationSchema
 } from './execution-configuration';
+import { requiredCapabilitiesSchema } from './runtime-attestation';
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/, 'expected lowercase SHA-256');
 const timestamp = z.string().datetime({ offset: true });
@@ -54,6 +55,8 @@ export const executablePolicySpecSchema = z.object({
     policySha256: hash,
     maxStateAgeMs: z.number().int().positive(),
     maxConfigurationAgeMs: z.number().int().positive().optional(),
+    requiredCapabilities: requiredCapabilitiesSchema.optional(),
+    maxAttestationAgeMs: z.number().int().positive().optional(),
     failClosed: z.literal(true)
   }).strict(),
   executionConfiguration: executionConfigurationSchema.optional(),
@@ -162,7 +165,7 @@ export function diffExecutablePolicies(
     ['action contract', previous.actionContract, next.actionContract],
     ['robot profile', previous.robot.profileSha256, next.robot.profileSha256],
     ['controller', previous.robot.controllerConfigSha256, next.robot.controllerConfigSha256],
-    ['runtime policy', previous.runtimePolicy.policySha256, next.runtimePolicy.policySha256],
+    ['runtime policy', previous.runtimePolicy, next.runtimePolicy],
     ['execution configuration', previous.executionConfiguration, next.executionConfiguration],
     ['approved configuration digest', previous.approvedConfigurationDigest, next.approvedConfigurationDigest],
     ['scenario evidence', previous.evidence.testReportSha256, next.evidence.testReportSha256]

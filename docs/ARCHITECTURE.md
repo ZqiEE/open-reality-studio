@@ -3,6 +3,7 @@
 ```text
 ExecSpec
   -> release identity and approval
+  -> execution configuration and runtime capability attestation
   -> fresh state and action validation
   -> short-lived single-use permit
   -> dispatch-time revocation refresh
@@ -17,12 +18,35 @@ transitions, approval identity, revocation, execution eligibility, permits,
 Shadow decisions, evidence generation, and evidence verification.
 
 A permit is private, consumed on first use, expires after at most one second,
-and is bound to the release, action hash, device, and controller. Any missing,
-expired, changed, mismatched, stale, revoked, or unapproved input fails closed.
-The release record is refreshed immediately before dispatch.
+and is bound to the release, action hash, device, controller, execution
+configuration, and any required runtime attestation. Any missing, expired,
+changed, mismatched, stale, revoked, or unapproved input fails closed. The
+release record and configured runtime observations are refreshed immediately
+before dispatch.
 
 Shadow has no dispatcher. It records whether the same proposal would pass while
 always reporting `hardwareSignalSent: false`.
+
+## Runtime attestation boundary
+
+An ExecSpec may require a deterministic set of runtime capabilities. A trusted
+adapter or external monitor supplies a versioned `RuntimeAttestation` containing
+its source identity, observation time, continuity token, and currently available
+capabilities. Core compares required and available capability strings as sets;
+it does not interpret natural language or infer physical safety from raw sensor
+data.
+
+Diagnostic, fault, safety, and perception systems may publish authenticated
+facts or capabilities for an approved adapter to attest. RLSOK only evaluates
+the deterministic requirements approved in the ExecSpec. The attestation digest
+and continuity token are bound to the short-lived permit and refreshed before
+dispatch. Evidence records the source and capability facts, hashes the
+continuity token, and remains backward compatible when no capabilities are
+required.
+
+DDS GUIDs and transport or session identifiers may contribute continuity
+evidence. They are not durable authorization identities unless an appropriate
+security layer authenticates them.
 
 ## ROS 2 boundary
 
@@ -59,3 +83,7 @@ bindings, duplicate proposal IDs, stale state, contract mismatches, changed
 release content, invalid permits, and revoked releases. Host compromise,
 controller firmware, sensing errors, clock failure, DDS behavior, and physical
 hazards remain outside the software guarantee.
+
+Runtime attestation does not replace functional safety, collision detection,
+emergency stopping, an E-stop, a safety PLC, or certified controller behavior.
+Those protections remain independent of RLSOK authorization.

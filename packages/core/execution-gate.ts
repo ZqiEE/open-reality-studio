@@ -8,6 +8,13 @@ import {
   evaluateConfigurationBinding,
   type ExecutionConfiguration
 } from './execution-configuration';
+import {
+  continuityTokenHash,
+  evaluateRuntimeAttestation,
+  runtimeAttestationDigest,
+  runtimeAttestationSchema,
+  type RuntimeAttestation
+} from './runtime-attestation';
 
 declare const permitBrand: unique symbol;
 
@@ -28,6 +35,7 @@ export interface ExecutionRequest<TAction, TState> {
   /** Deployment-local controller identity; defaults to the controller profile hash. */
   controllerIdentity?: string;
   executionConfiguration?: ExecutionConfiguration;
+  runtimeAttestation?: RuntimeAttestation;
   now?: Date;
 }
 
@@ -60,6 +68,42 @@ export type ActionPolicy<TAction, TState> = (
   state: TState
 ) => Promise<{ allowed: boolean; reason: string; matchedRuleIds: string[] }>;
 
+function attestationMaxAgeMs(release: ExecutablePolicySpec): number {
+  return release.runtimePolicy.maxAttestationAgeMs
+    ?? release.runtimePolicy.maxStateAgeMs;
+}
+
+function attestationEvidence(
+  release: ExecutablePolicySpec,
+  attestation: RuntimeAttestation | undefined
+): Partial<Pick<ExecutionEvidence,
+  | 'attestationSourceIdentity'
+  | 'attestationObservedAt'
+  | 'expectedRequiredCapabilities'
+  | 'observedAvailableCapabilities'
+  | 'runtimeAttestationDigest'
+  | 'runtimeContinuityTokenHash'>> {
+  const required = release.runtimePolicy.requiredCapabilities ?? [];
+  if (required.length === 0) return {};
+  const parsed = attestation
+    ? runtimeAttestationSchema.safeParse(attestation)
+    : null;
+  return {
+    attestationSourceIdentity: parsed?.success ? parsed.data.source.identity : null,
+    attestationObservedAt: parsed?.success ? parsed.data.observedAt : null,
+    expectedRequiredCapabilities: [...required],
+    observedAvailableCapabilities: parsed?.success
+      ? [...parsed.data.availableCapabilities]
+      : null,
+    runtimeAttestationDigest: parsed?.success
+      ? runtimeAttestationDigest(parsed.data)
+      : null,
+    runtimeContinuityTokenHash: parsed?.success
+      ? continuityTokenHash(parsed.data.continuityToken)
+      : null
+  };
+}
+
 export class ReleaseExecutionGate<TAction, TState, TResult>
 {
   private readonly permits = new Map<object, {
@@ -69,6 +113,8 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     deviceId: string;
     controllerIdentity: string;
     configurationDigest: string;
+    runtimeAttestationDigest?: string;
+    continuityToken?: string;
   }>();
 
   constructor(
@@ -81,7 +127,10 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     ) => Promise<ReleaseRecord>,
     private readonly refreshExecutionConfiguration?: (
       request: AuthorizedExecutionRequest<TAction, TState>
-    ) => Promise<ExecutionConfiguration | undefined>
+    ) => Promise<ExecutionConfiguration | undefined>,
+    private readonly refreshRuntimeAttestation?: (
+      request: AuthorizedExecutionRequest<TAction, TState>
+    ) => Promise<RuntimeAttestation | undefined>
   ) {}
 
   private evidenceFor(
@@ -105,6 +154,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       observedConfigurationDigest: request.executionConfiguration
         ? configurationDigest(request.executionConfiguration)
         : null,
+      ...attestationEvidence(request.release, request.runtimeAttestation),
       runtimePolicyHash: request.release.runtimePolicy.policySha256,
       deviceId: request.deviceId,
       proposalId: request.proposalId,
@@ -156,6 +206,21 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       ));
       return { status: 'blocked', reason: configuration.reason! };
     }
+    const attestation = evaluateRuntimeAttestation({
+      requiredCapabilities: request.release.runtimePolicy.requiredCapabilities,
+      attestation: request.runtimeAttestation,
+      maxAgeMs: attestationMaxAgeMs(request.release),
+      now
+    });
+    if (!attestation.allowed) {
+      await this.evidence.append(this.evidenceFor(
+        request,
+        'blocked',
+        attestation.reason!,
+        ['runtime_attestation']
+      ));
+      return { status: 'blocked', reason: attestation.reason! };
+    }
     if (request.state === undefined || !request.stateObservedAt) {
       await this.evidence.append(this.evidenceFor(
         request,
@@ -201,7 +266,9 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       releaseId: request.release.metadata.releaseId,
       deviceId: request.deviceId,
       controllerIdentity: request.controllerIdentity ?? request.release.robot.controllerConfigSha256,
-      configurationDigest: configuration.observedDigest!
+      configurationDigest: configuration.observedDigest!,
+      runtimeAttestationDigest: attestation.digest ?? undefined,
+      continuityToken: attestation.attestation?.continuityToken
     });
     return {
       status: 'allowed',
@@ -216,6 +283,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     this.permits.delete(permit);
     let currentReleaseRecord = request.releaseRecord;
     let currentExecutionConfiguration = request.executionConfiguration;
+    let currentRuntimeAttestation = request.runtimeAttestation;
     try {
       currentReleaseRecord = this.refreshReleaseRecord
         ? await this.refreshReleaseRecord(request)
@@ -236,10 +304,21 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
         currentExecutionConfiguration = undefined;
       }
     }
+    if (
+      (request.release.runtimePolicy.requiredCapabilities?.length ?? 0) > 0
+      && this.refreshRuntimeAttestation
+    ) {
+      try {
+        currentRuntimeAttestation = await this.refreshRuntimeAttestation(request);
+      } catch {
+        currentRuntimeAttestation = undefined;
+      }
+    }
     const now = request.now ?? new Date();
     const currentRequest = {
       ...request,
-      executionConfiguration: currentExecutionConfiguration
+      executionConfiguration: currentExecutionConfiguration,
+      runtimeAttestation: currentRuntimeAttestation
     };
     const configuration = evaluateConfigurationBinding({
       approvedConfigurationDigest: request.release.approvedConfigurationDigest,
@@ -249,35 +328,51 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       now
     });
     const eligible = executionEligibility(request.release, currentReleaseRecord, request.deviceId, now);
-    const invalidReason = !record
-      ? 'permit_unknown_or_reused'
-      : record.expiresAt <= now.getTime()
-        ? 'permit_expired'
-        : record.actionHash !== request.actionHash
-          ? 'permit_action_binding_mismatch'
-          : record.releaseId !== request.release.metadata.releaseId
-            ? 'permit_release_binding_mismatch'
-            : record.deviceId !== request.deviceId
-              ? 'permit_device_binding_mismatch'
-              : record.controllerIdentity !== (request.controllerIdentity ?? request.release.robot.controllerConfigSha256)
-                ? 'permit_controller_binding_mismatch'
-                : !configuration.allowed
-                  ? configuration.reason
-                  : record.configurationDigest !== configuration.observedDigest
-                    ? 'configuration_mismatch'
-                    : this.hashAction(request.action) !== request.actionHash
-                      ? 'action_hash_mismatch'
-                      : !eligible.allowed
-                        ? eligible.reason
-                        : null;
+    const attestation = evaluateRuntimeAttestation({
+      requiredCapabilities: request.release.runtimePolicy.requiredCapabilities,
+      attestation: currentRuntimeAttestation,
+      maxAgeMs: attestationMaxAgeMs(request.release),
+      now
+    });
+    const issuedAttestation = evaluateRuntimeAttestation({
+      requiredCapabilities: request.release.runtimePolicy.requiredCapabilities,
+      attestation: request.runtimeAttestation,
+      maxAgeMs: attestationMaxAgeMs(request.release),
+      now
+    });
+    let invalidReason: string | null = null;
+    if (!record) invalidReason = 'permit_unknown_or_reused';
+    else if (record.expiresAt <= now.getTime()) invalidReason = 'permit_expired';
+    else if (record.actionHash !== request.actionHash) invalidReason = 'permit_action_binding_mismatch';
+    else if (record.releaseId !== request.release.metadata.releaseId) invalidReason = 'permit_release_binding_mismatch';
+    else if (record.deviceId !== request.deviceId) invalidReason = 'permit_device_binding_mismatch';
+    else if (record.controllerIdentity !== (request.controllerIdentity ?? request.release.robot.controllerConfigSha256)) {
+      invalidReason = 'permit_controller_binding_mismatch';
+    } else if (!configuration.allowed) {
+      invalidReason = configuration.reason ?? 'configuration_mismatch';
+    } else if (record.configurationDigest !== configuration.observedDigest) {
+      invalidReason = 'configuration_mismatch';
+    }
+    else if (this.hashAction(request.action) !== request.actionHash) invalidReason = 'action_hash_mismatch';
+    else if (!eligible.allowed) invalidReason = eligible.reason;
+    else if (!attestation.allowed) {
+      invalidReason = attestation.reason ?? 'runtime_attestation_stale';
+    } else if (record.runtimeAttestationDigest !== (issuedAttestation.digest ?? undefined)) {
+      invalidReason = 'runtime_attestation_changed';
+    } else if (record.continuityToken !== attestation.attestation?.continuityToken) {
+      invalidReason = 'runtime_continuity_changed';
+    }
     if (invalidReason) {
       const configurationBlocked = invalidReason.startsWith('configuration_');
+      const attestationBlocked = invalidReason.startsWith('runtime_');
       await this.evidence.append(this.evidenceFor(
         currentRequest,
-        configurationBlocked ? 'blocked' : 'failed',
+        configurationBlocked || attestationBlocked ? 'blocked' : 'failed',
         invalidReason,
         configurationBlocked
           ? ['configuration_binding', 'single_use_permit']
+          : attestationBlocked
+            ? ['runtime_attestation', 'single_use_permit']
           : ['single_use_permit']
       ));
       throw new Error(`execution_permit_invalid:${invalidReason}`);
@@ -289,10 +384,17 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
         && 'completed' in result
         && (result as { completed?: unknown }).completed === true;
       await this.evidence.append(this.evidenceFor(
-        request,
+        currentRequest,
         'allowed',
         'dispatched',
-        ['release_eligibility', 'state_freshness', 'action_identity'],
+        [
+          'release_eligibility',
+          ...(request.release.runtimePolicy.requiredCapabilities?.length
+            ? ['runtime_attestation']
+            : []),
+          'state_freshness',
+          'action_identity'
+        ],
         'attempted_unconfirmed',
         terminal ? 'controller_result_recorded' : 'dispatch_attempted',
         dispatchedAt,
@@ -301,7 +403,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       return result;
     } catch (error) {
       await this.evidence.append(this.evidenceFor(
-        request,
+        currentRequest,
         'failed',
         error instanceof Error ? error.message : 'dispatch_failed',
         ['dispatch'],
@@ -332,6 +434,12 @@ export class ShadowExecutionGate<TAction, TState> {
       maxAgeMs: request.release.runtimePolicy.maxConfigurationAgeMs ?? 300_000,
       now
     });
+    const attestation = evaluateRuntimeAttestation({
+      requiredCapabilities: request.release.runtimePolicy.requiredCapabilities,
+      attestation: request.runtimeAttestation,
+      maxAgeMs: attestationMaxAgeMs(request.release),
+      now
+    });
     let reason =
       !configuration.allowed
         ? configuration.reason!
@@ -356,6 +464,10 @@ export class ShadowExecutionGate<TAction, TState> {
     let matchedRuleIds = reason === 'state_missing'
       ? ['state_freshness']
       : ['shadow_release_eligibility'];
+    if (reason === 'state_missing' && !attestation.allowed) {
+      reason = attestation.reason!;
+      matchedRuleIds = ['runtime_attestation'];
+    }
     if (reason === 'state_missing' && request.state !== undefined && request.stateObservedAt) {
       const age = now.getTime() - Date.parse(request.stateObservedAt);
       if (age >= 0 && age <= request.release.runtimePolicy.maxStateAgeMs) {
@@ -383,6 +495,7 @@ export class ShadowExecutionGate<TAction, TState> {
       controllerProfileHash: request.release.robot.controllerConfigSha256,
       expectedConfigurationDigest: configuration.expectedDigest,
       observedConfigurationDigest: configuration.observedDigest,
+      ...attestationEvidence(request.release, request.runtimeAttestation),
       runtimePolicyHash: request.release.runtimePolicy.policySha256,
       deviceId: request.deviceId,
       proposalId: request.proposalId,
