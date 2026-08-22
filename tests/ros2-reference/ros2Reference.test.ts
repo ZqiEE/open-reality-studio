@@ -502,6 +502,41 @@ async function testNoBypass(): Promise<void> {
     }),
     /ros2_discovery_timeout_out_of_range/,
   );
+  const cachedTransport = new PythonRos2SidecarTransport({
+    pythonExecutable: "python3",
+    sidecarPath: "unused",
+    discoveryTimeoutMs: 1_000,
+  });
+  const mutableTransport = cachedTransport as unknown as {
+    state?: JointStateSnapshot;
+  };
+  mutableTransport.state = {
+    names: ["joint_a"],
+    positions: [0],
+    observedAt: new Date(Date.now() - 2_000).toISOString(),
+  };
+  setTimeout(() => {
+    mutableTransport.state = {
+      names: ["joint_a"],
+      positions: [0],
+      observedAt: new Date().toISOString(),
+    };
+  }, 50);
+  assert.equal(
+    (await cachedTransport.getFreshJointState(1_000)).names[0],
+    "joint_a",
+    "an active publisher may replace a stale cached sample within the bounded wait",
+  );
+  mutableTransport.state = {
+    names: ["joint_a"],
+    positions: [0],
+    observedAt: new Date(Date.now() + 1_000).toISOString(),
+  };
+  await assert.rejects(
+    cachedTransport.getFreshJointState(1_000),
+    /joint_state_stale/,
+    "future timestamps still fail closed",
+  );
   assert(
     !sidecar.includes("trajectory_msgs.action"),
     "trajectory_msgs does not define an action",

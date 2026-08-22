@@ -1,7 +1,8 @@
 export default {
   mutate: [
     "packages/core/release-policy.ts:14-103",
-    "packages/core/execution-gate.ts:114-321",
+    "packages/core/execution-gate.ts:175-414",
+    "packages/core/runtime-attestation.ts",
   ],
   mutator: {
     // Labels and Evidence rule-id strings are asserted by conformance tests but are
@@ -9,7 +10,9 @@ export default {
     excludedMutations: ["StringLiteral", "ArrayDeclaration"],
   },
   testRunner: "command",
-  commandRunner: { command: "npm run test:decision-conformance" },
+  commandRunner: {
+    command: "npm run test:releasegate && npm run test:decision-conformance",
+  },
   coverageAnalysis: "off",
   concurrency: 4,
   timeoutMS: 15000,

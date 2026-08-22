@@ -227,6 +227,65 @@ test('configuration drift invalidates an issued permit before zero dispatch and 
   }), { ok: true });
 });
 
+test('release gate applies configuration max age and fails closed when refresh throws', async () => {
+  const staleConfiguration = configuration({
+    observedAt: new Date(NOW.getTime() - 120_000).toISOString()
+  });
+  const staleSpec = release(staleConfiguration);
+  const action = { jointNames: ['shoulder', 'elbow'], positions: [0, 0] };
+  const entries: ExecutionEvidence[] = [];
+  let dispatches = 0;
+  const staleGate = new ReleaseExecutionGate(
+    { async dispatch() { dispatches += 1; return { completed: true }; } },
+    { append(value) { entries.push(value); } },
+    async () => ({ allowed: true, reason: 'policy_passed', matchedRuleIds: ['policy'] }),
+    (value) => sha256(canonicalJson(value))
+  );
+  const staleDecision = await staleGate.evaluate({
+    release: staleSpec,
+    releaseRecord: record(staleSpec),
+    deviceId: 'robot-cell-a',
+    proposalId: 'stale-configuration',
+    action,
+    actionHash: sha256(canonicalJson(action)),
+    state: { positions: [0, 0] },
+    stateObservedAt: NOW.toISOString(),
+    executionConfiguration: staleConfiguration,
+    now: NOW
+  });
+  assert.equal(staleDecision.status, 'blocked');
+  assert.equal(staleDecision.reason, 'configuration_stale');
+
+  const spec = release();
+  const refreshGate = new ReleaseExecutionGate(
+    { async dispatch() { dispatches += 1; return { completed: true }; } },
+    { append(value) { entries.push(value); } },
+    async () => ({ allowed: true, reason: 'policy_passed', matchedRuleIds: ['policy'] }),
+    (value) => sha256(canonicalJson(value)),
+    async () => record(spec),
+    async () => { throw new Error('configuration monitor unavailable'); }
+  );
+  const allowed = await refreshGate.evaluate({
+    release: spec,
+    releaseRecord: record(spec),
+    deviceId: 'robot-cell-a',
+    proposalId: 'configuration-refresh-failure',
+    action,
+    actionHash: sha256(canonicalJson(action)),
+    state: { positions: [0, 0] },
+    stateObservedAt: NOW.toISOString(),
+    executionConfiguration: spec.executionConfiguration,
+    now: NOW
+  });
+  assert.equal(allowed.status, 'allowed');
+  if (allowed.status !== 'allowed') throw new Error('permit missing');
+  await assert.rejects(
+    refreshGate.execute(allowed.authorizedRequest),
+    /execution_permit_invalid:configuration_missing/
+  );
+  assert.equal(dispatches, 0);
+});
+
 test('Shadow configuration mismatch always records zero hardware signal', async () => {
   const approved = configuration();
   const spec = release(approved);

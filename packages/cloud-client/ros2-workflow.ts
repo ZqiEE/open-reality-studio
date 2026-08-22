@@ -8,6 +8,10 @@ import {
   type ExecutionConfiguration,
 } from "../core/execution-configuration";
 import {
+  evaluateRuntimeAttestation,
+  type RuntimeAttestation,
+} from "../core/runtime-attestation";
+import {
   ros2ProposalEnvelopeSchema,
   type JointTrajectoryAction,
   type Ros2ReferenceTransport,
@@ -48,6 +52,7 @@ interface WorkflowOptions {
   transport: Ros2ReferenceTransport;
   controllerIdentity: string;
   executionConfiguration: () => Promise<ExecutionConfiguration | undefined>;
+  runtimeAttestation?: () => Promise<RuntimeAttestation | undefined>;
   beforeFinalBoundary?: () => Promise<void>;
   localEvidence: (result: CloudConnectedRos2Result) => void | Promise<void>;
 }
@@ -189,7 +194,32 @@ export class CloudConnectedRos2Workflow {
           this.options.release.runtimePolicy.maxConfigurationAgeMs ?? 300_000,
       });
     };
+    const requiredCapabilities =
+      this.options.release.runtimePolicy.requiredCapabilities ?? [];
+    const observeAttestation = async () => {
+      let observed: RuntimeAttestation | undefined;
+      if (requiredCapabilities.length > 0) {
+        try {
+          observed = await this.options.runtimeAttestation?.();
+        } catch {
+          observed = undefined;
+        }
+      }
+      return evaluateRuntimeAttestation({
+        requiredCapabilities,
+        attestation: observed,
+        maxAgeMs:
+          this.options.release.runtimePolicy.maxAttestationAgeMs
+          ?? this.options.release.runtimePolicy.maxStateAgeMs,
+      });
+    };
     const configuration = await observeConfiguration();
+    const attestation = requiredCapabilities.length > 0
+      ? await observeAttestation()
+      : evaluateRuntimeAttestation({
+          requiredCapabilities,
+          maxAgeMs: this.options.release.runtimePolicy.maxStateAgeMs,
+        });
     let latestConfiguration = configuration;
     const initial = await this.options.cloud.getRelease(
       this.options.release.metadata.releaseId,
@@ -203,6 +233,8 @@ export class CloudConnectedRos2Workflow {
       denialReason = `cloud_release_not_eligible:${initial.state}`;
     } else if (!configuration.allowed) {
       denialReason = configuration.reason;
+    } else if (!attestation.allowed) {
+      denialReason = attestation.reason;
     }
     if (denialReason) {
       return this.persistEvidence(
@@ -292,6 +324,24 @@ export class CloudConnectedRos2Workflow {
         const current = await observeConfiguration();
         latestConfiguration = current;
         if (!current.allowed) throw new Error(current.reason!);
+        if (requiredCapabilities.length > 0) {
+          const currentAttestation = await observeAttestation();
+          if (!currentAttestation.allowed) {
+            throw new Error(currentAttestation.reason!);
+          }
+          if (
+            canonicalJson(attestation.attestation?.source)
+            !== canonicalJson(currentAttestation.attestation?.source)
+          ) {
+            throw new Error("runtime_attestation_changed");
+          }
+          if (
+            attestation.attestation?.continuityToken
+            !== currentAttestation.attestation?.continuityToken
+          ) {
+            throw new Error("runtime_continuity_changed");
+          }
+        }
         return current.observedDigest;
       },
     );

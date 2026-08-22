@@ -546,6 +546,99 @@ test("initial revoked release denial writes and verifies Evidence without a Perm
   assert.equal(localResults.length, 2);
 });
 
+test("cloud-connected release with capability requirements fails closed without attestation", async () => {
+  const base = executablePolicySpecSchema.parse(fixture.execSpec);
+  const spec = executablePolicySpecSchema.parse({
+    ...base,
+    runtimePolicy: {
+      ...base.runtimePolicy,
+      requiredCapabilities: ["controller.available"],
+      maxAttestationAgeMs: 5_000,
+    },
+  });
+  let submitted: any;
+  let stateReads = 0;
+  let permitRequests = 0;
+  let dispatches = 0;
+  const createdAt = new Date().toISOString();
+  const evidenceId = "33333333-3333-4333-8333-333333333333";
+  const cloud = {
+    async getRelease() {
+      return {
+        releaseId: spec.metadata.releaseId,
+        contentHash: executablePolicyHash(spec),
+        state: "approved" as const,
+      };
+    },
+    async requestPermit() {
+      permitRequests += 1;
+      throw new Error("permit_must_not_be_requested_without_attestation");
+    },
+    async submitEvidence(value: any) {
+      submitted = value;
+      return {
+        evidenceId,
+        sequence: 0,
+        previousHash: null,
+        evidenceHash: "0".repeat(64),
+        createdAt,
+      };
+    },
+    async getEvidence() {
+      const body = {
+        sequence: 0,
+        previousHash: null,
+        releaseId: submitted.releaseId,
+        permitId: submitted.permitId ?? null,
+        decision: submitted.decision,
+        hardwareSignalSent: submitted.hardwareSignalSent,
+        payload: submitted.payload,
+        createdAt,
+      };
+      return {
+        id: evidenceId,
+        ...body,
+        evidenceHash: sha256(canonicalJson(body)),
+      };
+    },
+  } as unknown as RlsokCloudClient;
+  const transport = {
+    async getFreshJointState() {
+      stateReads += 1;
+      throw new Error("state_must_not_be_read_without_attestation");
+    },
+    async dispatchTrajectory() {
+      dispatches += 1;
+      throw new Error("dispatch_must_not_happen_without_attestation");
+    },
+  } as unknown as Ros2ReferenceTransport;
+  const workflow = new CloudConnectedRos2Workflow({
+    mode: "shadow",
+    release: spec,
+    cloud,
+    transport,
+    controllerIdentity: spec.robot.controllerConfigSha256,
+    executionConfiguration: async () => currentExecutionConfiguration(),
+    localEvidence: () => undefined,
+  });
+  const result = await workflow.runProposal(JSON.stringify({
+    proposalId: "missing-runtime-attestation",
+    releaseId: spec.metadata.releaseId,
+    deviceId: spec.deployment.allowedDeviceIds[0],
+    proposerIdentity: "fixture-policy",
+    actionRepresentation: "trajectory",
+    actionPayload: fixture.action,
+    createdAt,
+  }));
+  assert.equal(result.decision, "blocked");
+  assert.equal(result.reason, "runtime_attestation_missing");
+  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(result.evidenceVerified, true);
+  assert.equal(stateReads, 0);
+  assert.equal(permitRequests, 0);
+  assert.equal(dispatches, 0);
+});
+
 test("expired and mode-mismatched local authority fail before Cloud or controller access", async () => {
   const base = executablePolicySpecSchema.parse(fixture.execSpec);
   let cloudReads = 0;
