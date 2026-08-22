@@ -160,10 +160,17 @@ test('binding evaluation distinguishes matching, missing, stale, mismatch, and l
     }).reason,
     null
   );
-  assert.equal(evaluateConfigurationBinding({ approvedConfigurationDigest, mode: 'run', maxAgeMs: 60_000, now: NOW }).reason, 'configuration_missing');
+  const missing = evaluateConfigurationBinding({ approvedConfigurationDigest, mode: 'run', maxAgeMs: 60_000, now: NOW });
+  assert.equal(missing.reason, 'configuration_missing');
+  assert.equal(missing.legacyUnbound, false);
   assert.equal(evaluateConfigurationBinding({
     approvedConfigurationDigest,
     observedConfiguration: configuration({ observedAt: new Date(NOW.getTime() - 60_001).toISOString() }),
+    mode: 'run', maxAgeMs: 60_000, now: NOW
+  }).reason, 'configuration_stale');
+  assert.equal(evaluateConfigurationBinding({
+    approvedConfigurationDigest,
+    observedConfiguration: configuration({ observedAt: new Date(NOW.getTime() + 1).toISOString() }),
     mode: 'run', maxAgeMs: 60_000, now: NOW
   }).reason, 'configuration_stale');
   assert.equal(evaluateConfigurationBinding({
@@ -226,6 +233,46 @@ test('configuration drift invalidates an issued permit before zero dispatch and 
     createdAt: NOW.toISOString(),
     entries: [chained]
   }), { ok: true });
+});
+
+test('issued permit retains its configuration binding if the request is mutated', async () => {
+  const spec = release();
+  const action = { jointNames: ['shoulder', 'elbow'], positions: [0, 0] };
+  const actionHash = sha256(canonicalJson(action));
+  let dispatches = 0;
+  const entries: ExecutionEvidence[] = [];
+  const gate = new ReleaseExecutionGate(
+    { async dispatch() { dispatches += 1; return { completed: true }; } },
+    { append(value) { entries.push(value); } },
+    async () => ({ allowed: true, reason: 'policy_passed', matchedRuleIds: ['policy'] }),
+    (value) => sha256(canonicalJson(value))
+  );
+  const decision = await gate.evaluate({
+    release: spec,
+    releaseRecord: record(spec),
+    deviceId: 'robot-cell-a',
+    proposalId: 'configuration-permit-binding',
+    action,
+    actionHash,
+    state: { positions: [0, 0] },
+    stateObservedAt: NOW.toISOString(),
+    executionConfiguration: spec.executionConfiguration,
+    now: NOW
+  });
+  assert.equal(decision.status, 'allowed');
+  if (decision.status !== 'allowed') throw new Error('permit missing');
+
+  const changed = configuration({ robotIdentity: H('9') });
+  decision.authorizedRequest.release.executionConfiguration = changed;
+  decision.authorizedRequest.release.approvedConfigurationDigest = configurationDigest(changed);
+  decision.authorizedRequest.executionConfiguration = changed;
+
+  await assert.rejects(
+    gate.execute(decision.authorizedRequest),
+    /execution_permit_invalid:configuration_mismatch/
+  );
+  assert.equal(dispatches, 0);
+  assert.equal(entries.at(-1)?.decisionReason, 'configuration_mismatch');
 });
 
 test('release gate applies configuration max age and fails closed when refresh throws', async () => {

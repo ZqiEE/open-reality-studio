@@ -18,8 +18,10 @@ import type { ReleaseRecord } from "../../packages/core/release-policy";
 import {
   configurationDigest,
   executionConfigurationV1Schema,
+  executionConfigurationV2Schema,
   type ExecutionConfiguration,
   type ExecutionConfigurationV1,
+  type ExecutionConfigurationV2,
 } from "../../packages/core/execution-configuration";
 import {
   InMemoryReleaseResolver,
@@ -32,6 +34,7 @@ import {
   type Ros2ReferenceTransport,
 } from "../../packages/ros2-reference-gateway";
 import { PythonRos2SidecarTransport } from "../../packages/ros2-reference-gateway/sidecar";
+import { observeGenericRosExecutionConfiguration } from "../../apps/cli/ros2";
 
 const H = (character: string) => character.repeat(64);
 const NOW = new Date("2026-07-26T12:00:00.000Z");
@@ -59,6 +62,50 @@ function configuration(
     adapter: { identity: "ros2-reference-gateway", version: "1.3.1" },
     observedAt: NOW.toISOString(),
     ...overrides,
+  });
+}
+
+function configurationV2(): ExecutionConfigurationV2 {
+  return executionConfigurationV2Schema.parse({
+    schemaVersion: 2,
+    identity: {
+      device: "arm-01",
+      robot: "reference-arm",
+    },
+    semanticContract: {
+      command: {
+        interfaceType: "control_msgs/action/FollowJointTrajectory",
+        endpoint: "/joint_trajectory_controller/follow_joint_trajectory",
+      },
+      controller: {
+        implementation:
+          "joint_trajectory_controller/JointTrajectoryController",
+        version: "4.20.0",
+      },
+      jointCommandMapping: [
+        { joint: "joint_a", commandIndex: 0 },
+        { joint: "joint_b", commandIndex: 1 },
+      ],
+    },
+    provenance: [
+      {
+        kind: "generated",
+        sourceIdentity: "controller/generated",
+        purpose: "controller_configuration",
+        inputSha256: H("4"),
+        generator: {
+          identity: "trusted-reference-adapter",
+          version: "1.0.0",
+        },
+      },
+    ],
+    observation: {
+      observedAt: NOW.toISOString(),
+      environment: {
+        rosDistro: "test",
+        rmwImplementation: "rmw_test_cpp",
+      },
+    },
   });
 }
 
@@ -131,6 +178,20 @@ function record(spec: ExecutablePolicySpec): ReleaseRecord {
     approvedBy: "release@example.test",
     approvedAt: "2026-07-25T01:00:00.000Z",
   };
+}
+
+function releaseV2(): ExecutablePolicySpec {
+  const base = release("shadow");
+  const boundConfiguration = configurationV2();
+  return executablePolicySpecSchema.parse({
+    ...base,
+    metadata: {
+      ...base.metadata,
+      releaseId: "ros2-shadow-v2-001",
+    },
+    executionConfiguration: boundConfiguration,
+    approvedConfigurationDigest: configurationDigest(boundConfiguration),
+  });
 }
 
 function action(): JointTrajectoryAction {
@@ -377,6 +438,62 @@ async function testReferenceRun(): Promise<void> {
   assert.equal(unavailable.transport.dispatches, 1);
 }
 
+async function testV2ObservationBoundary(): Promise<void> {
+  const spec = releaseV2();
+  const transport = new SpyTransport();
+  const genericObservation = async () => observeGenericRosExecutionConfiguration(
+    spec,
+    transport as unknown as PythonRos2SidecarTransport,
+    "arm-01",
+  );
+
+  assert.equal(
+    await genericObservation(),
+    undefined,
+    "generic ROS discovery must not copy approved v2 provenance or semantics",
+  );
+
+  const resolver = new InMemoryReleaseResolver();
+  resolver.bind("arm-01", "planner@example.test", spec);
+  const store = new InMemoryReleaseRecordStore(
+    new Map([[spec.metadata.releaseId, record(spec)]]),
+  );
+  const genericGateway = new Ros2ReferenceGateway({
+    mode: "shadow",
+    controllerIdentity: spec.robot.controllerConfigSha256,
+    releaseResolver: resolver,
+    releaseRecords: store,
+    transport,
+    evidence: { append: () => {} },
+    executionConfiguration: genericObservation,
+    now: () => NOW,
+  });
+  const genericResult = await genericGateway.handlePayload(proposal(spec));
+  assert.equal(genericResult.decision, "blocked");
+  assert.equal(genericResult.reason, "configuration_missing");
+  assert.equal(genericResult.hardwareSignalSent, false);
+  assert.equal(transport.dispatches, 0);
+
+  const trustedTransport = new SpyTransport();
+  const trustedGateway = new Ros2ReferenceGateway({
+    mode: "shadow",
+    controllerIdentity: spec.robot.controllerConfigSha256,
+    releaseResolver: resolver,
+    releaseRecords: store,
+    transport: trustedTransport,
+    evidence: { append: () => {} },
+    executionConfiguration: async () => spec.executionConfiguration,
+    now: () => NOW,
+  });
+  const trustedResult = await trustedGateway.handlePayload(
+    proposal(spec, "trusted-v2-proposal"),
+  );
+  assert.equal(trustedResult.decision, "allowed");
+  assert.match(trustedResult.reason, /^shadow_observation_only:/);
+  assert.equal(trustedResult.hardwareSignalSent, false);
+  assert.equal(trustedTransport.dispatches, 0);
+}
+
 async function testRevocation(): Promise<void> {
   const active = setup("run");
   await active.gateway.handlePayload(proposal(active.spec));
@@ -621,6 +738,7 @@ const suites: Record<string, () => Promise<void>> = {
   "ros2-contract": testContract,
   "ros2-shadow": testShadow,
   "ros2-reference": testReferenceRun,
+  "ros2-v2-observation-boundary": testV2ObservationBoundary,
   "ros2-revocation": testRevocation,
   "ros2-evidence": testEvidence,
   "ros2-no-bypass": testNoBypass,

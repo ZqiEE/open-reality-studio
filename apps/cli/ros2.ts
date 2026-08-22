@@ -95,43 +95,22 @@ async function waitForControllerDiscovery(
   return report;
 }
 
-async function observeExecutionConfiguration(
+export async function observeGenericRosExecutionConfiguration(
   spec: ExecutablePolicySpec,
   transport: PythonRos2SidecarTransport,
   deviceId: string,
 ): Promise<ExecutionConfiguration | undefined> {
   const approved = spec.executionConfiguration;
   if (!approved) return undefined;
+  // Generic ROS graph discovery cannot authenticate v2 provenance or the full
+  // semantic identity. Returning no observation makes v2 fail closed; trusted
+  // callers may still supply a complete v2 value through the gateway callback.
+  if (approved.schemaVersion === 2) return undefined;
   const doctor = await transport.doctor();
   const state = await transport.getFreshJointState(
     spec.runtimePolicy.maxStateAgeMs,
   );
   if (!doctor.rosDistro || !doctor.rmwImplementation) return undefined;
-  if (approved.schemaVersion === 2) {
-    return executionConfigurationSchema.parse({
-      ...approved,
-      identity: { ...approved.identity, device: deviceId },
-      semanticContract: {
-        ...approved.semanticContract,
-        command: {
-          ...approved.semanticContract.command,
-          endpoint: doctor.controllerAction,
-        },
-        jointCommandMapping: state.names.map((joint, commandIndex) => ({
-          joint,
-          commandIndex,
-        })),
-      },
-      observation: {
-        ...approved.observation,
-        observedAt: new Date().toISOString(),
-        environment: {
-          rosDistro: doctor.rosDistro,
-          rmwImplementation: doctor.rmwImplementation,
-        },
-      },
-    });
-  }
   return executionConfigurationSchema.parse({
     ...approved,
     deviceIdentity: deviceId,
@@ -263,7 +242,7 @@ async function runCloudConnectedGateway(
     controllerIdentity:
       options["controller-identity"] ?? spec.robot.controllerConfigSha256,
     executionConfiguration: () =>
-      observeExecutionConfiguration(spec, transport, deviceId),
+      observeGenericRosExecutionConfiguration(spec, transport, deviceId),
     beforeFinalBoundary:
       process.env.RLSOK_TEST_FINAL_BOUNDARY_READY_FILE &&
       process.env.RLSOK_TEST_FINAL_BOUNDARY_CONTINUE_FILE
@@ -432,7 +411,7 @@ async function runGateway(
     transport,
     evidence: new FileEvidenceSink(spec, evidencePath),
     executionConfiguration: () =>
-      observeExecutionConfiguration(spec, transport, deviceId),
+      observeGenericRosExecutionConfiguration(spec, transport, deviceId),
   });
   let report = await transport.doctor();
   if (mode === "run" && !report.actionServerAvailable) {
