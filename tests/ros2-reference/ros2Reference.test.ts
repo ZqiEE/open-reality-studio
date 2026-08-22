@@ -17,8 +17,9 @@ import {
 import type { ReleaseRecord } from "../../packages/core/release-policy";
 import {
   configurationDigest,
-  executionConfigurationSchema,
+  executionConfigurationV1Schema,
   type ExecutionConfiguration,
+  type ExecutionConfigurationV1,
 } from "../../packages/core/execution-configuration";
 import {
   InMemoryReleaseResolver,
@@ -36,9 +37,9 @@ const H = (character: string) => character.repeat(64);
 const NOW = new Date("2026-07-26T12:00:00.000Z");
 
 function configuration(
-  overrides: Partial<ExecutionConfiguration> = {},
-): ExecutionConfiguration {
-  return executionConfigurationSchema.parse({
+  overrides: Partial<ExecutionConfigurationV1> = {},
+): ExecutionConfigurationV1 {
+  return executionConfigurationV1Schema.parse({
     schemaVersion: 1,
     deviceIdentity: "arm-01",
     robotIdentity: "reference-arm",
@@ -339,11 +340,15 @@ async function testReferenceRun(): Promise<void> {
   assert.equal(result.controllerGoalCount, 1);
 
   const drift = setup("run");
+  const approvedConfiguration = drift.spec.executionConfiguration;
+  if (approvedConfiguration?.schemaVersion !== 1) {
+    throw new Error("ROS 2 reference fixture must use ExecutionConfiguration v1");
+  }
   drift.observeConfigurations(
-    drift.spec.executionConfiguration!,
+    approvedConfiguration,
     configuration({
       controller: {
-        ...drift.spec.executionConfiguration!.controller,
+        ...approvedConfiguration.controller,
         followJointTrajectoryAction: "/changed/follow_joint_trajectory",
       },
     }),

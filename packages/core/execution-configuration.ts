@@ -3,8 +3,35 @@ import { canonicalJson, sha256 } from './evidence';
 
 const timestamp = z.string().datetime({ offset: true });
 const identity = z.string().trim().min(1).max(512);
+const version = z.string().trim().min(1).max(256);
+const hash = z.string().regex(/^[a-f0-9]{64}$/, 'expected lowercase SHA-256');
+const annotationValue = z.union([
+  z.string().max(1_024),
+  z.number().finite(),
+  z.boolean(),
+  z.null()
+]);
 
-export const executionConfigurationSchema = z.object({
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function uniqueAnnotations(label: string, maximum: number) {
+  return z.array(z.object({
+    name: z.string().trim().min(1).max(256),
+    value: annotationValue
+  }).strict()).max(maximum).superRefine((entries, context) => {
+    if (new Set(entries.map((entry) => entry.name)).size !== entries.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${label} must contain unique names`
+      });
+    }
+  });
+}
+
+/** ExecutionConfiguration v1 is intentionally frozen. */
+export const executionConfigurationV1Schema = z.object({
   schemaVersion: z.literal(1),
   deviceIdentity: identity,
   robotIdentity: identity,
@@ -40,7 +67,118 @@ export const executionConfigurationSchema = z.object({
   }
 });
 
+const provenancePurpose = z.enum([
+  'controller_configuration',
+  'robot_description',
+  'calibration',
+  'limits',
+  'frame_contract',
+  'other'
+]);
+
+const provenanceSourceSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('content'),
+    sourceIdentity: identity,
+    purpose: provenancePurpose,
+    contentSha256: hash
+  }).strict(),
+  z.object({
+    kind: z.literal('software'),
+    sourceIdentity: identity,
+    purpose: provenancePurpose,
+    version
+  }).strict(),
+  z.object({
+    kind: z.literal('generated'),
+    sourceIdentity: identity,
+    purpose: provenancePurpose,
+    inputSha256: hash,
+    generator: z.object({
+      identity,
+      version
+    }).strict()
+  }).strict()
+]);
+
+const provenanceSchema = z.array(provenanceSourceSchema).min(1).max(256)
+  .superRefine((entries, context) => {
+    if (new Set(entries.map((entry) => entry.sourceIdentity)).size !== entries.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'provenance entries must have unique sourceIdentity values'
+      });
+    }
+  })
+  .transform((entries) => [...entries].sort((left, right) => (
+    compareText(left.sourceIdentity, right.sourceIdentity)
+  )));
+
+const jointCommandMappingSchema = z.array(z.object({
+  joint: identity,
+  commandIndex: z.number().int().min(0).max(255)
+}).strict()).min(1).max(256).superRefine((entries, context) => {
+  if (new Set(entries.map((entry) => entry.joint)).size !== entries.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'joint command mapping must contain unique joint names'
+    });
+  }
+  if (new Set(entries.map((entry) => entry.commandIndex)).size !== entries.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'joint command mapping must contain unique command indexes'
+    });
+  }
+}).transform((entries) => [...entries].sort((left, right) => (
+  left.commandIndex - right.commandIndex
+)));
+
+export const executionConfigurationV2Schema = z.object({
+  schemaVersion: z.literal(2),
+  identity: z.object({
+    device: identity,
+    robot: identity
+  }).strict(),
+  semanticContract: z.object({
+    command: z.object({
+      interfaceType: identity,
+      endpoint: z.string().trim().min(1).max(1_024)
+    }).strict(),
+    controller: z.object({
+      implementation: identity,
+      version
+    }).strict(),
+    jointCommandMapping: jointCommandMappingSchema,
+    limitsDigest: hash.optional(),
+    frameContractDigest: hash.optional()
+  }).strict(),
+  provenance: provenanceSchema,
+  observation: z.object({
+    observedAt: timestamp,
+    environment: z.object({
+      rosDistro: identity.optional(),
+      rmwImplementation: identity.optional()
+    }).strict().optional(),
+    discovery: uniqueAnnotations('discovery entries', 256).optional(),
+    diagnostics: uniqueAnnotations('diagnostic entries', 256).optional()
+  }).strict(),
+  display: z.object({
+    friendlyName: z.string().max(512).optional(),
+    description: z.string().max(4_096).optional(),
+    ui: uniqueAnnotations('UI entries', 128).optional()
+  }).strict().optional()
+}).strict();
+
+export const executionConfigurationSchema = z.union([
+  executionConfigurationV1Schema,
+  executionConfigurationV2Schema
+]);
+
+export type ExecutionConfigurationV1 = z.infer<typeof executionConfigurationV1Schema>;
+export type ExecutionConfigurationV2 = z.infer<typeof executionConfigurationV2Schema>;
 export type ExecutionConfiguration = z.infer<typeof executionConfigurationSchema>;
+export type ExecutionConfigurationSchemaVersion = ExecutionConfiguration['schemaVersion'];
 
 export type ConfigurationBindingReason =
   | 'configuration_mismatch'
@@ -56,7 +194,7 @@ export interface ConfigurationBindingEvaluation {
   legacyUnbound: boolean;
 }
 
-function securityCriticalConfiguration(configuration: ExecutionConfiguration): unknown {
+function securityCriticalV1(configuration: ExecutionConfigurationV1): unknown {
   return {
     schemaVersion: configuration.schemaVersion,
     deviceIdentity: configuration.deviceIdentity,
@@ -70,9 +208,42 @@ function securityCriticalConfiguration(configuration: ExecutionConfiguration): u
   };
 }
 
+function securityCriticalV2(configuration: ExecutionConfigurationV2): unknown {
+  return {
+    schemaVersion: configuration.schemaVersion,
+    identity: configuration.identity,
+    semanticContract: configuration.semanticContract,
+    provenance: configuration.provenance
+  };
+}
+
 export function configurationDigest(configuration: ExecutionConfiguration): string {
   const parsed = executionConfigurationSchema.parse(configuration);
-  return sha256(canonicalJson(securityCriticalConfiguration(parsed)));
+  const projection = parsed.schemaVersion === 1
+    ? securityCriticalV1(parsed)
+    : securityCriticalV2(parsed);
+  return sha256(canonicalJson(projection));
+}
+
+export function configurationObservedAt(configuration: ExecutionConfiguration): string {
+  const parsed = executionConfigurationSchema.parse(configuration);
+  return parsed.schemaVersion === 1
+    ? parsed.observedAt
+    : parsed.observation.observedAt;
+}
+
+/**
+ * Preserve the historical full v1 ExecSpec identity while making v2 approval
+ * identity match the v2 security-critical digest projection.
+ */
+export function executableConfigurationIdentity(
+  configuration: ExecutionConfiguration | undefined
+): unknown {
+  if (!configuration) return undefined;
+  const parsed = executionConfigurationSchema.parse(configuration);
+  return parsed.schemaVersion === 1
+    ? parsed
+    : { schemaVersion: 2, configurationDigest: configurationDigest(parsed) };
 }
 
 export function evaluateConfigurationBinding(input: {
@@ -107,7 +278,7 @@ export function evaluateConfigurationBinding(input: {
     };
   }
   const now = input.now ?? new Date();
-  const ageMs = now.getTime() - Date.parse(observed.data.observedAt);
+  const ageMs = now.getTime() - Date.parse(configurationObservedAt(observed.data));
   if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > input.maxAgeMs) {
     return {
       allowed: false,

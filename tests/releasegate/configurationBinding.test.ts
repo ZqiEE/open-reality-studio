@@ -4,7 +4,8 @@ import {
   configurationDigest,
   evaluateConfigurationBinding,
   executionConfigurationSchema,
-  type ExecutionConfiguration
+  executionConfigurationV1Schema,
+  type ExecutionConfigurationV1
 } from '../../packages/core/execution-configuration';
 import { appendEvidence, canonicalJson, sha256, verifyEvidenceBundle, type ExecutionEvidence } from '../../packages/core/evidence';
 import { executablePolicyHash, executablePolicySpecSchema } from '../../packages/core/exec-spec';
@@ -14,8 +15,8 @@ import type { ReleaseRecord } from '../../packages/core/release-policy';
 const H = (character: string) => character.repeat(64);
 const NOW = new Date('2026-08-16T00:00:00.000Z');
 
-function configuration(overrides: Partial<ExecutionConfiguration> = {}): ExecutionConfiguration {
-  return executionConfigurationSchema.parse({
+function configuration(overrides: Partial<ExecutionConfigurationV1> = {}): ExecutionConfigurationV1 {
+  return executionConfigurationV1Schema.parse({
     schemaVersion: 1,
     deviceIdentity: 'robot-cell-a',
     robotIdentity: H('e'),

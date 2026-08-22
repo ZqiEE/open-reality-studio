@@ -107,6 +107,31 @@ async function observeExecutionConfiguration(
     spec.runtimePolicy.maxStateAgeMs,
   );
   if (!doctor.rosDistro || !doctor.rmwImplementation) return undefined;
+  if (approved.schemaVersion === 2) {
+    return executionConfigurationSchema.parse({
+      ...approved,
+      identity: { ...approved.identity, device: deviceId },
+      semanticContract: {
+        ...approved.semanticContract,
+        command: {
+          ...approved.semanticContract.command,
+          endpoint: doctor.controllerAction,
+        },
+        jointCommandMapping: state.names.map((joint, commandIndex) => ({
+          joint,
+          commandIndex,
+        })),
+      },
+      observation: {
+        ...approved.observation,
+        observedAt: new Date().toISOString(),
+        environment: {
+          rosDistro: doctor.rosDistro,
+          rmwImplementation: doctor.rmwImplementation,
+        },
+      },
+    });
+  }
   return executionConfigurationSchema.parse({
     ...approved,
     deviceIdentity: deviceId,

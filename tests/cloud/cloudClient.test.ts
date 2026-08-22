@@ -44,6 +44,9 @@ const configurationDigest =
 
 function currentExecutionConfiguration() {
   const spec = executablePolicySpecSchema.parse(fixture.execSpec);
+  if (spec.executionConfiguration?.schemaVersion !== 1) {
+    throw new Error("cloud v1 fixture must use ExecutionConfiguration v1");
+  }
   return {
     ...spec.executionConfiguration!,
     observedAt: new Date().toISOString(),

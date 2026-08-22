@@ -106,6 +106,12 @@ test("inspection emits an approval-only candidate from an unverified generic bou
   assert.equal(result.referenceRunRunnable, true);
   assert.equal(result.candidateApprovalRequired, true);
   assert.ok(result.executionConfigurationCandidate);
+  assert.equal(result.executionConfigurationCandidate?.schemaVersion, 1);
+  assert.equal(
+    'provenance' in (result.executionConfigurationCandidate ?? {}),
+    false,
+    'generic discovery must not fabricate configuration provenance'
+  );
   assert.match(result.detectedDeviceIdentity ?? "", /^graph:/);
   assert.match(result.detectedRobotIdentity ?? "", /^protocol:/);
   assert.equal(result.executionConfigurationCandidate?.jointOrder.join(","), "joint_a,joint_b");

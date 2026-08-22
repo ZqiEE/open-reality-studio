@@ -72,6 +72,9 @@ async function runCase(
     adapter: { identity: 'ros2-reference-gateway', version: '1.3.1' },
     observedAt: new Date().toISOString()
   });
+  if (boundConfiguration.schemaVersion !== 1) {
+    throw new Error('DDS fixture must use ExecutionConfiguration v1');
+  }
   source.runtimePolicy.maxConfigurationAgeMs = 60_000;
   source.executionConfiguration = boundConfiguration;
   source.approvedConfigurationDigest = configurationDigest(boundConfiguration);

@@ -12,8 +12,8 @@ import {
 } from '../../packages/core/exec-spec';
 import {
   configurationDigest,
-  executionConfigurationSchema,
-  type ExecutionConfiguration
+  executionConfigurationV1Schema,
+  type ExecutionConfigurationV1
 } from '../../packages/core/execution-configuration';
 import type { ReleaseRecord } from '../../packages/core/release-policy';
 import {
@@ -51,8 +51,8 @@ function requireCondition(condition: unknown, reason: string): asserts condition
   if (!condition) throw new Error(`demo_invariant_failed:${reason}`);
 }
 
-function configuration(): ExecutionConfiguration {
-  return executionConfigurationSchema.parse({
+function configuration(): ExecutionConfigurationV1 {
+  return executionConfigurationV1Schema.parse({
     schemaVersion: 1,
     deviceIdentity: 'arm-demo-01',
     robotIdentity: 'reference-arm',
@@ -73,7 +73,7 @@ function configuration(): ExecutionConfiguration {
   });
 }
 
-function release(bound: ExecutionConfiguration): ExecutablePolicySpec {
+function release(bound: ExecutionConfigurationV1): ExecutablePolicySpec {
   return executablePolicySpecSchema.parse({
     apiVersion: 'realitywarden.io/v1alpha1',
     kind: 'ExecutablePolicy',
@@ -236,7 +236,7 @@ export async function runDeploymentExecutionDemo(
   requireCondition(initial.hardwareSignalSent === false, 'initial_shadow_sent_hardware_signal');
   writeLine(DEPLOYMENT_EXECUTION_OUTPUT[1]);
 
-  observedConfiguration = executionConfigurationSchema.parse({
+  observedConfiguration = executionConfigurationV1Schema.parse({
     ...boundConfiguration,
     controller: {
       ...boundConfiguration.controller,

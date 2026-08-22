@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 import { canonicalJson, sha256 } from "../../packages/core/evidence";
 import {
   configurationDigest,
-  executionConfigurationSchema,
-  type ExecutionConfiguration,
+  executionConfigurationV1Schema,
+  type ExecutionConfigurationV1,
 } from "../../packages/core/execution-configuration";
 import {
   assessOfficialRobotIntegrations,
@@ -45,7 +45,7 @@ export interface CompatibilityInspection {
   referenceRunRunnable: boolean;
   compatibilityStatus: CompatibilityStatus;
   diagnostics: string[];
-  executionConfigurationCandidate: ExecutionConfiguration | null;
+  executionConfigurationCandidate: ExecutionConfigurationV1 | null;
   configurationDigestCandidate: string | null;
   candidateApprovalRequired: true;
 }
@@ -187,7 +187,7 @@ export function inspectCompatibility(
       jointOrder.length > 0,
   );
 
-  let candidate: ExecutionConfiguration | null = null;
+  let candidate: ExecutionConfigurationV1 | null = null;
   let detectedDeviceIdentity: string | null = null;
   let detectedRobotIdentity: string | null = null;
   if (graphBoundaryComplete && jointSource?.sample && trajectoryAction) {
@@ -212,7 +212,7 @@ export function inspectCompatibility(
       trajectoryAction: trajectoryAction.name,
       actionServers: trajectoryAction.servers ?? [],
     }))}`;
-    candidate = executionConfigurationSchema.parse({
+    candidate = executionConfigurationV1Schema.parse({
       schemaVersion: 1,
       deviceIdentity: detectedDeviceIdentity,
       robotIdentity: detectedRobotIdentity,
