@@ -32,7 +32,7 @@
     "licenses": "node scripts/license-inventory.cjs",
     "test:mutation": "stryker run",
     "rlsok": "node scripts/run-rlsok.cjs",
-    "test:releasegate": "node scripts/run-rlsok.cjs --test tests/releasegate/releaseGate.test.ts && node scripts/run-rlsok.cjs --test tests/releasegate/configurationBinding.test.ts && node scripts/run-rlsok.cjs --test tests/releasegate/runtimeAttestation.test.ts",
+    "test:releasegate": "node scripts/run-rlsok.cjs --test tests/releasegate/releaseGate.test.ts && node scripts/run-rlsok.cjs --test tests/releasegate/configurationBinding.test.ts && node scripts/run-rlsok.cjs --test tests/releasegate/configurationProvenance.test.ts && node scripts/run-rlsok.cjs --test tests/releasegate/runtimeAttestation.test.ts",
     "test:decision-conformance": "node scripts/run-rlsok.cjs --test tests/releasegate/decisionConformance.test.ts",
     "test:cloud": "node scripts/run-rlsok.cjs --test tests/cloud/cloudClient.test.ts",
     "test:setup": "node scripts/run-rlsok.cjs --test tests/setup/zeroToShadow.test.ts",

@@ -3,6 +3,9 @@ export default {
     "packages/core/release-policy.ts:14-103",
     "packages/core/execution-gate.ts:175-414",
     "packages/core/runtime-attestation.ts",
+    "packages/core/execution-configuration.ts:197-307",
+    "packages/core/exec-spec.ts:117-125",
+    "packages/core/exec-spec.ts:163-187",
   ],
   mutator: {
     // Labels and Evidence rule-id strings are asserted by conformance tests but are

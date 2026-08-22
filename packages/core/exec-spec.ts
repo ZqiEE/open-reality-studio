@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { canonicalJson, sha256 } from './evidence';
 import {
   configurationDigest,
+  executableConfigurationIdentity,
   executionConfigurationSchema
 } from './execution-configuration';
 import { requiredCapabilitiesSchema } from './runtime-attestation';
@@ -114,7 +115,13 @@ export const executablePolicySpecSchema = z.object({
 export type ExecutablePolicySpec = z.infer<typeof executablePolicySpecSchema>;
 
 export function executablePolicyHash(spec: ExecutablePolicySpec): string {
-  return sha256(canonicalJson(executablePolicySpecSchema.parse(spec)));
+  const parsed = executablePolicySpecSchema.parse(spec);
+  return sha256(canonicalJson({
+    ...parsed,
+    executionConfiguration: executableConfigurationIdentity(
+      parsed.executionConfiguration
+    )
+  }));
 }
 
 type CheckResult = 'PASS' | 'BLOCK' | 'APPROVAL_REQUIRED' | 'INVALID';
@@ -166,7 +173,11 @@ export function diffExecutablePolicies(
     ['robot profile', previous.robot.profileSha256, next.robot.profileSha256],
     ['controller', previous.robot.controllerConfigSha256, next.robot.controllerConfigSha256],
     ['runtime policy', previous.runtimePolicy, next.runtimePolicy],
-    ['execution configuration', previous.executionConfiguration, next.executionConfiguration],
+    [
+      'execution configuration',
+      executableConfigurationIdentity(previous.executionConfiguration),
+      executableConfigurationIdentity(next.executionConfiguration)
+    ],
     ['approved configuration digest', previous.approvedConfigurationDigest, next.approvedConfigurationDigest],
     ['scenario evidence', previous.evidence.testReportSha256, next.evidence.testReportSha256]
   ];

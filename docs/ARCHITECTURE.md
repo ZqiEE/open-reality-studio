@@ -27,6 +27,52 @@ before dispatch.
 Shadow has no dispatcher. It records whether the same proposal would pass while
 always reporting `hardwareSignalSent: false`.
 
+## Configuration provenance and semantic binding
+
+`ExecutionConfiguration` is versioned. Version 1 is frozen: its schema and
+historical digest projection remain unchanged for existing releases and Cloud
+contract fixtures. Version 2 separates an approved source-of-truth definition
+from observations that naturally change while the deployment is running.
+
+The version 2 configuration digest contains exactly:
+
+- `schemaVersion`;
+- stable device and robot identity;
+- the command interface type and logical endpoint;
+- controller implementation identity and version;
+- the explicit joint-to-command-index mapping;
+- declared limits and frame-contract digests;
+- canonical configuration provenance.
+
+Provenance entries identify their stable source and purpose. A content source
+binds its SHA-256 digest. A software source binds its version. A deterministic
+generated source binds the source-input digest plus generator identity and
+version; the generated output does not need a second independent digest.
+Provenance entries are unordered and canonicalized by unique source identity.
+Duplicate source identities are rejected rather than resolved by precedence.
+
+The version 2 digest excludes the observation timestamp, ROS/RMW environment
+observations, incidental discovery and diagnostic values, and display/UI
+metadata. These fields describe when and where the configuration was observed;
+they do not silently redefine execution semantics. There are no configurable
+ignore paths: every field is assigned to the schema's semantic or observational
+side explicitly.
+
+The existing configuration gate remains the only authorization path:
+approved digest, observed digest, evaluate, execute-time refresh, then dispatch.
+A changed semantic or provenance digest produces `configuration_mismatch` and
+cannot reach the dispatcher. Evidence records the expected and observed digest
+plus their configuration schema versions, not source contents or filesystem
+paths.
+
+Generic ROS discovery continues to emit a version 1 observational candidate. It
+cannot authenticate a controller package, calibration source, generator, or
+source file and therefore must not fabricate version 2 provenance. Such facts
+must come from an explicit trusted setup or adapter input. DDS participants,
+transport enumerations, namespaces, container IDs, and simulator-specific
+deployment values are not durable physical identity without a stable,
+authenticated mapping.
+
 ## Runtime attestation boundary
 
 An ExecSpec may require a deterministic set of runtime capabilities. A trusted
@@ -35,6 +81,11 @@ its source identity, observation time, continuity token, and currently available
 capabilities. Core compares required and available capability strings as sets;
 it does not interpret natural language or infer physical safety from raw sensor
 data.
+
+Configuration provenance answers which stable inputs and semantic contracts
+define the approved execution setup. Runtime attestation remains separate and
+answers whether required runtime facts and capabilities are valid now. Neither
+mechanism substitutes for the other.
 
 Diagnostic, fault, safety, and perception systems may publish authenticated
 facts or capabilities for an approved adapter to attest. RLSOK only evaluates

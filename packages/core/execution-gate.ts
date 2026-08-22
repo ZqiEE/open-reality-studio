@@ -155,6 +155,10 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       observedConfigurationDigest: request.executionConfiguration
         ? configurationDigest(request.executionConfiguration)
         : null,
+      expectedConfigurationSchemaVersion:
+        request.release.executionConfiguration?.schemaVersion ?? null,
+      observedConfigurationSchemaVersion:
+        request.executionConfiguration?.schemaVersion ?? null,
       ...attestationEvidence(request.release, request.runtimeAttestation),
       runtimePolicyHash: request.release.runtimePolicy.policySha256,
       deviceId: request.deviceId,
@@ -508,6 +512,10 @@ export class ShadowExecutionGate<TAction, TState> {
       controllerProfileHash: request.release.robot.controllerConfigSha256,
       expectedConfigurationDigest: configuration.expectedDigest,
       observedConfigurationDigest: configuration.observedDigest,
+      expectedConfigurationSchemaVersion:
+        request.release.executionConfiguration?.schemaVersion ?? null,
+      observedConfigurationSchemaVersion:
+        request.executionConfiguration?.schemaVersion ?? null,
       ...attestationEvidence(request.release, request.runtimeAttestation),
       runtimePolicyHash: request.release.runtimePolicy.policySha256,
       deviceId: request.deviceId,
