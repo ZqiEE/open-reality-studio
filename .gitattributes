@@ -1,0 +1,16 @@
+* text=auto eol=lf
+
+*.dll binary
+*.exe binary
+*.gif binary
+*.gz binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.mp4 binary
+*.pdf binary
+*.png binary
+*.tgz binary
+*.wasm binary
+*.webp binary
+*.zip binary

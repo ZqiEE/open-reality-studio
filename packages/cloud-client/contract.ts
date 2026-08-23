@@ -77,6 +77,7 @@ export interface ZeroToShadowDraft {
 
 export const permitRequestSchema = z
   .object({
+    evaluationMode: z.enum(["shadow", "reference-run"]),
     releaseId: z.string().min(1).max(200),
     contentHash: hash,
     actionHash: hash,

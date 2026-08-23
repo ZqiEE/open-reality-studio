@@ -163,6 +163,7 @@ test("idempotent mutations retry an ambiguous transport failure with one stable 
       invoke: (client: RlsokCloudClient) =>
         client.requestPermit(
           {
+            evaluationMode: "shadow",
             releaseId: spec.metadata.releaseId,
             contentHash: fixture.expected.contentHash,
             actionHash: fixture.expected.actionHash,
@@ -287,6 +288,7 @@ test("cloud dispatch boundary refreshes state and consumes exactly once before d
     client,
     permitId,
     {
+      evaluationMode: "reference-run",
       releaseId: "fixture-release-001",
       contentHash: fixture.expected.contentHash,
       actionHash: fixture.expected.actionHash,
@@ -338,6 +340,7 @@ test("revocation refresh denies before permit consumption or controller dispatch
       deviceId: "fixture-arm-01",
       controllerId: "controller",
       configurationDigest,
+      evaluationMode: "reference-run",
     },
     {
       async dispatch() {
@@ -379,6 +382,7 @@ test("cloud configuration drift after Permit issuance blocks before cloud consum
     },
     async requestPermit(request: any) {
       assert.equal(request.configurationDigest, configurationDigest);
+      assert.equal(request.evaluationMode, "shadow");
       return {
         permitId: "11111111-1111-4111-8111-111111111111",
         expiresAt: new Date(Date.now() + 30_000).toISOString(),
