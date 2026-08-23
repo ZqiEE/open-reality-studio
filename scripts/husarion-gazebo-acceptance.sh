@@ -39,7 +39,8 @@ echo "$PINNED_CONTROLLER_SHA  $controller" | sha256sum --check
 export ROS_DOMAIN_ID=91
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 ros2 daemon stop >/dev/null 2>&1 || true
-ros2 launch rosbot_gazebo simulation.yaml robot_model:=rosbot rviz:=False \
+ros2 launch rosbot_gazebo simulation.yaml \
+  robot_model:=rosbot rviz:=False gz_headless_mode:=True \
   > "$proof_dir/gazebo.log" 2>&1 &
 gazebo_pid=$!
 cleanup() {
@@ -49,16 +50,18 @@ cleanup() {
 trap cleanup EXIT
 
 ready=false
-for attempt in $(seq 1 180); do
-  cmd_type="$(timeout 4 ros2 topic type /cmd_vel 2>/dev/null || true)"
-  odom_type="$(timeout 4 ros2 topic type /odometry/filtered 2>/dev/null || true)"
-  controllers="$(timeout 4 ros2 control list_controllers --controller-manager /controller_manager 2>/dev/null || true)"
+readiness_deadline=$((SECONDS + 180))
+while (( SECONDS < readiness_deadline )); do
+  cmd_type="$(timeout 2 ros2 topic type /cmd_vel 2>/dev/null || true)"
+  odom_type="$(timeout 2 ros2 topic type /odometry/filtered 2>/dev/null || true)"
   if [[ "$cmd_type" == "geometry_msgs/msg/TwistStamped" \
-    && "$odom_type" == "nav_msgs/msg/Odometry" \
-    && "$controllers" == *"twist_mux_controller"*"active"* \
-    && "$controllers" == *"differential_drive_controller"*"active"* ]]; then
-    ready=true
-    break
+    && "$odom_type" == "nav_msgs/msg/Odometry" ]]; then
+    controllers="$(timeout 3 ros2 control list_controllers --controller-manager /controller_manager 2>/dev/null || true)"
+    if [[ "$controllers" == *"twist_mux_controller"*"active"* \
+      && "$controllers" == *"differential_drive_controller"*"active"* ]]; then
+      ready=true
+      break
+    fi
   fi
   sleep 1
 done
