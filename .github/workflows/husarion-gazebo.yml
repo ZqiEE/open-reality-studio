@@ -21,7 +21,9 @@ jobs:
   official-gazebo:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    container: ros:jazzy-ros-base
+    # Match the pinned upstream simulation Dockerfile's ROS base so Husarion's
+    # declared Jazzy dependencies resolve through the same package sources.
+    container: husarnet/ros:jazzy-ros-core
     env:
       HUSARION_COMMIT: 7c7bfa449011905be63442b6c0ca98b35131cabc
       HUSARION_WS: /tmp/rosbot_ws
