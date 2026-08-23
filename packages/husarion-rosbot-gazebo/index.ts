@@ -228,7 +228,6 @@ export class HusarionRosbotGazeboGateway {
     const record = await this.options.releaseRecord();
     const configuration = await this.observeConfiguration();
     const runtimeAttestation = await this.observeAttestation();
-    const now = this.options.now?.() ?? new Date();
     let state: RosbotOdometryObservation | undefined;
     try {
       const observed = await this.options.transport.getOdometryObservation();
@@ -237,6 +236,9 @@ export class HusarionRosbotGazeboGateway {
     } catch {
       state = undefined;
     }
+    // State acquisition can block on live ROS discovery. Evaluate freshness
+    // against the time after that observation, never a pre-wait timestamp.
+    const now = this.options.now?.() ?? new Date();
 
     let contractReason = commandContractReason(proposal, release, configuration);
     if (proposal.releaseId !== release.metadata.releaseId) {

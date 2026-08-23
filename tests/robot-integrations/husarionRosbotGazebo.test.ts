@@ -193,8 +193,10 @@ class FakeTransport implements HusarionRosbotTransport {
     observedAt: NOW.toISOString()
   } satisfies RosbotOdometryObservation;
   publications: RosbotTwistAction[] = [];
+  beforeObservation?: () => void;
 
   async getOdometryObservation(): Promise<unknown | undefined> {
+    this.beforeObservation?.();
     return this.state;
   }
 
@@ -215,10 +217,21 @@ function setup(mode: 'shadow' | 'run', options: {
   releaseRecords?: Array<ReleaseRecord | Error>;
   state?: unknown;
   controllerIdentity?: string;
+  stateReadAt?: Date;
 } = {}) {
+  let currentNow = NOW;
   const spec = release(mode === 'shadow' ? 'shadow' : 'released');
   const transport = new FakeTransport();
   if ('state' in options) transport.state = options.state;
+  if (options.stateReadAt) {
+    transport.beforeObservation = () => {
+      currentNow = options.stateReadAt!;
+      transport.state = {
+        ...(transport.state as RosbotOdometryObservation),
+        observedAt: currentNow.toISOString()
+      };
+    };
+  }
   const entries: ExecutionEvidence[] = [];
   let observations = options.configurations ?? [configuration()];
   let records = options.releaseRecords ?? [record(spec)];
@@ -242,7 +255,6 @@ function setup(mode: 'shadow' | 'run', options: {
     evidence: { append: (entry) => { entries.push(entry); } },
     now: () => currentNow
   });
-  let currentNow = NOW;
   return {
     spec,
     transport,
@@ -321,6 +333,16 @@ test('missing, stale, future, and malformed odometry fail closed with zero publi
     assert.equal(result.hardwareSignalSent, false);
     assert.equal(current.transport.publications.length, 0);
   }
+});
+
+test('live state freshness uses time after a blocking observation', async () => {
+  const current = setup('run', { stateReadAt: new Date(NOW.getTime() + 2_000) });
+  const result = await current.gateway.handleProposal(proposal(current.spec));
+  assert.equal(result.decision, 'allowed');
+  assert.equal(result.hardwareSignalSent, true);
+  assert.equal(current.transport.publications.length, 1);
+  assert.equal(current.entries.at(-1)?.stateObservedAt, new Date(NOW.getTime() + 2_000).toISOString());
+  assert.equal(current.entries.at(-1)?.decisionMadeAt, new Date(NOW.getTime() + 2_000).toISOString());
 });
 
 test('configuration mismatch and execute-time drift block before publication', async () => {
