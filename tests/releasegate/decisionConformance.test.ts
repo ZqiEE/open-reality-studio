@@ -203,6 +203,16 @@ async function testExecutionAndPermitBranches(): Promise<number> {
   assert.equal(entries.at(-1)?.decision, 'blocked');
   assert.deepEqual(entries.at(-1)?.matchedRuleIds, ['state_freshness', 'single_use_permit']);
   assert.equal(entries.at(-1)?.hardwareSignalSent, false);
+  await assert.rejects(
+    gate.execute({ ...(await issued('execute-state-missing')), state: undefined }),
+    /execution_permit_invalid:state_missing/
+  );
+  assert.equal(entries.at(-1)?.decisionReason, 'state_missing');
+  await assert.rejects(
+    gate.execute({ ...(await issued('execute-state-time-missing')), stateObservedAt: undefined }),
+    /execution_permit_invalid:state_missing/
+  );
+  assert.equal(entries.at(-1)?.decisionReason, 'state_missing');
   const longTtlRelease = { ...release, runtimePolicy: { ...release.runtimePolicy, maxStateAgeMs: 5_000 } };
   const longTtlResult = await gate.evaluate({
     ...base,
