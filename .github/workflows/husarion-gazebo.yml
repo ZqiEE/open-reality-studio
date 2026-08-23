@@ -21,9 +21,7 @@ jobs:
   official-gazebo:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    # Match the pinned upstream simulation Dockerfile's ROS base so Husarion's
-    # declared Jazzy dependencies resolve through the same package sources.
-    container: husarnet/ros:jazzy-ros-core
+    container: ros:jazzy-ros-base
     env:
       HUSARION_COMMIT: 7c7bfa449011905be63442b6c0ca98b35131cabc
       HUSARION_WS: /tmp/rosbot_ws
@@ -48,10 +46,11 @@ jobs:
           git -C "$HUSARION_WS/src/rosbot_ros" checkout --detach "$HUSARION_COMMIT"
           test "$(git -C "$HUSARION_WS/src/rosbot_ros" rev-parse HEAD)" = "$HUSARION_COMMIT"
           source /opt/ros/jazzy/setup.bash
-          vcs import "$HUSARION_WS/src" \
-            < "$HUSARION_WS/src/rosbot_ros/rosbot/rosbot_hardware.repos"
+          # Follow the pinned upstream Dockerfile.simulation exactly: import
+          # the simulation manifest and omit its hardware-only bringup package.
           vcs import "$HUSARION_WS/src" \
             < "$HUSARION_WS/src/rosbot_ros/rosbot/rosbot_simulation.repos"
+          rm -rf "$HUSARION_WS/src/rosbot_ros/rosbot_bringup"
       - name: Resolve official dependencies
         shell: bash
         run: |
@@ -65,7 +64,8 @@ jobs:
         run: |
           source /opt/ros/jazzy/setup.bash
           cd "$HUSARION_WS"
-          colcon build --symlink-install --event-handlers console_cohesion+ \
+          colcon build --symlink-install --packages-up-to rosbot_gazebo \
+            --event-handlers console_cohesion+ \
             --cmake-args -DCMAKE_BUILD_TYPE=Release
       - name: Install and build RLSOK
         run: |
