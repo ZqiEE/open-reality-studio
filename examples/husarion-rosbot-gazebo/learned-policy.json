@@ -1,0 +1,4 @@
+{
+  "name": "husarion-rosbot-reference-velocity-policy",
+  "description": "Non-production reference artifact; proposes one bounded TwistStamped command."
+}

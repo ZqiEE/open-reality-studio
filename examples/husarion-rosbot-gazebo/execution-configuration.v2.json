@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "identity": {
+    "device": "rosbot-gazebo-01",
+    "robot": "husarion-rosbot-gazebo"
+  },
+  "semanticContract": {
+    "command": {
+      "interfaceType": "geometry_msgs/msg/TwistStamped",
+      "endpoint": "cmd_vel"
+    },
+    "controller": {
+      "implementation": "twist_mux_controller/TwistMuxController",
+      "version": "jazzy@7c7bfa449011"
+    },
+    "jointCommandMapping": [
+      {
+        "joint": "linear.x",
+        "commandIndex": 0
+      },
+      {
+        "joint": "angular.z",
+        "commandIndex": 1
+      }
+    ]
+  },
+  "provenance": [
+    {
+      "kind": "content",
+      "sourceIdentity": "husarion/rosbot_ros/rosbot_controller/config/rosbot/controllers.yaml",
+      "purpose": "controller_configuration",
+      "contentSha256": "b30f8a65c9d605bb01bdc5b29a2a3930bd71063b1020ca80a04d76b2a38db50d"
+    },
+    {
+      "kind": "software",
+      "sourceIdentity": "husarion/rosbot_ros",
+      "purpose": "controller_configuration",
+      "version": "jazzy@7c7bfa449011905be63442b6c0ca98b35131cabc"
+    }
+  ],
+  "observation": {
+    "observedAt": "2026-08-23T00:00:00.000Z",
+    "environment": {
+      "rosDistro": "jazzy",
+      "rmwImplementation": "rmw_fastrtps_cpp"
+    },
+    "discovery": [
+      {
+        "name": "simulation",
+        "value": "gazebo"
+      }
+    ]
+  },
+  "display": {
+    "friendlyName": "Husarion ROSbot Gazebo cmd_vel reference"
+  }
+}

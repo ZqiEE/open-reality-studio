@@ -1,0 +1,100 @@
+{
+  "apiVersion": "realitywarden.io/v1alpha1",
+  "kind": "ExecutablePolicy",
+  "metadata": {
+    "name": "husarion-rosbot-gazebo-cmd-vel",
+    "releaseId": "husarion-rosbot-gazebo-run-v1",
+    "createdAt": "2026-08-23T00:00:00.000Z"
+  },
+  "model": {
+    "artifact": "examples/husarion-rosbot-gazebo/learned-policy.json",
+    "sha256": "54b22c57cfac3911610cedeab9662376565234d73cebbdb06dbffb15c9fdcdfb",
+    "framework": "ros2",
+    "policyType": "velocity-command",
+    "codeRevision": "reference-v1"
+  },
+  "actionContract": {
+    "representation": "twist",
+    "dimension": 2,
+    "jointOrder": ["linear.x", "angular.z"],
+    "units": {
+      "position": "meter",
+      "velocity": "linear_meter_per_second;angular_radian_per_second"
+    },
+    "normalizerSha256": "33217dd49e8c2a58c5c2940e9d23db8815933830bdd6c81ec68ef85dafa0b389",
+    "preprocessorSha256": "579ded3beec8c388380650d80508ad6bd6138ec21e0107709b7b252e27763b4b",
+    "postprocessorSha256": "4e6effa55c070a5fcae40d1718eddcd8a3f38ae932610ff534370f80ab3c4f68"
+  },
+  "robot": {
+    "profileId": "husarion-rosbot-gazebo",
+    "profileSha256": "ea62dce88774b1e0bf10bcbaf7bce97c2fe03e7ac14a3e1615e5bd92cdd262d7",
+    "urdfSha256": "887821e92907066f739921afa490568d73dbb9e4c0c82fe98eb87da11fdc8328",
+    "controllerType": "twist_mux_controller/TwistMuxController",
+    "controllerConfigSha256": "b30f8a65c9d605bb01bdc5b29a2a3930bd71063b1020ca80a04d76b2a38db50d"
+  },
+  "runtimePolicy": {
+    "policySha256": "6ee111e674606d3e79607c86b8f67d659bb2a997cad54f4e2113d0bd3e4b7bd3",
+    "maxStateAgeMs": 500,
+    "maxConfigurationAgeMs": 5000,
+    "failClosed": true
+  },
+    "executionConfiguration": {
+      "schemaVersion": 2,
+      "identity": {
+        "device": "rosbot-gazebo-01",
+        "robot": "husarion-rosbot-gazebo"
+      },
+      "semanticContract": {
+        "command": {
+          "interfaceType": "geometry_msgs/msg/TwistStamped",
+          "endpoint": "cmd_vel"
+        },
+        "controller": {
+          "implementation": "twist_mux_controller/TwistMuxController",
+          "version": "jazzy@7c7bfa449011"
+        },
+        "jointCommandMapping": [
+          { "joint": "linear.x", "commandIndex": 0 },
+          { "joint": "angular.z", "commandIndex": 1 }
+        ]
+      },
+      "provenance": [
+        {
+          "kind": "content",
+          "sourceIdentity": "husarion/rosbot_ros/rosbot_controller/config/rosbot/controllers.yaml",
+          "purpose": "controller_configuration",
+          "contentSha256": "b30f8a65c9d605bb01bdc5b29a2a3930bd71063b1020ca80a04d76b2a38db50d"
+        },
+        {
+          "kind": "software",
+          "sourceIdentity": "husarion/rosbot_ros",
+          "purpose": "controller_configuration",
+          "version": "jazzy@7c7bfa449011905be63442b6c0ca98b35131cabc"
+        }
+      ],
+      "observation": {
+        "observedAt": "2026-08-23T00:00:00.000Z",
+        "environment": {
+          "rosDistro": "jazzy",
+          "rmwImplementation": "rmw_fastrtps_cpp"
+        },
+        "discovery": [{ "name": "simulation", "value": "gazebo" }]
+      },
+      "display": {
+        "friendlyName": "Husarion ROSbot Gazebo cmd_vel reference"
+      }
+    },
+    "approvedConfigurationDigest": "8f7cfd9a336d9240754d01d95222b03ebd87abd8178796ad3646908b2552bb55",
+  "evidence": {
+    "scenarioPackId": "husarion-rosbot-gazebo-v1",
+    "testReportSha256": "43928401db911155743d981e7a9976332133dbc68d7b3b2beec8763712080a3a",
+    "status": "approved",
+    "approvedBy": "reference-reviewer@example.test",
+    "approvedAt": "2026-08-23T00:00:00.000Z"
+  },
+  "deployment": {
+    "allowedDeviceIds": ["rosbot-gazebo-01"],
+    "mode": "released",
+    "expiresAt": "2099-01-01T00:00:00.000Z"
+  }
+}

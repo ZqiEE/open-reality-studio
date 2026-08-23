@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""ROS-only transport for the RLSOK Husarion ROSbot Gazebo reference example."""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import json
+import math
+import re
+import select
+import sys
+from typing import Any
+
+
+MESSAGE_TYPE = "geometry_msgs/msg/TwistStamped"
+ODOMETRY_TYPE = "nav_msgs/msg/Odometry"
+COMMAND_TOPIC = "cmd_vel"
+STATE_TOPIC = "odometry/filtered"
+
+
+def normalize_namespace(value: str) -> str:
+    normalized = value.strip().strip("/")
+    if not normalized:
+        return ""
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(/[A-Za-z][A-Za-z0-9_]*)*", normalized):
+        raise ValueError("ros_namespace_invalid")
+    return normalized
+
+
+def resolved_topic(namespace: str, logical_topic: str) -> str:
+    if logical_topic not in (COMMAND_TOPIC, STATE_TOPIC):
+        raise ValueError("rosbot_topic_not_allowed")
+    prefix = f"/{normalize_namespace(namespace)}" if normalize_namespace(namespace) else ""
+    return f"{prefix}/{logical_topic}"
+
+
+def validate_action(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != {
+        "representation", "messageType", "targetTopic", "frameId",
+        "linear", "angular", "units"
+    }:
+        raise ValueError("twist_shape_invalid")
+    if value["representation"] != "twist":
+        raise ValueError("twist_representation_invalid")
+    if value["messageType"] != MESSAGE_TYPE:
+        raise ValueError("twist_message_type_invalid")
+    if value["targetTopic"] != COMMAND_TOPIC:
+        raise ValueError("twist_target_topic_invalid")
+    if value["frameId"] != "base_link":
+        raise ValueError("twist_frame_invalid")
+    if value["units"] != {
+        "linear": "meter_per_second",
+        "angular": "radian_per_second",
+    }:
+        raise ValueError("twist_units_invalid")
+    if not isinstance(value["linear"], dict) or set(value["linear"]) != {"x"}:
+        raise ValueError("twist_linear_shape_invalid")
+    if not isinstance(value["angular"], dict) or set(value["angular"]) != {"z"}:
+        raise ValueError("twist_angular_shape_invalid")
+    for component in (value["linear"]["x"], value["angular"]["z"]):
+        if isinstance(component, bool) or not isinstance(component, (int, float)):
+            raise ValueError("twist_component_invalid")
+        if not math.isfinite(component):
+            raise ValueError("twist_component_non_finite")
+    return value
+
+
+def emit(value: dict[str, Any]) -> None:
+    sys.stdout.write(json.dumps(value, separators=(",", ":")) + "\n")
+    sys.stdout.flush()
+
+
+def self_test() -> int:
+    assert normalize_namespace("") == ""
+    assert normalize_namespace("/robot1/") == "robot1"
+    assert resolved_topic("robot1", COMMAND_TOPIC) == "/robot1/cmd_vel"
+    validate_action({
+        "representation": "twist",
+        "messageType": MESSAGE_TYPE,
+        "targetTopic": COMMAND_TOPIC,
+        "frameId": "base_link",
+        "linear": {"x": 0.1},
+        "angular": {"z": -0.2},
+        "units": {
+            "linear": "meter_per_second",
+            "angular": "radian_per_second",
+        },
+    })
+    try:
+        resolved_topic("", "wheel_command")
+        raise AssertionError("unexpected topic accepted")
+    except ValueError as error:
+        assert str(error) == "rosbot_topic_not_allowed"
+    print("husarion_rosbot_sidecar_self_test_passed")
+    return 0
+
+
+def run(namespace: str) -> int:
+    try:
+        import rclpy
+        from geometry_msgs.msg import TwistStamped
+        from nav_msgs.msg import Odometry
+    except ImportError as error:
+        emit({"event": "fatal", "error": f"ros2_import_failed:{error}"})
+        return 2
+
+    normalized_namespace = normalize_namespace(namespace)
+    node_namespace = f"/{normalized_namespace}" if normalized_namespace else "/"
+    rclpy.init(args=None)
+    node = rclpy.create_node("rlsok_husarion_rosbot_gateway", namespace=node_namespace)
+    publisher = node.create_publisher(TwistStamped, COMMAND_TOPIC, 10)
+
+    def on_odometry(message: Any) -> None:
+        source_seconds = message.header.stamp.sec + message.header.stamp.nanosec / 1_000_000_000
+        state: dict[str, Any] = {
+            "topic": STATE_TOPIC,
+            "messageType": ODOMETRY_TYPE,
+            "linearX": message.twist.twist.linear.x,
+            "angularZ": message.twist.twist.angular.z,
+            "observedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        if source_seconds > 0:
+            state["sourceTimestamp"] = datetime.fromtimestamp(
+                source_seconds, timezone.utc
+            ).isoformat().replace("+00:00", "Z")
+        emit({"event": "odometry", "state": state})
+
+    node.create_subscription(Odometry, STATE_TOPIC, on_odometry, 10)
+    running = True
+    try:
+        while running and rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.02)
+            readable, _, _ = select.select([sys.stdin], [], [], 0.0)
+            if not readable:
+                continue
+            line = sys.stdin.readline()
+            if not line:
+                break
+            request: Any = None
+            try:
+                request = json.loads(line)
+                request_id = request["id"]
+                operation = request["operation"]
+                params = request.get("params", {})
+                if operation == "ping":
+                    result: Any = {
+                        "commandTopic": resolved_topic(normalized_namespace, COMMAND_TOPIC),
+                        "stateTopic": resolved_topic(normalized_namespace, STATE_TOPIC),
+                    }
+                elif operation == "publish":
+                    action = validate_action(params.get("action"))
+                    message = TwistStamped()
+                    message.header.stamp = node.get_clock().now().to_msg()
+                    message.header.frame_id = action["frameId"]
+                    message.twist.linear.x = float(action["linear"]["x"])
+                    message.twist.angular.z = float(action["angular"]["z"])
+                    publisher.publish(message)
+                    result = {
+                        "published": True,
+                        "topic": resolved_topic(normalized_namespace, COMMAND_TOPIC),
+                        "messageType": MESSAGE_TYPE,
+                    }
+                elif operation == "shutdown":
+                    result = {"closed": True}
+                    running = False
+                else:
+                    raise ValueError("sidecar_operation_unknown")
+                emit({"id": request_id, "ok": True, "result": result})
+            except Exception as error:  # Transport errors cross the JSONL boundary.
+                emit({
+                    "id": request.get("id") if isinstance(request, dict) else -1,
+                    "ok": False,
+                    "error": str(error),
+                })
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--namespace", default="")
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    return self_test() if args.self_test else run(args.namespace)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
