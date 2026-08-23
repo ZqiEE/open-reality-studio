@@ -30,7 +30,7 @@
     "profileSha256": "ea62dce88774b1e0bf10bcbaf7bce97c2fe03e7ac14a3e1615e5bd92cdd262d7",
     "urdfSha256": "887821e92907066f739921afa490568d73dbb9e4c0c82fe98eb87da11fdc8328",
     "controllerType": "twist_mux_controller/TwistMuxController",
-    "controllerConfigSha256": "b30f8a65c9d605bb01bdc5b29a2a3930bd71063b1020ca80a04d76b2a38db50d"
+    "controllerConfigSha256": "207508c19de20bcfec44aefc6f09ed833cc6a33b63c78aade427817928302aba"
   },
   "runtimePolicy": {
     "policySha256": "6ee111e674606d3e79607c86b8f67d659bb2a997cad54f4e2113d0bd3e4b7bd3",
@@ -63,7 +63,7 @@
           "kind": "content",
           "sourceIdentity": "husarion/rosbot_ros/rosbot_controller/config/rosbot/controllers.yaml",
           "purpose": "controller_configuration",
-          "contentSha256": "b30f8a65c9d605bb01bdc5b29a2a3930bd71063b1020ca80a04d76b2a38db50d"
+          "contentSha256": "207508c19de20bcfec44aefc6f09ed833cc6a33b63c78aade427817928302aba"
         }
       ],
       "observation": {
@@ -78,7 +78,7 @@
         "friendlyName": "Husarion ROSbot Gazebo cmd_vel reference"
       }
     },
-    "approvedConfigurationDigest": "f1f895d466092ffff094090680acd76821cca6e496f010e1001ff1561f854d66",
+    "approvedConfigurationDigest": "0206cdd150c112d344102418aacc4418c53e4f21553b519c999517151c4d91df",
   "evidence": {
     "scenarioPackId": "husarion-rosbot-gazebo-v1",
     "testReportSha256": "43928401db911155743d981e7a9976332133dbc68d7b3b2beec8763712080a3a",

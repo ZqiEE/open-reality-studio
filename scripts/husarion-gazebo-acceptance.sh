@@ -2,7 +2,7 @@
 set -Eeo pipefail
 
 PINNED_COMMIT="7c7bfa449011905be63442b6c0ca98b35131cabc"
-PINNED_CONTROLLER_SHA="b30f8a65c9d605bb01bdc5b29a2a3930bd71063b1020ca80a04d76b2a38db50d"
+PINNED_CONTROLLER_SHA="207508c19de20bcfec44aefc6f09ed833cc6a33b63c78aade427817928302aba"
 : "${HUSARION_WS:?HUSARION_WS must point to the built official workspace}"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

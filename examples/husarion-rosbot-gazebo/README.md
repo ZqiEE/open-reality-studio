@@ -34,8 +34,9 @@ At that commit:
 
 The exact controller file is
 [`rosbot_controller/config/rosbot/controllers.yaml`](https://github.com/husarion/rosbot_ros/blob/7c7bfa449011905be63442b6c0ca98b35131cabc/rosbot_controller/config/rosbot/controllers.yaml).
-Its pinned SHA-256 is
-`b30f8a65c9d605bb01bdc5b29a2a3930bd71063b1020ca80a04d76b2a38db50d`.
+Its pinned SHA-256, computed from the repository's LF Git blob and verified
+against the Linux workspace file, is
+`207508c19de20bcfec44aefc6f09ed833cc6a33b63c78aade427817928302aba`.
 
 The RLSOK-owned boundary is therefore:
 
