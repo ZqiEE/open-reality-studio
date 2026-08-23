@@ -112,6 +112,7 @@ common_args=(
   --robot-identity husarion-rosbot-gazebo
   --proposer-identity learned-policy@example.test
   --namespace ''
+  --use-sim-time true
 )
 
 run_monitor shadow 8
@@ -168,7 +169,8 @@ node scripts/run-rlsok.cjs --test apps/demo/husarion-rosbot-gazebo.ts \
   --device-identity rosbot-gazebo-01 \
   --robot-identity husarion-rosbot-gazebo \
   --proposer-identity learned-policy@example.test \
-  --namespace '' | tee "$proof_dir/mismatch.log"
+  --namespace '' \
+  --use-sim-time true | tee "$proof_dir/mismatch.log"
 mismatch_status=${PIPESTATUS[0]}
 set -e
 wait "$monitor_pid"

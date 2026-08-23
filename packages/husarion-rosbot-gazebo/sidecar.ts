@@ -23,6 +23,7 @@ interface PythonHusarionRosbotTransportOptions {
   sidecarPath: string;
   namespace?: string;
   discoveryTimeoutMs?: number;
+  useSimTime?: boolean;
 }
 
 /** JSONL IPC transport. Policy, release state, permits, and Evidence stay in TypeScript Core. */
@@ -97,6 +98,7 @@ export class PythonHusarionRosbotTransport implements HusarionRosbotTransport {
       this.options.sidecarPath,
       '--namespace',
       this.namespace,
+      ...(this.options.useSimTime ? ['--use-sim-time'] : []),
     ], {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true

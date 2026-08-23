@@ -96,11 +96,12 @@ def self_test() -> int:
     return 0
 
 
-def run(namespace: str) -> int:
+def run(namespace: str, use_sim_time: bool) -> int:
     try:
         import rclpy
         from geometry_msgs.msg import TwistStamped
         from nav_msgs.msg import Odometry
+        from rclpy.parameter import Parameter
     except ImportError as error:
         emit({"event": "fatal", "error": f"ros2_import_failed:{error}"})
         return 2
@@ -109,6 +110,12 @@ def run(namespace: str) -> int:
     node_namespace = f"/{normalized_namespace}" if normalized_namespace else "/"
     rclpy.init(args=None)
     node = rclpy.create_node("rlsok_husarion_rosbot_gateway", namespace=node_namespace)
+    if use_sim_time:
+        results = node.set_parameters([
+            Parameter("use_sim_time", Parameter.Type.BOOL, True)
+        ])
+        if not results or not results[0].successful:
+            raise RuntimeError("rosbot_sim_time_configuration_failed")
     publisher = node.create_publisher(TwistStamped, COMMAND_TOPIC, 10)
 
     def on_odometry(message: Any) -> None:
@@ -182,9 +189,10 @@ def run(namespace: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--namespace", default="")
+    parser.add_argument("--use-sim-time", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
-    return self_test() if args.self_test else run(args.namespace)
+    return self_test() if args.self_test else run(args.namespace, args.use_sim_time)
 
 
 if __name__ == "__main__":

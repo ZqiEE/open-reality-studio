@@ -105,10 +105,15 @@ async function main(): Promise<void> {
     options.sidecar
       ?? 'experimental/husarion-rosbot-gazebo/rlsok_husarion_rosbot_sidecar.py'
   );
+  const useSimTimeValue = options['use-sim-time'] ?? 'false';
+  if (useSimTimeValue !== 'true' && useSimTimeValue !== 'false') {
+    throw new Error('use_sim_time_must_be_true_or_false');
+  }
   const transport = new PythonHusarionRosbotTransport({
     pythonExecutable: python,
     sidecarPath: sidecar,
-    namespace: options.namespace ?? ''
+    namespace: options.namespace ?? '',
+    useSimTime: useSimTimeValue === 'true'
   });
   const record = releaseRecord(release);
   const gateway = new HusarionRosbotGazeboGateway({

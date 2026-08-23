@@ -82,6 +82,7 @@ npm run demo:husarion-rosbot-gazebo -- \
   --proposal examples/husarion-rosbot-gazebo/proposal.json \
   --evidence examples/husarion-rosbot-gazebo/evidence.shadow.json \
   --proposer-identity learned-policy@example.test \
+  --use-sim-time true \
   --namespace ''
 ```
 
@@ -162,6 +163,7 @@ npm run demo:husarion-rosbot-gazebo -- \
   --proposal examples/husarion-rosbot-gazebo/proposal.run.json \
   --evidence examples/husarion-rosbot-gazebo/evidence.run.json \
   --proposer-identity learned-policy@example.test \
+  --use-sim-time true \
   --namespace ''
 ```
 
