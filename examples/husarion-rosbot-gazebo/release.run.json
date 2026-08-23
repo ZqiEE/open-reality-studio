@@ -64,12 +64,6 @@
           "sourceIdentity": "husarion/rosbot_ros/rosbot_controller/config/rosbot/controllers.yaml",
           "purpose": "controller_configuration",
           "contentSha256": "b30f8a65c9d605bb01bdc5b29a2a3930bd71063b1020ca80a04d76b2a38db50d"
-        },
-        {
-          "kind": "software",
-          "sourceIdentity": "husarion/rosbot_ros",
-          "purpose": "controller_configuration",
-          "version": "jazzy@7c7bfa449011905be63442b6c0ca98b35131cabc"
         }
       ],
       "observation": {
@@ -84,7 +78,7 @@
         "friendlyName": "Husarion ROSbot Gazebo cmd_vel reference"
       }
     },
-    "approvedConfigurationDigest": "8f7cfd9a336d9240754d01d95222b03ebd87abd8178796ad3646908b2552bb55",
+    "approvedConfigurationDigest": "f1f895d466092ffff094090680acd76821cca6e496f010e1001ff1561f854d66",
   "evidence": {
     "scenarioPackId": "husarion-rosbot-gazebo-v1",
     "testReportSha256": "43928401db911155743d981e7a9976332133dbc68d7b3b2beec8763712080a3a",

@@ -12,10 +12,6 @@ import {
   executablePolicySpecSchema,
   type ExecutablePolicySpec
 } from '../../packages/core/exec-spec';
-import {
-  executionConfigurationV2Schema,
-  type ExecutionConfigurationV2
-} from '../../packages/core/execution-configuration';
 import type { EvidenceSink } from '../../packages/core/execution-gate';
 import type { ReleaseRecord } from '../../packages/core/release-policy';
 import {
@@ -23,6 +19,7 @@ import {
   rosbotProposalSchema
 } from '../../packages/husarion-rosbot-gazebo';
 import { PythonHusarionRosbotTransport } from '../../packages/husarion-rosbot-gazebo/sidecar';
+import { observeTrustedHusarionConfiguration } from '../../packages/husarion-rosbot-gazebo/trusted-observation';
 
 type Options = Record<string, string>;
 
@@ -73,17 +70,6 @@ class FileEvidenceSink implements EvidenceSink {
   }
 }
 
-function currentTrustedConfiguration(path: string): ExecutionConfigurationV2 {
-  const configured = executionConfigurationV2Schema.parse(readStructured(path));
-  return executionConfigurationV2Schema.parse({
-    ...configured,
-    observation: {
-      ...configured.observation,
-      observedAt: new Date().toISOString()
-    }
-  });
-}
-
 function releaseRecord(spec: ExecutablePolicySpec): ReleaseRecord {
   const identity = executablePolicyHash(spec);
   return {
@@ -107,7 +93,12 @@ async function main(): Promise<void> {
     || (mode === 'run' && release.deployment.mode !== 'released')
   ) throw new Error('release_mode_mismatch');
   const proposal = rosbotProposalSchema.parse(readStructured(required(options, 'proposal')));
-  const configurationPath = required(options, 'configuration');
+  const observationInput = {
+    controllerConfigPath: required(options, 'controller-config'),
+    deviceIdentity: required(options, 'device-identity'),
+    robotIdentity: required(options, 'robot-identity')
+  };
+  const initialObservation = observeTrustedHusarionConfiguration(observationInput);
   const evidencePath = resolve(required(options, 'evidence'));
   const python = options.python ?? (process.platform === 'win32' ? 'python' : 'python3');
   const sidecar = resolve(
@@ -124,10 +115,12 @@ async function main(): Promise<void> {
     mode,
     release,
     expectedProposerIdentity: required(options, 'proposer-identity'),
-    controllerIdentity: release.robot.controllerConfigSha256,
+    controllerIdentity: initialObservation.controllerIdentity,
     releaseRecord: async () => record,
-    // This separate operator-supplied file is the explicit trusted v2 path.
-    executionConfiguration: async () => currentTrustedConfiguration(configurationPath),
+    // Each observation independently re-reads and hashes the current controller file.
+    executionConfiguration: async () => (
+      observeTrustedHusarionConfiguration(observationInput).configuration
+    ),
     transport,
     evidence: new FileEvidenceSink(release, evidencePath)
   });

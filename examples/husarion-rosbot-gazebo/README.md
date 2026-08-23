@@ -75,18 +75,27 @@ source /opt/ros/jazzy/setup.bash
 npm run demo:husarion-rosbot-gazebo -- \
   --mode shadow \
   --release examples/husarion-rosbot-gazebo/release.shadow.json \
-  --configuration examples/husarion-rosbot-gazebo/execution-configuration.v2.json \
+  --controller-config "$HOME/rosbot_ws/src/rosbot_ros/rosbot_controller/config/rosbot/controllers.yaml" \
+  --device-identity rosbot-gazebo-01 \
+  --robot-identity husarion-rosbot-gazebo \
   --proposal examples/husarion-rosbot-gazebo/proposal.json \
   --evidence examples/husarion-rosbot-gazebo/evidence.shadow.json \
   --proposer-identity learned-policy@example.test \
   --namespace ''
 ```
 
-The separate `execution-configuration.v2.json` is the explicit trusted adapter
-input. The integration parses it as a complete strict v2 configuration and
-refreshes only its observational timestamp. It never copies provenance or
-semantic identity from the approved release into an observation, and generic
-ROS discovery is not treated as provenance authentication.
+The operator-supplied controller path is the explicit trusted observation
+boundary. For every prepare and execute observation, the integration re-reads
+that current workspace file, computes its SHA-256, and builds the complete v2
+identity from fixed adapter semantics plus the separately supplied device and
+robot identities. The observation time records that verification; a checked-in
+or stale observation is never made fresh by the consumer. The approved release
+is not an input to observation, and generic ROS discovery is not treated as
+provenance authentication. Missing or unreadable input, a stale observation,
+or any digest/identity mismatch fails closed.
+
+`execution-configuration.v2.json` records the pinned approval input for review;
+it is not consumed as a current runtime observation.
 
 Expected result fields include:
 
@@ -146,7 +155,9 @@ source /opt/ros/jazzy/setup.bash
 npm run demo:husarion-rosbot-gazebo -- \
   --mode run \
   --release examples/husarion-rosbot-gazebo/release.run.json \
-  --configuration examples/husarion-rosbot-gazebo/execution-configuration.v2.json \
+  --controller-config "$HOME/rosbot_ws/src/rosbot_ros/rosbot_controller/config/rosbot/controllers.yaml" \
+  --device-identity rosbot-gazebo-01 \
+  --robot-identity husarion-rosbot-gazebo \
   --proposal examples/husarion-rosbot-gazebo/proposal.run.json \
   --evidence examples/husarion-rosbot-gazebo/evidence.run.json \
   --proposer-identity learned-policy@example.test \

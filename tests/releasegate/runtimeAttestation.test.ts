@@ -360,6 +360,10 @@ test('attestation evaluation allows a subset and blocks missing, stale, future, 
     observedAt: '2026-08-22T00:00:00.000'
   } as RuntimeAttestation;
   assert.equal(runtimeAttestationSchema.safeParse(missingOffset).success, false);
+  assert.equal(runtimeAttestationSchema.safeParse({
+    ...attestation(),
+    observedAt: '2026-08-22T08:00:00.000+08:00'
+  }).success, true);
   assert.deepEqual(evaluateRuntimeAttestation({
     requiredCapabilities,
     attestation: missingOffset,

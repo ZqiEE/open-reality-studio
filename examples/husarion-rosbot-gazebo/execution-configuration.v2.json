@@ -30,12 +30,6 @@
       "sourceIdentity": "husarion/rosbot_ros/rosbot_controller/config/rosbot/controllers.yaml",
       "purpose": "controller_configuration",
       "contentSha256": "b30f8a65c9d605bb01bdc5b29a2a3930bd71063b1020ca80a04d76b2a38db50d"
-    },
-    {
-      "kind": "software",
-      "sourceIdentity": "husarion/rosbot_ros",
-      "purpose": "controller_configuration",
-      "version": "jazzy@7c7bfa449011905be63442b6c0ca98b35131cabc"
     }
   ],
   "observation": {

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import {
   appendEvidence,
@@ -36,6 +37,10 @@ import {
   type RosbotOdometryObservation,
   type RosbotTwistAction
 } from '../../packages/husarion-rosbot-gazebo';
+import {
+  HUSARION_ROSBOT_CONTROLLERS_SOURCE,
+  observeTrustedHusarionConfiguration
+} from '../../packages/husarion-rosbot-gazebo/trusted-observation';
 
 const NOW = new Date('2026-08-23T00:00:00.000Z');
 const H = (character: string) => character.repeat(64);
@@ -78,10 +83,10 @@ function configuration(): ExecutionConfigurationV2 {
       ]
     },
     provenance: [{
-      kind: 'software',
-      sourceIdentity: 'husarion/rosbot_ros',
+      kind: 'content',
+      sourceIdentity: HUSARION_ROSBOT_CONTROLLERS_SOURCE,
       purpose: 'controller_configuration',
-      version: 'jazzy@7c7bfa449011905be63442b6c0ca98b35131cabc'
+      contentSha256: H('1')
     }],
     observation: {
       observedAt: NOW.toISOString(),
@@ -209,6 +214,7 @@ function setup(mode: 'shadow' | 'run', options: {
   configurations?: Array<ExecutionConfiguration | Error>;
   releaseRecords?: Array<ReleaseRecord | Error>;
   state?: unknown;
+  controllerIdentity?: string;
 } = {}) {
   const spec = release(mode === 'shadow' ? 'shadow' : 'released');
   const transport = new FakeTransport();
@@ -220,7 +226,7 @@ function setup(mode: 'shadow' | 'run', options: {
     mode,
     release: spec,
     expectedProposerIdentity: 'learned-policy@example.test',
-    controllerIdentity: spec.robot.controllerConfigSha256,
+    controllerIdentity: options.controllerIdentity ?? spec.robot.controllerConfigSha256,
     releaseRecord: async () => {
       const observed = records.length > 1 ? records.shift() : records[0];
       if (observed instanceof Error) throw observed;
@@ -234,14 +240,16 @@ function setup(mode: 'shadow' | 'run', options: {
     },
     transport,
     evidence: { append: (entry) => { entries.push(entry); } },
-    now: () => NOW
+    now: () => currentNow
   });
+  let currentNow = NOW;
   return {
     spec,
     transport,
     entries,
     gateway,
-    setConfigurations: (...values: ExecutionConfiguration[]) => { observations = values; }
+    setConfigurations: (...values: ExecutionConfiguration[]) => { observations = values; },
+    setNow: (value: Date) => { currentNow = value; }
   };
 }
 
@@ -319,7 +327,7 @@ test('configuration mismatch and execute-time drift block before publication', a
   const changed = structuredClone(configuration());
   changed.provenance[0] = {
     ...changed.provenance[0],
-    version: 'jazzy@different'
+    contentSha256: H('9')
   } as typeof changed.provenance[number];
 
   const mismatch = setup('run', { configurations: [changed] });
@@ -345,6 +353,79 @@ test('configuration mismatch and execute-time drift block before publication', a
   const refreshResult = await refreshPrepared.execute();
   assert.match(refreshResult.reason, /configuration_missing/);
   assert.equal(refreshFailure.transport.publications.length, 0);
+});
+
+test('stale trusted configuration and independently observed controller drift fail closed', async () => {
+  const stale = structuredClone(configuration());
+  stale.observation.observedAt = new Date(NOW.getTime() - 5_001).toISOString();
+  const staleObservation = setup('run', { configurations: [stale] });
+  const staleResult = await staleObservation.gateway.handleProposal(proposal(staleObservation.spec));
+  assert.equal(staleResult.reason, 'configuration_stale');
+  assert.equal(staleResult.hardwareSignalSent, false);
+  assert.equal(staleObservation.transport.publications.length, 0);
+
+  const controllerDrift = setup('run', { controllerIdentity: H('9') });
+  const driftResult = await controllerDrift.gateway.handleProposal(proposal(controllerDrift.spec));
+  assert.equal(driftResult.reason, 'controller_identity_mismatch');
+  assert.equal(driftResult.hardwareSignalSent, false);
+  assert.equal(controllerDrift.transport.publications.length, 0);
+});
+
+test('trusted observation hashes the current operator-supplied controller file', () => {
+  const temporary = mkdtempSync(join(tmpdir(), 'rlsok-husarion-observation-'));
+  const controllerPath = join(temporary, 'controllers.yaml');
+  try {
+    writeFileSync(controllerPath, 'controller_manager:\n  ros__parameters: {}\n', 'utf8');
+    const first = observeTrustedHusarionConfiguration({
+      controllerConfigPath: controllerPath,
+      deviceIdentity: 'operator-device',
+      robotIdentity: 'operator-robot',
+      now: NOW
+    });
+    assert.equal(first.configuration.identity.device, 'operator-device');
+    assert.equal(first.configuration.provenance.length, 1);
+    assert.equal(first.configuration.provenance[0]?.kind, 'content');
+    assert.equal(
+      first.configuration.provenance[0]?.kind === 'content'
+        ? first.configuration.provenance[0].contentSha256
+        : undefined,
+      first.controllerIdentity
+    );
+    assert.equal(first.configuration.observation.observedAt, NOW.toISOString());
+
+    writeFileSync(controllerPath, 'controller_manager:\n  ros__parameters:\n    changed: true\n', 'utf8');
+    const changed = observeTrustedHusarionConfiguration({
+      controllerConfigPath: controllerPath,
+      deviceIdentity: 'operator-device',
+      robotIdentity: 'operator-robot',
+      now: new Date(NOW.getTime() + 1)
+    });
+    assert.notEqual(changed.controllerIdentity, first.controllerIdentity);
+    assert.notEqual(configurationDigest(changed.configuration), configurationDigest(first.configuration));
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test('state that expires after permit issuance blocks dispatch and consumes the permit', async () => {
+  const current = setup('run');
+  const prepared = await current.gateway.prepareProposal(proposal(current.spec));
+  assert('execute' in prepared && prepared.execute);
+  current.setNow(new Date(NOW.getTime() + 501));
+  const expired = await prepared.execute();
+  assert.equal(expired.decision, 'failed');
+  assert.match(expired.reason, /state_stale_or_invalid/);
+  assert.equal(expired.hardwareSignalSent, false);
+  assert.equal(current.transport.publications.length, 0);
+  assert.equal(current.entries.at(-1)?.decision, 'blocked');
+  assert.deepEqual(current.entries.at(-1)?.matchedRuleIds, [
+    'state_freshness',
+    'single_use_permit'
+  ]);
+
+  const reused = await prepared.execute();
+  assert.match(reused.reason, /permit_unknown_or_reused/);
+  assert.equal(current.transport.publications.length, 0);
 });
 
 test('revoked release, execute-time revocation, and blocked Shadow publish nothing', async () => {
