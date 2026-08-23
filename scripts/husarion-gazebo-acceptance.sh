@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
+set -Eeo pipefail
 
 PINNED_COMMIT="7c7bfa449011905be63442b6c0ca98b35131cabc"
 PINNED_CONTROLLER_SHA="b30f8a65c9d605bb01bdc5b29a2a3930bd71063b1020ca80a04d76b2a38db50d"
@@ -12,6 +12,7 @@ mkdir -p "$proof_dir"
 
 source /opt/ros/jazzy/setup.bash
 source "$HUSARION_WS/install/setup.bash"
+set -u
 cd "$repo_root"
 
 diagnostics() {
