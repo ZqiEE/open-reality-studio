@@ -355,6 +355,26 @@ test('attestation evaluation allows a subset and blocks missing, stale, future, 
     attestation: null,
     digest: null
   });
+  const missingOffset = {
+    ...attestation(),
+    observedAt: '2026-08-22T00:00:00.000'
+  } as RuntimeAttestation;
+  assert.equal(runtimeAttestationSchema.safeParse(missingOffset).success, false);
+  assert.equal(runtimeAttestationSchema.safeParse({
+    ...attestation(),
+    observedAt: '2026-08-22T08:00:00.000+08:00'
+  }).success, true);
+  assert.deepEqual(evaluateRuntimeAttestation({
+    requiredCapabilities,
+    attestation: missingOffset,
+    maxAgeMs: 5_000,
+    now: NOW
+  }), {
+    allowed: false,
+    reason: 'runtime_attestation_stale',
+    attestation: null,
+    digest: null
+  });
 });
 
 test('Release gate blocks missing, stale, future, and insufficient attestations', async () => {

@@ -59,6 +59,24 @@ try {
   if (![0, 2].includes(doctor.status) || !doctor.stdout.includes('"rosAvailable"')) {
     throw new Error(`packaged_ros2_sidecar_unavailable:${doctor.stderr}`);
   }
+  const python = process.platform === 'win32' ? 'python' : 'python3';
+  const husarionSidecar = resolve(
+    packageRoot,
+    'experimental',
+    'husarion-rosbot-gazebo',
+    'rlsok_husarion_rosbot_sidecar.py'
+  );
+  const husarionSelfTest = spawnSync(python, ['-S', husarionSidecar, '--self-test'], {
+    cwd: temporary,
+    encoding: 'utf8',
+    windowsHide: true
+  });
+  if (
+    husarionSelfTest.status !== 0
+    || !husarionSelfTest.stdout.includes('sidecar_self_test_passed')
+  ) {
+    throw new Error(`packaged_husarion_sidecar_unavailable:${husarionSelfTest.stderr}`);
+  }
   const release = resolve(
     packageRoot,
     'examples',
@@ -110,6 +128,7 @@ try {
     check: 'passed',
     standaloneShadow: 'passed',
     packagedRos2Sidecar: 'passed',
+    packagedHusarionRosbotSidecar: 'passed',
     repositoryRelativePathRequired: false
   }) + '\n');
 } finally {

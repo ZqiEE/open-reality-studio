@@ -1,0 +1,84 @@
+name: Husarion ROSbot Gazebo acceptance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/husarion-gazebo.yml'
+      - 'apps/demo/husarion-rosbot-gazebo.ts'
+      - 'examples/husarion-rosbot-gazebo/**'
+      - 'experimental/husarion-rosbot-gazebo/**'
+      - 'packages/core/execution-gate.ts'
+      - 'packages/husarion-rosbot-gazebo/**'
+      - 'scripts/husarion-gazebo-*'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  official-gazebo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container: ros:jazzy-ros-base
+    env:
+      HUSARION_COMMIT: 7c7bfa449011905be63442b6c0ca98b35131cabc
+      HUSARION_WS: /tmp/rosbot_ws
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install official workspace tools
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git jq python3-pip ros-dev-tools
+          rm -rf /var/lib/apt/lists/*
+      - name: Import pinned official Husarion workspace
+        shell: bash
+        run: |
+          mkdir -p "$HUSARION_WS/src"
+          git clone --filter=blob:none --no-checkout https://github.com/husarion/rosbot_ros.git \
+            "$HUSARION_WS/src/rosbot_ros"
+          git -C "$HUSARION_WS/src/rosbot_ros" checkout --detach "$HUSARION_COMMIT"
+          test "$(git -C "$HUSARION_WS/src/rosbot_ros" rev-parse HEAD)" = "$HUSARION_COMMIT"
+          source /opt/ros/jazzy/setup.bash
+          # Follow the pinned upstream Dockerfile.simulation exactly: import
+          # the simulation manifest and omit its hardware-only bringup package.
+          vcs import "$HUSARION_WS/src" \
+            < "$HUSARION_WS/src/rosbot_ros/rosbot/rosbot_simulation.repos"
+          rm -rf "$HUSARION_WS/src/rosbot_ros/rosbot_bringup"
+      - name: Resolve official dependencies
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          export PIP_BREAK_SYSTEM_PACKAGES=1
+          apt-get update
+          rosdep init 2>/dev/null || true
+          rosdep update --rosdistro jazzy
+          rosdep install -i --from-path "$HUSARION_WS/src" --rosdistro jazzy -y
+      - name: Build pinned official workspace
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          cd "$HUSARION_WS"
+          colcon build --symlink-install --packages-up-to rosbot_gazebo \
+            --event-handlers console_cohesion+ \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release
+      - name: Install and build RLSOK
+        run: |
+          npm ci
+          npm run build
+      - name: Run real headless Gazebo acceptance
+        shell: bash
+        run: bash scripts/husarion-gazebo-acceptance.sh
+      - name: Upload acceptance diagnostics and Evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: husarion-gazebo-acceptance-proof
+          path: artifacts/husarion-gazebo
+          if-no-files-found: warn

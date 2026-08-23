@@ -351,8 +351,17 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     // The full issuance digest protects the authorized request from mutation.
     // A refreshed observation is intentionally not compared by full digest:
     // observedAt and non-required capabilities may legitimately change.
+    const stateAgeMs = request.stateObservedAt
+      ? now.getTime() - Date.parse(request.stateObservedAt)
+      : Number.NaN;
     let invalidReason: string | null = null;
     if (!record) invalidReason = 'permit_unknown_or_reused';
+    else if (request.state === undefined || !request.stateObservedAt) invalidReason = 'state_missing';
+    else if (
+      !Number.isFinite(stateAgeMs)
+      || stateAgeMs < 0
+      || stateAgeMs > request.release.runtimePolicy.maxStateAgeMs
+    ) invalidReason = 'state_stale_or_invalid';
     else if (record.expiresAt <= now.getTime()) invalidReason = 'permit_expired';
     else if (record.actionHash !== request.actionHash) invalidReason = 'permit_action_binding_mismatch';
     else if (record.releaseId !== request.release.metadata.releaseId) invalidReason = 'permit_release_binding_mismatch';
@@ -382,15 +391,18 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     if (invalidReason) {
       const configurationBlocked = invalidReason.startsWith('configuration_');
       const attestationBlocked = invalidReason.startsWith('runtime_');
+      const stateBlocked = invalidReason.startsWith('state_');
       await this.evidence.append(this.evidenceFor(
         currentRequest,
-        configurationBlocked || attestationBlocked ? 'blocked' : 'failed',
+        configurationBlocked || attestationBlocked || stateBlocked ? 'blocked' : 'failed',
         invalidReason,
         configurationBlocked
           ? ['configuration_binding', 'single_use_permit']
           : attestationBlocked
             ? ['runtime_attestation', 'single_use_permit']
-          : ['single_use_permit']
+            : stateBlocked
+              ? ['state_freshness', 'single_use_permit']
+            : ['single_use_permit']
       ));
       throw new Error(`execution_permit_invalid:${invalidReason}`);
     }

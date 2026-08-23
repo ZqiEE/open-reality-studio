@@ -199,7 +199,20 @@ async function testExecutionAndPermitBranches(): Promise<number> {
   await assert.rejects(gate.execute({ ...(await issued('expiry-exact')), now: new Date(NOW.getTime() + 1000) }), /execution_permit_invalid/);
   assert.equal(entries.at(-1)?.decisionReason, 'permit_expired');
   await assert.rejects(gate.execute({ ...(await issued('expiry-plus-1')), now: new Date(NOW.getTime() + 1001) }), /execution_permit_invalid/);
-  assert.equal(entries.at(-1)?.decisionReason, 'permit_expired');
+  assert.equal(entries.at(-1)?.decisionReason, 'state_stale_or_invalid');
+  assert.equal(entries.at(-1)?.decision, 'blocked');
+  assert.deepEqual(entries.at(-1)?.matchedRuleIds, ['state_freshness', 'single_use_permit']);
+  assert.equal(entries.at(-1)?.hardwareSignalSent, false);
+  await assert.rejects(
+    gate.execute({ ...(await issued('execute-state-missing')), state: undefined }),
+    /execution_permit_invalid:state_missing/
+  );
+  assert.equal(entries.at(-1)?.decisionReason, 'state_missing');
+  await assert.rejects(
+    gate.execute({ ...(await issued('execute-state-time-missing')), stateObservedAt: undefined }),
+    /execution_permit_invalid:state_missing/
+  );
+  assert.equal(entries.at(-1)?.decisionReason, 'state_missing');
   const longTtlRelease = { ...release, runtimePolicy: { ...release.runtimePolicy, maxStateAgeMs: 5_000 } };
   const longTtlResult = await gate.evaluate({
     ...base,
@@ -394,7 +407,10 @@ async function testDecisionProperties(): Promise<number> {
       await gate.execute({ ...expiring, now: new Date(NOW.getTime() + expiryDelta) });
     } else {
       await assert.rejects(gate.execute({ ...expiring, now: new Date(NOW.getTime() + expiryDelta) }), /execution_permit_invalid/);
-      assert.equal(entries.at(-1)?.decisionReason, 'permit_expired');
+      assert.equal(
+        entries.at(-1)?.decisionReason,
+        expiryDelta === 1000 ? 'permit_expired' : 'state_stale_or_invalid'
+      );
     }
     samples += 7;
   }

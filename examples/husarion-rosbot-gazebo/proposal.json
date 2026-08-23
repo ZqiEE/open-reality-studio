@@ -1,0 +1,24 @@
+{
+  "proposalId": "rosbot-reference-proposal-001",
+  "releaseId": "husarion-rosbot-gazebo-shadow-v1",
+  "deviceId": "rosbot-gazebo-01",
+  "proposerIdentity": "learned-policy@example.test",
+  "actionRepresentation": "twist",
+  "actionPayload": {
+    "representation": "twist",
+    "messageType": "geometry_msgs/msg/TwistStamped",
+    "targetTopic": "cmd_vel",
+    "frameId": "base_link",
+    "linear": {
+      "x": 0.1
+    },
+    "angular": {
+      "z": 0.2
+    },
+    "units": {
+      "linear": "meter_per_second",
+      "angular": "radian_per_second"
+    }
+  },
+  "createdAt": "2026-08-23T00:00:00.000Z"
+}
