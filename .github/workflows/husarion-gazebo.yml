@@ -56,6 +56,7 @@ jobs:
         run: |
           source /opt/ros/jazzy/setup.bash
           export PIP_BREAK_SYSTEM_PACKAGES=1
+          apt-get update
           rosdep init 2>/dev/null || true
           rosdep update --rosdistro jazzy
           rosdep install -i --from-path "$HUSARION_WS/src" --rosdistro jazzy -y
