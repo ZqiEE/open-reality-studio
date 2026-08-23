@@ -182,9 +182,12 @@ npm run test:husarion-rosbot
 ```
 
 The normal RLSOK verification matrix includes this suite without downloading or
-building Husarion or Gazebo. The Python JSONL protocol has a ROS-independent
-self-test; real Gazebo acceptance remains an optional manual validation for a
-developer who already has the pinned official environment installed.
+building Husarion or Gazebo. A separate, path-scoped GitHub Actions workflow,
+`Husarion ROSbot Gazebo acceptance`, imports and builds the pinned official
+workspace, launches its headless Gazebo simulation, and runs the live Shadow,
+Run, and configuration-mismatch acceptance cases. The workflow uploads its ROS
+graph, controller state, command/odometry observations, logs, and Evidence on
+both success and failure.
 
 Out of scope: Nav2, Open-RMF, joystick/mux priority changes, new velocity
 limits, collision or obstacle semantics, E-stop behavior, Webots, physical

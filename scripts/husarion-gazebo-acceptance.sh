@@ -149,7 +149,8 @@ jq -e '
   and (.commands[0].angularZ - 0.2 | fabs) < 0.000001
   and (.muxSources | index("unknown")) != null
   and (.rlsokPublisherNodes | length) >= 1
-  and (.maxDisplacementMeters > 0.001 or .maxLinearSpeed > 0.01 or .maxAngularSpeed > 0.01)
+  and .maxDisplacementMeters > 0.001
+  and .maxLinearSpeed > 0.01
 ' "$proof_dir/run-monitor.json" >/dev/null
 node scripts/run-rlsok.cjs --test apps/cli/rlsok.ts verify-evidence \
   "$proof_dir/evidence.run.json" \
@@ -159,8 +160,7 @@ changed_controller="$proof_dir/controllers.changed.yaml"
 cp "$controller" "$changed_controller"
 printf '\n# acceptance binding mismatch\n' >> "$changed_controller"
 run_monitor mismatch 8
-set +e
-node scripts/run-rlsok.cjs --test apps/demo/husarion-rosbot-gazebo.ts \
+if node scripts/run-rlsok.cjs --test apps/demo/husarion-rosbot-gazebo.ts \
   --mode run \
   --release examples/husarion-rosbot-gazebo/release.run.json \
   --proposal examples/husarion-rosbot-gazebo/proposal.run.json \
@@ -170,11 +170,16 @@ node scripts/run-rlsok.cjs --test apps/demo/husarion-rosbot-gazebo.ts \
   --robot-identity husarion-rosbot-gazebo \
   --proposer-identity learned-policy@example.test \
   --namespace '' \
-  --use-sim-time true | tee "$proof_dir/mismatch.log"
-mismatch_status=${PIPESTATUS[0]}
-set -e
+  --use-sim-time true | tee "$proof_dir/mismatch.log"; then
+  mismatch_status=0
+else
+  mismatch_status=$?
+fi
 wait "$monitor_pid"
-[[ "$mismatch_status" -eq 2 ]]
+if [[ "$mismatch_status" -ne 2 ]]; then
+  echo "configuration mismatch returned $mismatch_status; expected 2" >&2
+  false
+fi
 jq -e '.decision == "blocked" and .reason == "configuration_mismatch" and .hardwareSignalSent == false and .publicationCount == 0' \
   "$proof_dir/mismatch.log" >/dev/null
 jq -e '.commandCount == 0 and (.commands | length) == 0' \
