@@ -185,7 +185,10 @@ jobs:
             if grep -q "Configured and activated scaled_joint_trajectory_controller" /tmp/first-user-ur5e-driver.log \
               && timeout 3 ros2 action list 2>/dev/null \
                 | grep -qx '/scaled_joint_trajectory_controller/follow_joint_trajectory'; then
-              exit 0
+              if timeout 3 ros2 topic echo --once --qos-reliability best_effort \
+                /joint_states sensor_msgs/msg/JointState >/dev/null 2>&1; then
+                exit 0
+              fi
             fi
             sleep 1
           done
