@@ -24,7 +24,7 @@
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:releasegate && npm run test:decision-conformance && npm run test:cloud && npm run test:integrations && npm run test:setup && npm run test:compatibility && npm run test:e2e-demo && npm run test:python-sdk && npm run ros2:test",
+    "test": "npm run test:releasegate && npm run test:decision-conformance && npm run test:cloud && npm run test:edge-authorization && npm run test:adapter-references && npm run test:integrations && npm run test:setup && npm run test:compatibility && npm run test:e2e-demo && npm run test:python-sdk && npm run ros2:test",
     "verify": "npm run typecheck && npm run build && npm test",
     "prepack": "npm run build",
     "package:smoke": "node scripts/package-smoke.cjs",
@@ -36,6 +36,8 @@
     "test:releasegate": "node scripts/run-rlsok.cjs --test tests/releasegate/releaseGate.test.ts && node scripts/run-rlsok.cjs --test tests/releasegate/configurationBinding.test.ts && node scripts/run-rlsok.cjs --test tests/releasegate/configurationProvenance.test.ts && node scripts/run-rlsok.cjs --test tests/releasegate/runtimeAttestation.test.ts",
     "test:decision-conformance": "node scripts/run-rlsok.cjs --test tests/releasegate/decisionConformance.test.ts",
     "test:cloud": "node scripts/run-rlsok.cjs --test tests/cloud/cloudClient.test.ts",
+    "test:edge-authorization": "node scripts/run-rlsok.cjs --test tests/edge-authorization/snapshot.test.ts",
+    "test:adapter-references": "node scripts/run-rlsok.cjs --test tests/adapter-references/references.test.ts",
     "test:setup": "node scripts/run-rlsok.cjs --test tests/setup/zeroToShadow.test.ts && node scripts/run-rlsok.cjs --test tests/setup/firstUserRecovery.test.ts",
     "test:setup-real-cloud": "node scripts/run-rlsok.cjs --test tests/setup/realCloudZeroToShadow.test.ts",
     "test:compatibility": "node scripts/run-rlsok.cjs --test tests/compatibility/compatibilityInspect.test.ts",

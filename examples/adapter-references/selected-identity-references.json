@@ -1,0 +1,62 @@
+[
+  {
+    "schemaVersion": 1,
+    "integration": "clearpath-generator",
+    "status": "reference-contract",
+    "stableApprovedInputs": ["robot.yaml digest", "generator package identity and version"],
+    "runtimeCapabilities": [],
+    "excludedVolatileInputs": ["regenerated formatting", "timestamps", "output path"],
+    "mismatchBehavior": "block-before-dispatch",
+    "externalTestGate": "Run against a real Clearpath generated workspace; no official support is claimed before that result."
+  },
+  {
+    "schemaVersion": 1,
+    "integration": "ros2-canopen-command-path",
+    "status": "reference-contract",
+    "stableApprovedInputs": ["stable device-to-role mapping", "EDS/DCF digest", "adapter identity and version"],
+    "runtimeCapabilities": ["canopen.command_path.operational"],
+    "excludedVolatileInputs": ["CAN Node ID by itself", "unrelated bus participants"],
+    "mismatchBehavior": "block-before-dispatch",
+    "externalTestGate": "Exercise authenticated topology and NMT observations with ros2_canopen; raw Node IDs cannot pass."
+  },
+  {
+    "schemaVersion": 1,
+    "integration": "nav2-velocity-smoother",
+    "status": "reference-contract",
+    "stableApprovedInputs": ["velocity smoother limits digest", "controller implementation identity and version", "frame contract"],
+    "runtimeCapabilities": ["nav2.command_path.ready"],
+    "excludedVolatileInputs": ["current velocity sample", "planner-local observation noise"],
+    "mismatchBehavior": "block-before-dispatch",
+    "externalTestGate": "Run a simulated Nav2 graph with changed limits and require pre-dispatch denial."
+  },
+  {
+    "schemaVersion": 1,
+    "integration": "elite-cs-model",
+    "status": "reference-contract",
+    "stableApprovedInputs": ["reported robot model", "driver/SDK identity and version"],
+    "runtimeCapabilities": ["elite.command_path.ready"],
+    "excludedVolatileInputs": ["marketing family name", "network address"],
+    "mismatchBehavior": "block-before-dispatch",
+    "externalTestGate": "An Elite-owned observer must prove CS63/CS66 mismatch detection before support is claimed."
+  },
+  {
+    "schemaVersion": 1,
+    "integration": "crane-x7-selected-limits",
+    "status": "reference-contract",
+    "stableApprovedInputs": ["URDF hardware limits digest", "selected MoveIt constraints digest", "ros2_control drive-limits digest"],
+    "runtimeCapabilities": ["crane_x7.motion_ready"],
+    "excludedVolatileInputs": ["current encoder posture", "unselected planning state"],
+    "mismatchBehavior": "block-before-dispatch",
+    "externalTestGate": "A CRANE-X7 simulator or owner must validate selected-source collection and posture freshness."
+  },
+  {
+    "schemaVersion": 1,
+    "integration": "device-serial-calibration",
+    "status": "reference-contract",
+    "stableApprovedInputs": ["device serial to role mapping", "per-device calibration digest"],
+    "runtimeCapabilities": ["device.calibration.loaded"],
+    "excludedVolatileInputs": ["USB port number", "enumeration order"],
+    "mismatchBehavior": "block-before-dispatch",
+    "externalTestGate": "Swap USB ports and then swap physical serials; only the latter must invalidate authorization."
+  }
+]
