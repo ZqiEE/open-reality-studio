@@ -46,6 +46,10 @@ try {
     'rlsok'
   );
   const executable = resolve(packageRoot, 'dist', 'apps', 'cli', 'rlsok.js');
+  const versionOutput = run(process.execPath, [executable, '--version'], temporary).trim();
+  if (versionOutput !== `rlsok runtime ${packed[0].version} (product v1.3.0)`) {
+    throw new Error(`packaged_version_mismatch:${versionOutput}`);
+  }
   run(process.execPath, [executable, '--help'], temporary);
   const setupHelp = run(process.execPath, [executable, 'setup', '--help'], temporary);
   if (!setupHelp.includes('Zero-to-Shadow') || !setupHelp.includes('--artifact')) {
@@ -134,6 +138,7 @@ try {
     standaloneShadow: 'passed',
     packagedRos2Sidecar: 'passed',
     packagedHusarionRosbotSidecar: 'passed',
+    versionIdentity: 'passed',
     repositoryRelativePathRequired: false
   }) + '\n');
 } finally {

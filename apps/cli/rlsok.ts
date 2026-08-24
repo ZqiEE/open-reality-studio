@@ -21,6 +21,7 @@ import { runObserveCommand } from './observe';
 import { runUr5eValidationCommand } from './validate-ur5e';
 import { runCompatibilityCommand } from './compatibility';
 import { operatorFailureReport, operatorReasonCode } from './operator-report';
+import packageMetadata from '../../package.json';
 
 function fail(
   message: string,
@@ -92,7 +93,7 @@ function usage(exitCode = 1): never {
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   if (command === '--version' || command === '-V' || command === 'version') {
-    process.stdout.write('rlsok runtime 1.4.0 (product v1.3.0)\n');
+    process.stdout.write(`rlsok runtime ${packageMetadata.version} (product v1.3.0)\n`);
   }
   else if (command === '--help' || command === '-h' || command === 'help') usage(0);
   else if (command === 'check' && args.length === 1) check(args[0]);

@@ -51,9 +51,9 @@ jobs:
           set -euo pipefail
           gh run download "$RUN_ID" --name distribution-proof --dir release-proof
           cd release-proof/artifacts
-          sha256sum -c rlsok-runtime-1.4.1-linux-x64.tar.gz.sha256
-          sha256sum -c realitywarden-rlsok-1.4.1.tgz.sha256
-          test "$(jq -r .sourceCommit realitywarden-rlsok-1.4.1.tgz.manifest.json)" = "$SOURCE_SHA"
+          sha256sum -c rlsok-runtime-1.4.2-linux-x64.tar.gz.sha256
+          sha256sum -c realitywarden-rlsok-1.4.2.tgz.sha256
+          test "$(jq -r .sourceCommit realitywarden-rlsok-1.4.2.tgz.manifest.json)" = "$SOURCE_SHA"
 
       - name: Upload the main bundle and publish the verified draft
         env:
@@ -63,13 +63,13 @@ jobs:
         run: |
           set -euo pipefail
           gh release upload "$RELEASE_TAG" \
-            release-proof/artifacts/rlsok-runtime-1.4.1-linux-x64.tar.gz \
-            release-proof/artifacts/rlsok-runtime-1.4.1-linux-x64.tar.gz.sha256 \
-            release-proof/artifacts/realitywarden-rlsok-1.4.1.tgz \
-            release-proof/artifacts/realitywarden-rlsok-1.4.1.tgz.sha256 \
-            release-proof/artifacts/realitywarden-rlsok-1.4.1.tgz.manifest.json \
+            release-proof/artifacts/rlsok-runtime-1.4.2-linux-x64.tar.gz \
+            release-proof/artifacts/rlsok-runtime-1.4.2-linux-x64.tar.gz.sha256 \
+            release-proof/artifacts/realitywarden-rlsok-1.4.2.tgz \
+            release-proof/artifacts/realitywarden-rlsok-1.4.2.tgz.sha256 \
+            release-proof/artifacts/realitywarden-rlsok-1.4.2.tgz.manifest.json \
             --clobber
-          for name in rlsok-runtime-1.4.1-linux-x64.tar.gz realitywarden-rlsok-1.4.1.tgz; do
+          for name in rlsok-runtime-1.4.2-linux-x64.tar.gz realitywarden-rlsok-1.4.2.tgz; do
             file="release-proof/artifacts/$name"
             expected="sha256:$(sha256sum "$file" | cut -d' ' -f1)"
             actual="$(gh release view "$RELEASE_TAG" --json assets --jq ".assets[] | select(.name == \"$name\") | .digest")"
