@@ -231,13 +231,30 @@ export class RlsokCloudClient {
   }
 
   async consumePermit(permitId: string, request: ConsumePermitRequest) {
-    return consumePermitResponseSchema.parse(
-      await this.request(
-        "POST",
-        `permits/${encodeURIComponent(permitId)}/consume`,
-        consumePermitRequestSchema.parse(request),
-      ),
-    );
+    try {
+      return consumePermitResponseSchema.parse(
+        await this.request(
+          "POST",
+          `permits/${encodeURIComponent(permitId)}/consume`,
+          consumePermitRequestSchema.parse(request),
+        ),
+      );
+    } catch (error) {
+      // Cloud versions predating evaluationMode accept the Permit issue request
+      // but reject the strict consume request. Keep this rollout fail-closed while
+      // telling the operator which component must be upgraded first.
+      if (
+        error instanceof CloudClientError &&
+        error.status === 400 &&
+        error.code === "invalid_request"
+      ) {
+        throw new CloudClientError(
+          "cloud_runtime_incompatible:upgrade_cloud_before_runtime",
+          error.status,
+        );
+      }
+      throw error;
+    }
   }
 
   async submitEvidence(

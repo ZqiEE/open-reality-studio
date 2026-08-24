@@ -267,6 +267,79 @@ test("redirects, malformed responses, oversized bodies, and non-2xx fail closed"
   );
 });
 
+test("new runtime detects old Cloud Permit consume as an actionable rollout incompatibility", async () => {
+  const permitId = "11111111-1111-4111-8111-111111111111";
+  let dispatches = 0;
+  const oldCloud = new RlsokCloudClient(config, async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    if (init?.method === "GET") {
+      return json({
+        apiVersion: "rlsok-cloud/v1",
+        releaseId: "fixture-release-001",
+        contentHash: fixture.expected.contentHash,
+        state: "approved",
+      });
+    }
+    if (path.endsWith(`/permits/${permitId}/consume`)) {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      assert.equal(body.evaluationMode, "shadow");
+      return json({ error: "invalid_request" }, 400);
+    }
+    throw new Error(`unexpected_old_cloud_request:${path}`);
+  });
+  const boundary = new CloudConnectedDispatchBoundary(
+    oldCloud,
+    permitId,
+    {
+      evaluationMode: "shadow",
+      releaseId: "fixture-release-001",
+      contentHash: fixture.expected.contentHash,
+      actionHash: fixture.expected.actionHash,
+      deviceId: "fixture-arm-01",
+      controllerId: "fixture-controller-01",
+      configurationDigest,
+    },
+    {
+      async dispatch() {
+        dispatches += 1;
+        return "dispatched";
+      },
+    },
+    async () => configurationDigest,
+  );
+  const action = fixture.action;
+  const localPermit = boundary.issueLocalPermit(action);
+  await assert.rejects(
+    boundary.dispatch(action, localPermit),
+    (error: unknown) =>
+      error instanceof CloudClientError &&
+      error.status === 400 &&
+      error.code ===
+        "cloud_runtime_incompatible:upgrade_cloud_before_runtime",
+  );
+  assert.equal(dispatches, 0);
+});
+
+test("new runtime Permit consume remains compatible with new Cloud", async () => {
+  const permitId = "11111111-1111-4111-8111-111111111111";
+  let consumeBody: Record<string, unknown> | undefined;
+  const newCloud = new RlsokCloudClient(config, async (_input, init) => {
+    consumeBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return json({ apiVersion: "rlsok-cloud/v1", permitId, consumed: true });
+  });
+  const result = await newCloud.consumePermit(permitId, {
+    evaluationMode: "shadow",
+    releaseId: "fixture-release-001",
+    contentHash: fixture.expected.contentHash,
+    actionHash: fixture.expected.actionHash,
+    deviceId: "fixture-arm-01",
+    controllerId: "fixture-controller-01",
+    configurationDigest,
+  });
+  assert.equal(result.consumed, true);
+  assert.equal(consumeBody?.evaluationMode, "shadow");
+});
+
 test("cloud dispatch boundary refreshes state and consumes exactly once before dispatch", async () => {
   const calls: string[] = [];
   const permitId = "11111111-1111-4111-8111-111111111111";
