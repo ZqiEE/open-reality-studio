@@ -123,7 +123,9 @@ async function main(): Promise<void> {
   };
   const inspectOutput = () => {
     if (!pairingApproved) {
-      const match = stdout.match(/Pairing code:\s*([A-Z0-9]+)/);
+      const match = stdout.match(
+        /Pairing code:\s*([A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4})/,
+      );
       if (match?.[1]) {
         pairingApproved = true;
         pairingCode = match[1];
