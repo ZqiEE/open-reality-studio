@@ -66,6 +66,12 @@ exec "$RLSOK_RUNTIME_ROOT/bin/node" "$RLSOK_RUNTIME_ROOT/lib/rlsok/dist/apps/cli
 `;
   writeFileSync(join(stage, "bin", "rlsok"), launcher, "utf8");
   chmodSync(join(stage, "bin", "rlsok"), 0o755);
+  const versionOutput = execFileSync(join(stage, "bin", "rlsok"), ["--version"], {
+    encoding: "utf8",
+  }).trim();
+  if (versionOutput !== `rlsok runtime ${version} (product v1.3.0)`) {
+    throw new Error(`bundle_version_mismatch:${versionOutput}`);
+  }
   const uninstall = `#!/bin/sh
 set -eu
 INSTALL_ROOT=\${RLSOK_INSTALL_ROOT:-/opt/rlsok}
