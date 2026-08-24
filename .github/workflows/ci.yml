@@ -81,6 +81,7 @@ jobs:
           # Isolate this long-lived official-driver graph from the preceding
           # short-lived DDS fixtures and force a fresh discovery participant.
           export ROS_DOMAIN_ID=77
+          export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
           ros2 daemon stop >/dev/null 2>&1 || true
           ros2 launch ur_robot_driver ur_control.launch.py \
             ur_type:=ur5e \
@@ -92,8 +93,10 @@ jobs:
           driver_pid=$!
           trap 'kill "$driver_pid" 2>/dev/null || true' EXIT
           controller_ready=false
-          for attempt in $(seq 1 40); do
-            if grep -q "Configured and activated scaled_joint_trajectory_controller" /tmp/ur5e-driver.log; then
+          for attempt in $(seq 1 60); do
+            if grep -q "Configured and activated scaled_joint_trajectory_controller" /tmp/ur5e-driver.log \
+              && timeout 3 ros2 action list 2>/dev/null \
+                | grep -qx '/scaled_joint_trajectory_controller/follow_joint_trajectory'; then
               controller_ready=true
               break
             fi
@@ -167,6 +170,7 @@ jobs:
         run: |
           source /opt/ros/jazzy/setup.bash
           export ROS_DOMAIN_ID=91
+          export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
           echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID" >> "$GITHUB_ENV"
           ros2 daemon stop >/dev/null 2>&1 || true
           ros2 launch ur_robot_driver ur_control.launch.py \
@@ -177,8 +181,10 @@ jobs:
             launch_rviz:=false \
             > /tmp/first-user-ur5e-driver.log 2>&1 &
           echo "RLSOK_UR5E_DRIVER_PID=$!" >> "$GITHUB_ENV"
-          for attempt in $(seq 1 40); do
-            if grep -q "Configured and activated scaled_joint_trajectory_controller" /tmp/first-user-ur5e-driver.log; then
+          for attempt in $(seq 1 60); do
+            if grep -q "Configured and activated scaled_joint_trajectory_controller" /tmp/first-user-ur5e-driver.log \
+              && timeout 3 ros2 action list 2>/dev/null \
+                | grep -qx '/scaled_joint_trajectory_controller/follow_joint_trajectory'; then
               exit 0
             fi
             sleep 1
