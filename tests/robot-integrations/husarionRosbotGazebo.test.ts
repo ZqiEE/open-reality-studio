@@ -614,6 +614,17 @@ test('Python sidecar protocol self-test does not require ROS installation', () =
   assert.match(result.stdout, /sidecar_self_test_passed/);
 });
 
+test('Husarion sidecar drains the one reliable publication only during teardown', () => {
+  const source = readFileSync(join(
+    process.cwd(),
+    'experimental/husarion-rosbot-gazebo/rlsok_husarion_rosbot_sidecar.py'
+  ), 'utf8');
+  assert.match(source, /publisher\.wait_for_all_acked/);
+  assert.match(source, /if command_published else True/);
+  assert.match(source, /0\.25 if command_published else 0\.0/);
+  assert.doesNotMatch(source, /publisher\.publish\(message\)[\s\S]{0,160}publisher\.publish/);
+});
+
 test('checked-in example fixtures retain their strict v2 approval binding', () => {
   const root = join(process.cwd(), 'examples/husarion-rosbot-gazebo');
   const trusted = executionConfigurationV2Schema.parse(

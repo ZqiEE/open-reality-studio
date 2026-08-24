@@ -72,6 +72,13 @@ def emit(value: dict[str, Any]) -> None:
     sys.stdout.flush()
 
 
+def drain_published_command(publisher: Any, duration_factory: Any) -> bool:
+    """Bound teardown until every matched reliable reader acknowledges the one command."""
+    return bool(publisher.wait_for_all_acked(
+        timeout=duration_factory(seconds=1.0)
+    ))
+
+
 def self_test() -> int:
     assert normalize_namespace("") == ""
     assert normalize_namespace("/robot1/") == "robot1"
@@ -93,6 +100,16 @@ def self_test() -> int:
         raise AssertionError("unexpected topic accepted")
     except ValueError as error:
         assert str(error) == "rosbot_topic_not_allowed"
+    class FakePublisher:
+        timeout: Any = None
+
+        def wait_for_all_acked(self, *, timeout: Any) -> bool:
+            self.timeout = timeout
+            return True
+
+    fake_publisher = FakePublisher()
+    assert drain_published_command(fake_publisher, lambda **value: value) is True
+    assert fake_publisher.timeout == {"seconds": 1.0}
     print("husarion_rosbot_sidecar_self_test_passed")
     return 0
 
@@ -102,6 +119,7 @@ def run(namespace: str, use_sim_time: bool) -> int:
         import rclpy
         from geometry_msgs.msg import TwistStamped
         from nav_msgs.msg import Odometry
+        from rclpy.duration import Duration
         from rclpy.parameter import Parameter
     except ImportError as error:
         emit({"event": "fatal", "error": f"ros2_import_failed:{error}"})
@@ -118,6 +136,7 @@ def run(namespace: str, use_sim_time: bool) -> int:
         if not results or not results[0].successful:
             raise RuntimeError("rosbot_sim_time_configuration_failed")
     publisher = node.create_publisher(TwistStamped, COMMAND_TOPIC, 10)
+    command_published = False
 
     def on_odometry(message: Any) -> None:
         source_seconds = message.header.stamp.sec + message.header.stamp.nanosec / 1_000_000_000
@@ -179,13 +198,29 @@ def run(namespace: str, use_sim_time: bool) -> int:
                     if publisher.get_subscription_count() < 1:
                         raise RuntimeError("command_path_unavailable")
                     publisher.publish(message)
+                    command_published = True
                     result = {
                         "published": True,
                         "topic": resolved_topic(normalized_namespace, COMMAND_TOPIC),
                         "messageType": MESSAGE_TYPE,
                     }
                 elif operation == "shutdown":
-                    result = {"closed": True}
+                    delivery_acked = (
+                        drain_published_command(publisher, Duration)
+                        if command_published else True
+                    )
+                    # Keep the already-published endpoint alive briefly so graph observers and
+                    # the matched mux reader can process the one reliable DDS sample. This is
+                    # teardown only: it publishes no command and performs no retry.
+                    linger_deadline = time.monotonic() + (0.25 if command_published else 0.0)
+                    while rclpy.ok() and time.monotonic() < linger_deadline:
+                        rclpy.spin_once(node, timeout_sec=min(
+                            0.02, max(0.0, linger_deadline - time.monotonic())
+                        ))
+                    result = {
+                        "closed": True,
+                        "commandDeliveryAcknowledged": delivery_acked,
+                    }
                     running = False
                 else:
                     raise ValueError("sidecar_operation_unknown")
