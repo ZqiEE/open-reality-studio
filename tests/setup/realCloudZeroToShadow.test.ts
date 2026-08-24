@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     },
   });
   const administratorToken = String(login.token);
-  assert.match(administratorToken, /^rlsok_[A-Za-z0-9_-]{43}$/);
+  assert.match(administratorToken, /^rlsok_session_[A-Za-z0-9_-]{43}$/);
 
   const temporary = mkdtempSync(join(tmpdir(), "rlsok-real-cloud-shadow-"));
   const config = join(temporary, "config");
