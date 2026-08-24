@@ -614,14 +614,16 @@ test('Python sidecar protocol self-test does not require ROS installation', () =
   assert.match(result.stdout, /sidecar_self_test_passed/);
 });
 
-test('Husarion sidecar drains the one reliable publication only during teardown', () => {
+test('Husarion sidecar readiness requires the intended mux rather than an observer', () => {
   const source = readFileSync(join(
     process.cwd(),
     'experimental/husarion-rosbot-gazebo/rlsok_husarion_rosbot_sidecar.py'
   ), 'utf8');
-  assert.match(source, /publisher\.wait_for_all_acked/);
-  assert.match(source, /if command_published else True/);
+  assert.match(source, /endpoint\.node_name == "twist_mux_controller"/);
+  assert.match(source, /command_path_ready\(node, command_topic\)/);
   assert.match(source, /0\.25 if command_published else 0\.0/);
+  assert.doesNotMatch(source, /get_subscription_count/);
+  assert.doesNotMatch(source, /wait_for_all_acked/);
   assert.doesNotMatch(source, /publisher\.publish\(message\)[\s\S]{0,160}publisher\.publish/);
 });
 
