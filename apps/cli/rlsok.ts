@@ -20,18 +20,7 @@ import { runSetupCommand } from './setup';
 import { runObserveCommand } from './observe';
 import { runUr5eValidationCommand } from './validate-ur5e';
 import { runCompatibilityCommand } from './compatibility';
-
-function reasonCode(message: string): string {
-  if (/^[a-z0-9_:-]+$/.test(message)) return message;
-  return (
-    message
-      .split(/[.\n]/, 1)[0]
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .slice(0, 96) || 'fail_closed_before_dispatch'
-  );
-}
+import { operatorFailureReport, operatorReasonCode } from './operator-report';
 
 function fail(
   message: string,
@@ -43,11 +32,7 @@ function fail(
   } = {},
 ): never {
   process.stderr.write(
-    `FAILED\n` +
-      `Observed: ${report.observed ?? message}\n` +
-      `Reason: ${report.reason ?? reasonCode(message)}\n` +
-      `Hardware dispatch: ${report.hardwareDispatch ?? 'NO'}\n` +
-      `Next action: ${report.nextAction ?? message}\n` +
+    operatorFailureReport('FAILED', message, report) +
       `ERROR: ${message}\n`,
   );
   process.exit(2);
@@ -157,7 +142,7 @@ void main().catch((error) => {
   };
   fail(guidance[message] ?? message, {
     observed: message,
-    reason: reasonCode(message),
+    reason: operatorReasonCode(message),
     nextAction: guidance[message] ?? message,
     hardwareDispatch,
   });

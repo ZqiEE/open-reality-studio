@@ -64,9 +64,26 @@ for sentinel in \
 done
 
 selected_hash=$(sha256sum "$RLSOK_INSTALL_ROOT/1.4.0/bin/rlsok" | cut -d' ' -f1)
+printf 'previous-runtime-selected\n' > "$RLSOK_INSTALL_ROOT/1.4.0/acceptance-previous-runtime"
+cli_link_before=$(readlink "$RLSOK_BIN_DIR/rlsok")
+uninstall_link_before=$(readlink "$RLSOK_INSTALL_ROOT/uninstall.sh")
+python_pth_before=$(cat "$RLSOK_PYTHON_SITE/rlsok.pth")
+python_pth_path_before=$(cat "$RLSOK_INSTALL_ROOT/.python-pth-path")
 assert_selected_unchanged() {
   test "$(sha256sum "$RLSOK_INSTALL_ROOT/1.4.0/bin/rlsok" | cut -d' ' -f1)" = "$selected_hash"
   test "$("$RLSOK_BIN_DIR/rlsok" --version)" = "$candidate_version"
+  test "$(cat "$RLSOK_INSTALL_ROOT/1.4.0/acceptance-previous-runtime")" = "previous-runtime-selected"
+  test "$(readlink "$RLSOK_BIN_DIR/rlsok")" = "$cli_link_before"
+  test "$(readlink "$RLSOK_INSTALL_ROOT/uninstall.sh")" = "$uninstall_link_before"
+  test "$(cat "$RLSOK_PYTHON_SITE/rlsok.pth")" = "$python_pth_before"
+  test "$(cat "$RLSOK_INSTALL_ROOT/.python-pth-path")" = "$python_pth_path_before"
+  python3 -S -c 'import os, site; site.addsitedir(os.environ["RLSOK_PYTHON_SITE"]); from rlsok import propose; assert callable(propose)'
+  for sentinel in \
+    "$XDG_CONFIG_HOME/rlsok/cloud-credentials.json" \
+    "$XDG_CONFIG_HOME/rlsok/setup.json" \
+    "$XDG_DATA_HOME/rlsok/evidence/acceptance.json"; do
+    test -s "$sentinel"
+  done
 }
 
 missing="$acceptance_root/missing"
@@ -97,23 +114,34 @@ if RLSOK_RELEASE_DIR="$invalid" sh "$candidate_installer" >"$invalid.out" 2>&1; 
 fi
 assert_selected_unchanged
 
-failure_bin="$acceptance_root/failure-bin"
-mkdir -p "$failure_bin"
-cat > "$failure_bin/mv" <<'EOF'
-#!/bin/sh
-if [ "${1##*/}" = "1.4.0.new" ] && [ "${2##*/}" = "1.4.0" ]; then
-  exit 73
-fi
-exec /usr/bin/mv "$@"
-EOF
-chmod +x "$failure_bin/mv"
-if PATH="$failure_bin:$PATH" RLSOK_RELEASE_DIR="$release_dir" sh "$candidate_installer" >"$acceptance_root/activation.out" 2>&1; then
-  echo "injected activation failure unexpectedly installed" >&2
+empty="$acceptance_root/empty"
+mkdir -p "$empty"
+: > "$empty/$(basename "$archive")"
+(cd "$empty" && sha256sum "$(basename "$archive")" > "$(basename "$archive_checksum")")
+if RLSOK_RELEASE_DIR="$empty" sh "$candidate_installer" >"$empty.out" 2>&1; then
+  echo "empty archive unexpectedly installed" >&2
   exit 1
 fi
 assert_selected_unchanged
-test ! -e "$RLSOK_INSTALL_ROOT/1.4.0.new"
-test ! -e "$RLSOK_INSTALL_ROOT/1.4.0.rollback"
+
+assert_injected_rollback() {
+  failure_name=$1
+  failure_stage=$2
+  if RLSOK_INSTALL_FAIL_AT="$failure_stage" RLSOK_RELEASE_DIR="$release_dir" \
+    sh "$candidate_installer" >"$acceptance_root/$failure_name.out" 2>&1; then
+    echo "injected $failure_name failure unexpectedly installed" >&2
+    exit 1
+  fi
+  grep -q "previous runtime and registrations were restored" "$acceptance_root/$failure_name.out"
+  assert_selected_unchanged
+  test ! -e "$RLSOK_INSTALL_ROOT/1.4.0.new"
+  test ! -e "$RLSOK_INSTALL_ROOT/1.4.0.rollback"
+}
+
+assert_injected_rollback directory-activation directory-activation
+assert_injected_rollback cli-link cli-link
+assert_injected_rollback python-registration python-registration
+assert_injected_rollback cli-verification cli-verification
 
 uninstall_copy="$acceptance_root/uninstall.sh"
 cp "$RLSOK_INSTALL_ROOT/uninstall.sh" "$uninstall_copy"
@@ -169,9 +197,17 @@ cat > "$proof" <<EOF
   "checksumBeforeActivation": true,
   "upgradePreservedUserState": true,
   "missingArchiveFailedClosed": true,
+  "emptyArchiveFailedClosed": true,
   "corruptChecksumFailedClosed": true,
   "invalidArchiveFailedClosed": true,
-  "activationFailureRestoredPreviousRuntime": true,
+  "directoryActivationFailureRestoredPreviousTransaction": true,
+  "cliLinkFailureRestoredPreviousTransaction": true,
+  "pythonRegistrationFailureRestoredPreviousTransaction": true,
+  "installedCliVerificationFailureRestoredPreviousTransaction": true,
+  "rollbackKeptPreviousRuntimeUsable": true,
+  "rollbackRestoredCliAndUninstallLinks": true,
+  "rollbackRestoredPythonRegistration": true,
+  "rollbackPreservedUserState": true,
   "uninstallPreservedUserState": true,
   "uninstallIdempotent": true,
   "unsupportedOperatingSystemRejected": true,

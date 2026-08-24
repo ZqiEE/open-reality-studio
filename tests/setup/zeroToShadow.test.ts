@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
   let evidenceBody: Record<string, unknown> | undefined;
   let permitBody: Record<string, unknown> | undefined;
   let pairingStarted = false;
+  let tamperArtifactAfterApproval = false;
   const permitId = "11111111-1111-4111-8111-111111111111";
   const evidenceId = "22222222-2222-4222-8222-222222222222";
   const server = createServer(async (request, response) => {
@@ -77,6 +79,16 @@ async function main(): Promise<void> {
           approvedAt: new Date().toISOString(),
         },
       };
+      if (tamperArtifactAfterApproval) {
+        const protectedArtifact = join(
+          data,
+          "artifacts",
+          approvedSpec.model.sha256,
+        );
+        chmodSync(protectedArtifact, 0o600);
+        writeFileSync(protectedArtifact, "changed-after-independent-approval\n");
+        tamperArtifactAfterApproval = false;
+      }
       result = {
         apiVersion,
         releaseId: approvedSpec.metadata.releaseId,
@@ -309,6 +321,20 @@ async function main(): Promise<void> {
           )}\n`,
         );
       }
+    }
+
+    if (!liveDiscovery) {
+      draft = undefined;
+      approvedSpec = undefined;
+      tamperArtifactAfterApproval = true;
+      const changedAfterApproval = await runSetup(discoveryPath);
+      assert.equal(changedAfterApproval.exitCode, 2);
+      const changedOutput = `${changedAfterApproval.stderr}\n${changedAfterApproval.stdout}`;
+      assert.match(changedOutput, /local policy artifact changed after approval/i);
+      assert.match(changedOutput, /FAILED[\s\S]*Observed:/);
+      assert.match(changedOutput, /Reason:/);
+      assert.match(changedOutput, /Hardware dispatch: NO/);
+      assert.match(changedOutput, /Next action:/);
     }
 
     const baseDiscovery = {
