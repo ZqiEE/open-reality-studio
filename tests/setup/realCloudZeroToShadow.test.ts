@@ -241,7 +241,10 @@ async function main(): Promise<void> {
         proofPath,
         `${JSON.stringify(
           {
-            sourceCommit: process.env.GITHUB_SHA ?? null,
+            sourceCommit:
+              process.env.RLSOK_RUNTIME_SOURCE_COMMIT ??
+              process.env.GITHUB_SHA ??
+              null,
             cloudSourceCommit: process.env.RLSOK_CLOUD_SOURCE_COMMIT ?? null,
             cloud: "actual isolated rlsok-cloud API with isolated PostgreSQL",
             hostedProductionCloudTested: false,
