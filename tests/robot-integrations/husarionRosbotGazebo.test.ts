@@ -194,13 +194,25 @@ class FakeTransport implements HusarionRosbotTransport {
   } satisfies RosbotOdometryObservation;
   publications: RosbotTwistAction[] = [];
   beforeObservation?: () => void;
+  commandPathReady = true;
+  readinessChecks = 0;
+  beforeReadiness?: () => void;
+  beforePublish?: () => void;
 
   async getOdometryObservation(): Promise<unknown | undefined> {
     this.beforeObservation?.();
     return this.state;
   }
 
+  async waitForCommandPathReady(): Promise<boolean> {
+    this.readinessChecks += 1;
+    this.beforeReadiness?.();
+    return this.commandPathReady;
+  }
+
   async publishVelocity(candidate: RosbotTwistAction) {
+    this.beforePublish?.();
+    if (!this.commandPathReady) throw new Error('command_path_unavailable');
     this.publications.push(candidate);
     return {
       published: true as const,
@@ -496,8 +508,49 @@ test('allowed Shadow evaluates the contract but publishes exactly zero commands'
   assert.equal(result.hardwareSignalSent, false);
   assert.equal(result.publicationCount, 0);
   assert.equal(current.transport.publications.length, 0);
+  assert.equal(current.transport.readinessChecks, 0);
   assert.equal(current.entries.at(-1)?.hardwareSignalSent, false);
   assert.equal(current.entries.at(-1)?.executionEvidence, 'shadow_not_dispatched');
+});
+
+test('missing command-path subscriber fails closed before publication', async () => {
+  const current = setup('run');
+  current.transport.commandPathReady = false;
+  const result = await current.gateway.handleProposal(proposal(current.spec));
+  assert.equal(result.decision, 'failed');
+  assert.equal(result.reason, 'command_path_unavailable');
+  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(result.publicationCount, 0);
+  assert.equal(current.transport.readinessChecks, 1);
+  assert.equal(current.transport.publications.length, 0);
+});
+
+test('command path becoming ready within the bounded startup publishes exactly once', async () => {
+  const current = setup('run');
+  current.transport.commandPathReady = false;
+  current.transport.beforeReadiness = () => {
+    current.transport.commandPathReady = true;
+  };
+  const result = await current.gateway.handleProposal(proposal(current.spec));
+  assert.equal(result.decision, 'allowed');
+  assert.equal(result.hardwareSignalSent, true);
+  assert.equal(result.publicationCount, 1);
+  assert.equal(current.transport.readinessChecks, 1);
+  assert.equal(current.transport.publications.length, 1);
+});
+
+test('subscriber disappearing immediately before dispatch fails closed with zero publication', async () => {
+  const current = setup('run');
+  current.transport.beforePublish = () => {
+    current.transport.commandPathReady = false;
+  };
+  const result = await current.gateway.handleProposal(proposal(current.spec));
+  assert.equal(result.decision, 'failed');
+  assert.equal(result.reason, 'command_path_unavailable');
+  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(result.publicationCount, 0);
+  assert.equal(current.transport.readinessChecks, 1);
+  assert.equal(current.transport.publications.length, 0);
 });
 
 test('allowed Run publishes once and the single-use permit cannot publish twice', async () => {

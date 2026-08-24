@@ -51,6 +51,10 @@ try {
   if (!setupHelp.includes('Zero-to-Shadow') || !setupHelp.includes('--artifact')) {
     throw new Error('packaged_setup_help_unavailable');
   }
+  const pairHelp = run(process.execPath, [executable, 'pair', '--help'], temporary);
+  if (!pairHelp.includes('separate action') || !pairHelp.includes('Workspace administrator')) {
+    throw new Error('packaged_pair_help_unavailable');
+  }
   const doctor = spawnSync(process.execPath, [executable, 'ros2', 'doctor'], {
     cwd: temporary,
     encoding: 'utf8',
@@ -125,6 +129,7 @@ try {
     files: manifest.files.length,
     help: 'passed',
     setupHelp: 'passed',
+    pairHelp: 'passed',
     check: 'passed',
     standaloneShadow: 'passed',
     packagedRos2Sidecar: 'passed',

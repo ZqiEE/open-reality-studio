@@ -75,6 +75,7 @@ export type RosbotOdometryObservation = z.infer<typeof rosbotOdometryObservation
 
 export interface HusarionRosbotTransport {
   getOdometryObservation(): Promise<unknown | undefined>;
+  waitForCommandPathReady(): Promise<boolean>;
   publishVelocity(action: RosbotTwistAction): Promise<{
     published: true;
     topic: string;
@@ -228,6 +229,23 @@ export class HusarionRosbotGazeboGateway {
     const record = await this.options.releaseRecord();
     const configuration = await this.observeConfiguration();
     const runtimeAttestation = await this.observeAttestation();
+    if (this.options.mode === 'run') {
+      let commandPathReady = false;
+      try {
+        commandPathReady = await this.options.transport.waitForCommandPathReady();
+      } catch {
+        commandPathReady = false;
+      }
+      if (!commandPathReady) {
+        return { result: {
+          proposalId: proposal.proposalId,
+          decision: 'failed',
+          reason: 'command_path_unavailable',
+          hardwareSignalSent: false,
+          publicationCount: this.publicationCount
+        } };
+      }
+    }
     let state: RosbotOdometryObservation | undefined;
     try {
       const observed = await this.options.transport.getOdometryObservation();
@@ -294,8 +312,9 @@ export class HusarionRosbotGazeboGateway {
       {
         dispatch: async (candidate) => {
           if (!actionResult.success) throw new Error('invalid_twist_dispatch_forbidden');
+          const published = await this.options.transport.publishVelocity(actionResult.data);
           this.publicationCount += 1;
-          return this.options.transport.publishVelocity(actionResult.data);
+          return published;
         }
       },
       this.options.evidence,

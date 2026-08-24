@@ -31,8 +31,32 @@ import {
   Ros2ReferenceGateway,
 } from "../../packages/ros2-reference-gateway";
 import { PythonRos2SidecarTransport } from "../../packages/ros2-reference-gateway/sidecar";
+import { operatorFailureReport } from "./operator-report";
 
 type Options = Record<string, string>;
+
+function reportPreDispatchBlock(result: {
+  decision: string;
+  reason: string;
+  controllerGoalsAttempted: number;
+  hardwareSignalSent: boolean;
+}): void {
+  if (
+    result.decision === "allowed" ||
+    result.controllerGoalsAttempted !== 0 ||
+    result.hardwareSignalSent
+  )
+    return;
+  process.stderr.write(
+    operatorFailureReport("BLOCKED", result.reason, {
+      observed: result.reason,
+      reason: result.reason,
+      hardwareDispatch: "NO",
+      nextAction:
+        "Review the verified Evidence and restore the exact approved release, configuration, credentials, and Cloud authority before retrying.",
+    }),
+  );
+}
 
 function parseOptions(args: string[]): Options {
   const result: Options = {};
@@ -296,6 +320,7 @@ async function runCloudConnectedGateway(
     }
     const result = await workflow.runProposal(payload);
     process.stdout.write(`${JSON.stringify(result)}\n`);
+    reportPreDispatchBlock(result);
     await transport.close();
     return result.decision === "allowed" ? 0 : 2;
   }
@@ -323,6 +348,7 @@ async function runCloudConnectedGateway(
       }
       const result = await workflow.runProposal(payload);
       process.stdout.write(`${JSON.stringify(result)}\n`);
+      reportPreDispatchBlock(result);
       completionExitCode = result.decision === "allowed" ? 0 : 2;
       resolveCompletion();
     } catch (error) {

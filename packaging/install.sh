@@ -43,13 +43,7 @@ fi
 tar -xzf "$TEMP_DIR/$ARCHIVE" -C "$TEMP_DIR"
 
 VERSION_ROOT="$INSTALL_ROOT/$RLSOK_RUNTIME_VERSION"
-mkdir -p "$INSTALL_ROOT" "$BIN_DIR"
-rm -rf "$VERSION_ROOT.new"
-mv "$TEMP_DIR/rlsok-runtime-$RLSOK_RUNTIME_VERSION" "$VERSION_ROOT.new"
-rm -rf "$VERSION_ROOT"
-mv "$VERSION_ROOT.new" "$VERSION_ROOT"
-ln -sfn "$VERSION_ROOT/bin/rlsok" "$BIN_DIR/rlsok"
-ln -sfn "$VERSION_ROOT/uninstall.sh" "$INSTALL_ROOT/uninstall.sh"
+ROLLBACK_ROOT="$INSTALL_ROOT/$RLSOK_RUNTIME_VERSION.rollback"
 if [ -n "${RLSOK_PYTHON_SITE:-}" ]; then
   PYTHON_SITE="$RLSOK_PYTHON_SITE"
 elif [ "$INSTALL_ROOT" = "/opt/rlsok" ]; then
@@ -57,12 +51,108 @@ elif [ "$INSTALL_ROOT" = "/opt/rlsok" ]; then
 else
   PYTHON_SITE="$INSTALL_ROOT/python-site"
 fi
-mkdir -p "$PYTHON_SITE"
 PYTHON_PTH="$PYTHON_SITE/rlsok.pth"
-printf '%s\n' "$VERSION_ROOT/lib/rlsok/sdk/python" > "$PYTHON_PTH"
-printf '%s\n' "$PYTHON_PTH" > "$INSTALL_ROOT/.python-pth-path"
+PYTHON_PTH_PATH="$INSTALL_ROOT/.python-pth-path"
+CLI_LINK="$BIN_DIR/rlsok"
+UNINSTALL_LINK="$INSTALL_ROOT/uninstall.sh"
+BACKUP_ROOT="$TEMP_DIR/activation-backup"
+mkdir -p "$INSTALL_ROOT" "$BIN_DIR" "$BACKUP_ROOT"
+[ ! -e "$ROLLBACK_ROOT" ] ||
+  fail "an unfinished rollback exists at $ROLLBACK_ROOT; restore or remove it before retrying."
+rm -rf "$VERSION_ROOT.new"
+mv "$TEMP_DIR/rlsok-runtime-$RLSOK_RUNTIME_VERSION" "$VERSION_ROOT.new"
 
-"$BIN_DIR/rlsok" --version
+snapshot_path() {
+  SNAPSHOT_NAME=$1
+  SNAPSHOT_PATH=$2
+  if [ -L "$SNAPSHOT_PATH" ]; then
+    printf 'symlink\n' > "$BACKUP_ROOT/$SNAPSHOT_NAME.kind"
+    readlink "$SNAPSHOT_PATH" > "$BACKUP_ROOT/$SNAPSHOT_NAME.target"
+  elif [ -e "$SNAPSHOT_PATH" ]; then
+    printf 'file\n' > "$BACKUP_ROOT/$SNAPSHOT_NAME.kind"
+    cp -p "$SNAPSHOT_PATH" "$BACKUP_ROOT/$SNAPSHOT_NAME.file"
+  else
+    printf 'absent\n' > "$BACKUP_ROOT/$SNAPSHOT_NAME.kind"
+  fi
+}
+
+restore_path() {
+  SNAPSHOT_NAME=$1
+  SNAPSHOT_PATH=$2
+  rm -f "$SNAPSHOT_PATH"
+  case "$(cat "$BACKUP_ROOT/$SNAPSHOT_NAME.kind")" in
+    symlink)
+      ln -s "$(cat "$BACKUP_ROOT/$SNAPSHOT_NAME.target")" "$SNAPSHOT_PATH"
+      ;;
+    file)
+      cp -p "$BACKUP_ROOT/$SNAPSHOT_NAME.file" "$SNAPSHOT_PATH"
+      ;;
+    absent) ;;
+  esac
+}
+
+snapshot_path cli-link "$CLI_LINK"
+snapshot_path uninstall-link "$UNINSTALL_LINK"
+snapshot_path python-pth "$PYTHON_PTH"
+snapshot_path python-pth-path "$PYTHON_PTH_PATH"
+PYTHON_SITE_EXISTED=false
+[ -d "$PYTHON_SITE" ] && PYTHON_SITE_EXISTED=true
+HAD_PREVIOUS=false
+
+injected_failure() {
+  [ "${RLSOK_INSTALL_FAIL_AT:-}" = "$1" ]
+}
+
+activate_install() {
+  if [ -e "$VERSION_ROOT" ]; then
+    mv "$VERSION_ROOT" "$ROLLBACK_ROOT" || return 1
+    HAD_PREVIOUS=true
+  fi
+  mv "$VERSION_ROOT.new" "$VERSION_ROOT" || return 1
+  if injected_failure directory-activation; then return 1; fi
+
+  ln -sfn "$VERSION_ROOT/bin/rlsok" "$CLI_LINK" || return 1
+  if injected_failure cli-link; then return 1; fi
+  ln -sfn "$VERSION_ROOT/uninstall.sh" "$UNINSTALL_LINK" || return 1
+  if injected_failure uninstall-link; then return 1; fi
+
+  mkdir -p "$PYTHON_SITE" || return 1
+  if injected_failure python-site; then return 1; fi
+  printf '%s\n' "$VERSION_ROOT/lib/rlsok/sdk/python" > "$PYTHON_PTH" || return 1
+  if injected_failure python-registration; then return 1; fi
+  printf '%s\n' "$PYTHON_PTH" > "$PYTHON_PTH_PATH" || return 1
+
+  if injected_failure cli-verification; then return 1; fi
+  "$CLI_LINK" --version || return 1
+  if injected_failure python-verification; then return 1; fi
+  RLSOK_VERIFY_PYTHON_SITE="$PYTHON_SITE" python3 -c 'import os, site; site.addsitedir(os.environ["RLSOK_VERIFY_PYTHON_SITE"]); from rlsok import propose; assert callable(propose)' || return 1
+  return 0
+}
+
+rollback_install() {
+  restore_path python-pth-path "$PYTHON_PTH_PATH" || return 1
+  restore_path python-pth "$PYTHON_PTH" || return 1
+  if [ "$PYTHON_SITE_EXISTED" = false ]; then
+    rmdir "$PYTHON_SITE" 2>/dev/null || true
+  fi
+  restore_path uninstall-link "$UNINSTALL_LINK" || return 1
+  restore_path cli-link "$CLI_LINK" || return 1
+  rm -rf "$VERSION_ROOT" "$VERSION_ROOT.new"
+  if [ "$HAD_PREVIOUS" = true ]; then
+    mv "$ROLLBACK_ROOT" "$VERSION_ROOT" || return 1
+  fi
+  rm -rf "$ROLLBACK_ROOT"
+}
+
+if ! activate_install; then
+  if rollback_install; then
+    fail "activation or finalization failed; the previous runtime and registrations were restored."
+  fi
+  fail "activation or finalization failed and rollback was incomplete; recovery remains at $ROLLBACK_ROOT."
+fi
+
+rm -rf "$ROLLBACK_ROOT"
+
 echo "RLSOK runtime $RLSOK_RUNTIME_VERSION (product v$RLSOK_PRODUCT_VERSION) installed at $VERSION_ROOT"
 echo "Python proposal SDK installed for: $PYTHON_SITE"
 echo "Next: source /opt/ros/jazzy/setup.bash && rlsok setup"

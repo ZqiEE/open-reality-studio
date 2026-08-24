@@ -20,9 +20,21 @@ import { runSetupCommand } from './setup';
 import { runObserveCommand } from './observe';
 import { runUr5eValidationCommand } from './validate-ur5e';
 import { runCompatibilityCommand } from './compatibility';
+import { operatorFailureReport, operatorReasonCode } from './operator-report';
 
-function fail(message: string): never {
-  process.stderr.write(`ERROR: ${message}\n`);
+function fail(
+  message: string,
+  report: {
+    observed?: string;
+    reason?: string;
+    nextAction?: string;
+    hardwareDispatch?: 'NO' | 'UNKNOWN';
+  } = {},
+): never {
+  process.stderr.write(
+    operatorFailureReport('FAILED', message, report) +
+      `ERROR: ${message}\n`,
+  );
   process.exit(2);
 }
 
@@ -107,6 +119,11 @@ void main().catch((error) => {
     process.stderr.write(`${cloudUsage()}\n`);
   }
   const message = error instanceof Error ? error.message : String(error);
+  const ros2Operation = process.argv[3]?.startsWith('--')
+    ? 'shadow'
+    : (process.argv[3] ?? 'shadow');
+  const hardwareDispatch =
+    process.argv[2] === 'ros2' && ros2Operation === 'run' ? 'UNKNOWN' : 'NO';
   const guidance: Record<string, string> = {
     dds_discovery_timeout:
       "ROS 2 discovery timed out. Confirm this terminal sourced /opt/ros/jazzy/setup.bash, check ROS_DOMAIN_ID matches the robot graph, and run 'rlsok ros2 doctor'.",
@@ -123,5 +140,10 @@ void main().catch((error) => {
     "runtime_already_paired_use_--replace":
       "This runtime is already paired. Continue with 'rlsok setup', or use 'rlsok pair --replace' only when intentionally replacing credentials.",
   };
-  fail(guidance[message] ?? message);
+  fail(guidance[message] ?? message, {
+    observed: message,
+    reason: operatorReasonCode(message),
+    nextAction: guidance[message] ?? message,
+    hardwareDispatch,
+  });
 });

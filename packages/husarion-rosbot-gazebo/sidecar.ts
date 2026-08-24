@@ -76,6 +76,16 @@ export class PythonHusarionRosbotTransport implements HusarionRosbotTransport {
     return result;
   }
 
+  async waitForCommandPathReady(): Promise<boolean> {
+    const result = await this.request('wait_command_path', {
+      timeoutMs: this.discoveryTimeoutMs
+    }) as { ready?: unknown };
+    if (typeof result.ready !== 'boolean') {
+      throw new Error('rosbot_command_path_readiness_invalid');
+    }
+    return result.ready;
+  }
+
   async close(): Promise<void> {
     const child = this.child;
     if (!child) return;
