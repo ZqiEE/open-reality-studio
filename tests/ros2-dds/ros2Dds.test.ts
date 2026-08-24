@@ -193,7 +193,7 @@ async function runCase(
   }
 }
 
-test('real DDS Shadow case writes zero-dispatch Evidence', async () => {
+test('real DDS Best Effort JointState supports Shadow with zero dispatch', async () => {
   const { result, evidence } = await runCase('shadow', 'shadow');
   assert.equal(result.decision, 'allowed');
   assert.equal(result.controllerGoalCount, 0);
