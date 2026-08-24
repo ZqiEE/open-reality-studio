@@ -10,6 +10,7 @@ import math
 import re
 import select
 import sys
+import time
 from typing import Any
 
 
@@ -155,6 +156,19 @@ def run(namespace: str, use_sim_time: bool) -> int:
                         "commandTopic": resolved_topic(normalized_namespace, COMMAND_TOPIC),
                         "stateTopic": resolved_topic(normalized_namespace, STATE_TOPIC),
                     }
+                elif operation == "wait_command_path":
+                    timeout_ms = params.get("timeoutMs")
+                    if (
+                        isinstance(timeout_ms, bool)
+                        or not isinstance(timeout_ms, int)
+                        or timeout_ms < 1
+                        or timeout_ms > 120_000
+                    ):
+                        raise ValueError("command_path_timeout_invalid")
+                    deadline = time.monotonic() + timeout_ms / 1000
+                    while publisher.get_subscription_count() < 1 and time.monotonic() < deadline:
+                        rclpy.spin_once(node, timeout_sec=min(0.02, max(0.0, deadline - time.monotonic())))
+                    result = {"ready": publisher.get_subscription_count() >= 1}
                 elif operation == "publish":
                     action = validate_action(params.get("action"))
                     message = TwistStamped()
@@ -162,6 +176,8 @@ def run(namespace: str, use_sim_time: bool) -> int:
                     message.header.frame_id = action["frameId"]
                     message.twist.linear.x = float(action["linear"]["x"])
                     message.twist.angular.z = float(action["angular"]["z"])
+                    if publisher.get_subscription_count() < 1:
+                        raise RuntimeError("command_path_unavailable")
                     publisher.publish(message)
                     result = {
                         "published": True,
