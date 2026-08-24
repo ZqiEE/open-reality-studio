@@ -35,13 +35,18 @@ function reasonCode(message: string): string {
 
 function fail(
   message: string,
-  report: { observed?: string; reason?: string; nextAction?: string } = {},
+  report: {
+    observed?: string;
+    reason?: string;
+    nextAction?: string;
+    hardwareDispatch?: 'NO' | 'UNKNOWN';
+  } = {},
 ): never {
   process.stderr.write(
     `FAILED\n` +
       `Observed: ${report.observed ?? message}\n` +
       `Reason: ${report.reason ?? reasonCode(message)}\n` +
-      `Hardware dispatch: NO\n` +
+      `Hardware dispatch: ${report.hardwareDispatch ?? 'NO'}\n` +
       `Next action: ${report.nextAction ?? message}\n` +
       `ERROR: ${message}\n`,
   );
@@ -129,6 +134,11 @@ void main().catch((error) => {
     process.stderr.write(`${cloudUsage()}\n`);
   }
   const message = error instanceof Error ? error.message : String(error);
+  const ros2Operation = process.argv[3]?.startsWith('--')
+    ? 'shadow'
+    : (process.argv[3] ?? 'shadow');
+  const hardwareDispatch =
+    process.argv[2] === 'ros2' && ros2Operation === 'run' ? 'UNKNOWN' : 'NO';
   const guidance: Record<string, string> = {
     dds_discovery_timeout:
       "ROS 2 discovery timed out. Confirm this terminal sourced /opt/ros/jazzy/setup.bash, check ROS_DOMAIN_ID matches the robot graph, and run 'rlsok ros2 doctor'.",
@@ -149,5 +159,6 @@ void main().catch((error) => {
     observed: message,
     reason: reasonCode(message),
     nextAction: guidance[message] ?? message,
+    hardwareDispatch,
   });
 });
