@@ -14,6 +14,7 @@ from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionServer
 from rclpy.action.server import GoalResponse
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
@@ -29,7 +30,9 @@ class FixtureGraph(Node):
         self.joint_state_publish_count = 0
         self._write_metrics()
         self.joint_publisher = self.create_publisher(
-            JointState, args.joint_state_topic, 10
+            JointState,
+            args.joint_state_topic,
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT),
         )
         self.proposal_publisher = self.create_publisher(
             String, args.proposal_topic, 10

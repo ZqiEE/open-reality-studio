@@ -27,7 +27,12 @@ try:
         get_action_server_names_and_types_by_node,
     )
     from rclpy.node import Node
-    from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+    from rclpy.qos import (
+        DurabilityPolicy,
+        QoSProfile,
+        ReliabilityPolicy,
+        qos_profile_sensor_data,
+    )
     from sensor_msgs.msg import JointState
     from std_msgs.msg import String
     from trajectory_msgs.msg import JointTrajectoryPoint
@@ -64,7 +69,16 @@ class ReferenceTransportNode(NodeBase):
         self.latest_state: Optional[Dict[str, Any]] = None
         self.active_goal = None
         self.create_subscription(String, args.proposal_topic, self._proposal, 10)
-        self.create_subscription(JointState, args.joint_state_topic, self._joint_state, 10)
+        # JointState is sensor data. Request Best Effort so this subscriber is
+        # compatible with both Best Effort ros2_control publishers and
+        # Reliable publishers; requesting Reliable cannot match a Best Effort
+        # writer and previously produced a false "no valid sample" failure.
+        self.create_subscription(
+            JointState,
+            args.joint_state_topic,
+            self._joint_state,
+            qos_profile_sensor_data,
+        )
         self.action_client = ActionClient(
             self, FollowJointTrajectory, args.controller_action
         )
@@ -237,7 +251,7 @@ class DiscoveryNode(NodeBase):
                         JointState,
                         name,
                         lambda message, topic=name: self._sample(topic, message),
-                        10,
+                        qos_profile_sensor_data,
                     )
                 )
             if "std_msgs/msg/String" in types and name.endswith("/robot_description"):

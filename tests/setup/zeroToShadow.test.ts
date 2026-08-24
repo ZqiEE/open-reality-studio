@@ -298,7 +298,7 @@ async function main(): Promise<void> {
             {
               sourceCommit: process.env.GITHUB_SHA ?? null,
               productVersion: "1.3.0",
-              runtimeVersion: "1.4.0",
+              runtimeVersion: "1.4.1",
               operatingSystem: "Ubuntu 24.04 x86_64",
               rosDistro: process.env.ROS_DISTRO ?? null,
               rmwImplementation: process.env.RMW_IMPLEMENTATION ?? null,

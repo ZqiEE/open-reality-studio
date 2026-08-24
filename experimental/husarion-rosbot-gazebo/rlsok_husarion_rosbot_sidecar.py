@@ -72,6 +72,14 @@ def emit(value: dict[str, Any]) -> None:
     sys.stdout.flush()
 
 
+def command_path_ready(node: Any, topic: str) -> bool:
+    """Require the intended Husarion mux reader, not an unrelated observer."""
+    return any(
+        endpoint.node_name == "twist_mux_controller"
+        for endpoint in node.get_subscriptions_info_by_topic(topic)
+    )
+
+
 def self_test() -> int:
     assert normalize_namespace("") == ""
     assert normalize_namespace("/robot1/") == "robot1"
@@ -93,6 +101,20 @@ def self_test() -> int:
         raise AssertionError("unexpected topic accepted")
     except ValueError as error:
         assert str(error) == "rosbot_topic_not_allowed"
+    class Endpoint:
+        def __init__(self, node_name: str) -> None:
+            self.node_name = node_name
+
+    class FakeNode:
+        endpoints = [Endpoint("acceptance_monitor")]
+
+        def get_subscriptions_info_by_topic(self, _topic: str) -> list[Endpoint]:
+            return self.endpoints
+
+    fake_node = FakeNode()
+    assert command_path_ready(fake_node, "/cmd_vel") is False
+    fake_node.endpoints.append(Endpoint("twist_mux_controller"))
+    assert command_path_ready(fake_node, "/cmd_vel") is True
     print("husarion_rosbot_sidecar_self_test_passed")
     return 0
 
@@ -118,6 +140,8 @@ def run(namespace: str, use_sim_time: bool) -> int:
         if not results or not results[0].successful:
             raise RuntimeError("rosbot_sim_time_configuration_failed")
     publisher = node.create_publisher(TwistStamped, COMMAND_TOPIC, 10)
+    command_published = False
+    command_topic = resolved_topic(normalized_namespace, COMMAND_TOPIC)
 
     def on_odometry(message: Any) -> None:
         source_seconds = message.header.stamp.sec + message.header.stamp.nanosec / 1_000_000_000
@@ -166,9 +190,12 @@ def run(namespace: str, use_sim_time: bool) -> int:
                     ):
                         raise ValueError("command_path_timeout_invalid")
                     deadline = time.monotonic() + timeout_ms / 1000
-                    while publisher.get_subscription_count() < 1 and time.monotonic() < deadline:
+                    while not command_path_ready(node, command_topic) and time.monotonic() < deadline:
                         rclpy.spin_once(node, timeout_sec=min(0.02, max(0.0, deadline - time.monotonic())))
-                    result = {"ready": publisher.get_subscription_count() >= 1}
+                    result = {
+                        "ready": command_path_ready(node, command_topic),
+                        "matchedSubscriptionNode": "twist_mux_controller",
+                    }
                 elif operation == "publish":
                     action = validate_action(params.get("action"))
                     message = TwistStamped()
@@ -176,15 +203,24 @@ def run(namespace: str, use_sim_time: bool) -> int:
                     message.header.frame_id = action["frameId"]
                     message.twist.linear.x = float(action["linear"]["x"])
                     message.twist.angular.z = float(action["angular"]["z"])
-                    if publisher.get_subscription_count() < 1:
+                    if not command_path_ready(node, command_topic):
                         raise RuntimeError("command_path_unavailable")
                     publisher.publish(message)
+                    command_published = True
                     result = {
                         "published": True,
                         "topic": resolved_topic(normalized_namespace, COMMAND_TOPIC),
                         "messageType": MESSAGE_TYPE,
                     }
                 elif operation == "shutdown":
+                    # Keep the already-published endpoint alive briefly so graph observers and
+                    # the matched mux reader can process the one DDS sample. This is
+                    # teardown only: it publishes no command and performs no retry.
+                    linger_deadline = time.monotonic() + (0.25 if command_published else 0.0)
+                    while rclpy.ok() and time.monotonic() < linger_deadline:
+                        rclpy.spin_once(node, timeout_sec=min(
+                            0.02, max(0.0, linger_deadline - time.monotonic())
+                        ))
                     result = {"closed": True}
                     running = False
                 else:
