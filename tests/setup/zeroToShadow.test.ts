@@ -19,11 +19,14 @@ import {
 const apiVersion = "rlsok-cloud/v1";
 
 async function main(): Promise<void> {
+  const installedCli = process.env.RLSOK_INSTALLED_CLI;
+  const liveDiscovery = process.env.RLSOK_SETUP_LIVE_DISCOVERY === "1";
   const temporary = mkdtempSync(join(tmpdir(), "rlsok-zero-to-shadow-"));
   let draft: { execSpec: ExecutablePolicySpec } | undefined;
   let approvedSpec: ExecutablePolicySpec | undefined;
   let evidenceBody: Record<string, unknown> | undefined;
   let permitBody: Record<string, unknown> | undefined;
+  let pairingStarted = false;
   const permitId = "11111111-1111-4111-8111-111111111111";
   const evidenceId = "22222222-2222-4222-8222-222222222222";
   const server = createServer(async (request, response) => {
@@ -35,7 +38,25 @@ async function main(): Promise<void> {
     const path = request.url ?? "";
     let result: unknown;
     let status = 200;
-    if (request.method === "POST" && path === "/v1/onboarding/shadow-drafts") {
+    if (request.method === "POST" && path === "/v1/runtime-pairings") {
+      pairingStarted = true;
+      status = 201;
+      result = {
+        pairingId: "33333333-3333-4333-8333-333333333333",
+        pairingToken: `rlsok_${"a".repeat(43)}`,
+        userCode: "RLSOK1",
+        verificationUri: "https://rlsok.com/pair",
+        expiresAt: new Date(Date.now() + 30_000).toISOString(),
+      };
+    } else if (
+      request.method === "GET" &&
+      path === "/v1/runtime-pairings/33333333-3333-4333-8333-333333333333"
+    ) {
+      result = { status: "approved" };
+    } else if (
+      request.method === "POST" &&
+      path === "/v1/onboarding/shadow-drafts"
+    ) {
       draft = body as unknown as { execSpec: ExecutablePolicySpec };
       status = 201;
       result = {
@@ -121,11 +142,13 @@ async function main(): Promise<void> {
   const config = join(temporary, "config");
   const data = join(temporary, "data");
   mkdirSync(join(config, "rlsok"), { recursive: true });
-  writeFileSync(
-    join(config, "rlsok", "cloud-credentials.json"),
-    `${JSON.stringify({ apiUrl, apiKey: `rlsok_${"a".repeat(43)}` })}\n`,
-    { mode: 0o600 },
-  );
+  if (!liveDiscovery) {
+    writeFileSync(
+      join(config, "rlsok", "cloud-credentials.json"),
+      `${JSON.stringify({ apiUrl, apiKey: `rlsok_${"a".repeat(43)}` })}\n`,
+      { mode: 0o600 },
+    );
+  }
   const discoveryPath = join(temporary, "discovery.json");
   writeFileSync(
     discoveryPath,
@@ -156,38 +179,44 @@ async function main(): Promise<void> {
   );
   const artifact = join(temporary, "policy.bin");
   writeFileSync(artifact, "exact-policy-bytes\n");
-  const cli = resolve(__dirname, "../../apps/cli/rlsok.js");
+  const cli = installedCli ?? resolve(__dirname, "../../apps/cli/rlsok.js");
   const sidecar = resolve(
     process.cwd(),
     "experimental/ros2-reference-sidecar/rlsok_ros2_simulated_sidecar.py",
   );
   const python = process.platform === "win32" ? "python" : "python3";
-  const runSetup = async (): Promise<{
+  const runSetup = async (fixture: string | undefined): Promise<{
     exitCode: number | null;
     stdout: string;
     stderr: string;
   }> => {
+    if (fixture) {
+      const current = JSON.parse(readFileSync(fixture, "utf8")) as {
+        jointStateSources?: Array<{ sample?: { observedAt?: string } | null }>;
+      };
+      for (const source of current.jointStateSources ?? []) {
+        if (source.sample) source.sample.observedAt = new Date().toISOString();
+      }
+      writeFileSync(fixture, JSON.stringify(current));
+    }
+    const cliArgs = [
+      "setup",
+      "--artifact",
+      artifact,
+      "--cloud",
+      apiUrl,
+      "--non-interactive",
+      "--no-browser",
+    ];
+    if (!installedCli) cliArgs.push("--python", python, "--sidecar", sidecar);
     const child = spawn(
-      process.execPath,
-      [
-        cli,
-        "setup",
-        "--artifact",
-        artifact,
-        "--cloud",
-        apiUrl,
-        "--non-interactive",
-        "--no-browser",
-        "--python",
-        python,
-        "--sidecar",
-        sidecar,
-      ],
+      installedCli ? cli : process.execPath,
+      installedCli ? cliArgs : [cli, ...cliArgs],
       {
         env: {
           ...process.env,
           RLSOK_SETUP_ACCEPTANCE: "1",
-          RLSOK_SETUP_DISCOVERY_FIXTURE: discoveryPath,
+          ...(fixture ? { RLSOK_SETUP_DISCOVERY_FIXTURE: fixture } : {}),
           RLSOK_DATA_HOME: data,
           ROS_DISTRO: "jazzy",
           RMW_IMPLEMENTATION: "rmw_fastrtps_cpp",
@@ -207,7 +236,9 @@ async function main(): Promise<void> {
     });
     return { exitCode, stdout, stderr };
   };
-  const { exitCode, stdout, stderr } = await runSetup();
+  const { exitCode, stdout, stderr } = await runSetup(
+    liveDiscovery ? undefined : discoveryPath,
+  );
   try {
     assert.equal(exitCode, 0, `${stderr}\n${stdout}`);
     assert.match(stdout, /Zero-to-Shadow complete/);
@@ -232,6 +263,50 @@ async function main(): Promise<void> {
     assert.equal(evidence.controllerGoalsAttempted, 0);
     assert.equal(evidence.evidenceVerified, true);
     assert.equal(readFileSync(setup.artifactPath, "utf8"), "exact-policy-bytes\n");
+    if (liveDiscovery) {
+      const liveSetup = JSON.parse(
+        readFileSync(join(config, "rlsok", "setup.json"), "utf8"),
+      ) as {
+        jointNames: string[];
+        integration: { supportLevel: string; profileId: string };
+      };
+      assert.equal(pairingStarted, true);
+      assert.equal(liveSetup.integration.supportLevel, "official");
+      assert.equal(liveSetup.integration.profileId, "universal-robots-ur5e");
+      assert.equal(liveSetup.jointNames.length, 6);
+      const proofPath = process.env.RLSOK_ACCEPTANCE_PROOF;
+      if (proofPath) {
+        mkdirSync(resolve(proofPath, ".."), { recursive: true });
+        writeFileSync(
+          proofPath,
+          `${JSON.stringify(
+            {
+              sourceCommit: process.env.GITHUB_SHA ?? null,
+              productVersion: "1.3.0",
+              runtimeVersion: "1.4.0",
+              operatingSystem: "Ubuntu 24.04 x86_64",
+              rosDistro: process.env.ROS_DISTRO ?? null,
+              rmwImplementation: process.env.RMW_IMPLEMENTATION ?? null,
+              urDriverPackageVersion:
+                process.env.RLSOK_UR_DRIVER_VERSION ?? null,
+              cloud: "isolated acceptance control plane",
+              cliPath: cli,
+              installedBundle: true,
+              pairingCompleted: pairingStarted,
+              integrationProfileId: liveSetup.integration.profileId,
+              jointNames: liveSetup.jointNames,
+              shadowDecision: "allowed",
+              controllerGoalsAttempted: evidence.controllerGoalsAttempted,
+              hardwareSignalSent: evidence.hardwareSignalSent,
+              evidenceVerified: evidence.evidenceVerified,
+              physicalRobotTested: false,
+            },
+            null,
+            2,
+          )}\n`,
+        );
+      }
+    }
 
     const baseDiscovery = {
       rosAvailable: true,
@@ -304,9 +379,14 @@ async function main(): Promise<void> {
     ];
     for (const failureCase of failureCases) {
       writeFileSync(discoveryPath, JSON.stringify(failureCase.discovery));
-      const failed = await runSetup();
+      const failed = await runSetup(discoveryPath);
       assert.notEqual(failed.exitCode, 0, failureCase.name);
-      assert.match(`${failed.stderr}\n${failed.stdout}`, failureCase.expected, failureCase.name);
+      const output = `${failed.stderr}\n${failed.stdout}`;
+      assert.match(output, failureCase.expected, failureCase.name);
+      assert.match(output, /FAILED[\s\S]*Observed:/, failureCase.name);
+      assert.match(output, /Reason:/, failureCase.name);
+      assert.match(output, /Hardware dispatch: NO/, failureCase.name);
+      assert.match(output, /Next action:/, failureCase.name);
     }
     process.stdout.write("ok - zero-to-shadow acceptance\n");
   } finally {

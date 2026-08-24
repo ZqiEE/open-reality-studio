@@ -116,6 +116,106 @@ jobs:
           name: official-ur5e-integration-proof
           path: artifacts/official-ur5e-integration.json
 
+  first-user-installed-ur5e:
+    needs: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    container: ros:jazzy-ros-base
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: distribution-proof
+          path: candidate
+      - name: Install acceptance dependencies
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            curl \
+            ros-jazzy-control-msgs \
+            ros-jazzy-ur \
+            ros-jazzy-sensor-msgs \
+            ros-jazzy-std-msgs \
+            ros-jazzy-trajectory-msgs
+          rm -rf /var/lib/apt/lists/*
+          npm ci
+      - name: Public-to-candidate install, failure recovery, and uninstall acceptance
+        shell: bash
+        env:
+          RLSOK_RELEASE_DIR: ${{ github.workspace }}/candidate/artifacts
+          RLSOK_CANDIDATE_INSTALLER: ${{ github.workspace }}/candidate/packaging/install.sh
+          RLSOK_INSTALL_ACCEPTANCE_PROOF: ${{ github.workspace }}/artifacts/first-user-install-acceptance.json
+        run: bash scripts/first-user-install-acceptance.sh
+      - name: Install candidate bundle for live Zero-to-Shadow
+        shell: bash
+        run: |
+          acceptance_root=$(mktemp -d)
+          echo "RLSOK_LIVE_ACCEPTANCE_ROOT=$acceptance_root" >> "$GITHUB_ENV"
+          RLSOK_RELEASE_DIR="$GITHUB_WORKSPACE/candidate/artifacts" \
+          RLSOK_INSTALL_ROOT="$acceptance_root/opt/rlsok" \
+          RLSOK_BIN_DIR="$acceptance_root/bin" \
+          RLSOK_PYTHON_SITE="$acceptance_root/python-site" \
+            sh "$GITHUB_WORKSPACE/candidate/packaging/install.sh"
+      - name: Launch official UR5e driver mock hardware
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          export ROS_DOMAIN_ID=91
+          echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID" >> "$GITHUB_ENV"
+          ros2 daemon stop >/dev/null 2>&1 || true
+          ros2 launch ur_robot_driver ur_control.launch.py \
+            ur_type:=ur5e \
+            robot_ip:=127.0.0.1 \
+            use_mock_hardware:=true \
+            initial_joint_controller:=scaled_joint_trajectory_controller \
+            launch_rviz:=false \
+            > /tmp/first-user-ur5e-driver.log 2>&1 &
+          echo "RLSOK_UR5E_DRIVER_PID=$!" >> "$GITHUB_ENV"
+          for attempt in $(seq 1 40); do
+            if grep -q "Configured and activated scaled_joint_trajectory_controller" /tmp/first-user-ur5e-driver.log; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/first-user-ur5e-driver.log
+          exit 1
+      - name: Run installed-bundle live UR5e Zero-to-Shadow
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+          export RLSOK_UR_DRIVER_VERSION="$(dpkg-query -W -f='${Version}' ros-jazzy-ur-robot-driver)"
+          export RLSOK_INSTALLED_CLI="$RLSOK_LIVE_ACCEPTANCE_ROOT/bin/rlsok"
+          export RLSOK_SETUP_LIVE_DISCOVERY=1
+          export RLSOK_ACCEPTANCE_PROOF="$GITHUB_WORKSPACE/artifacts/first-user-zero-to-shadow.json"
+          npm run test:setup || {
+            cat /tmp/first-user-ur5e-driver.log
+            source /opt/ros/jazzy/setup.bash
+            ros2 topic list -t || true
+            ros2 action list -t || true
+            ros2 control list_controllers || true
+            exit 1
+          }
+      - name: Stop acceptance graph
+        if: always()
+        shell: bash
+        run: |
+          kill "${RLSOK_UR5E_DRIVER_PID:-}" 2>/dev/null || true
+      - name: Upload first-user acceptance proof
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: first-user-acceptance-proof
+          path: |
+            artifacts/first-user-install-acceptance.json
+            artifacts/first-user-zero-to-shadow.json
+          if-no-files-found: error
+
   secret-scan:
     runs-on: ubuntu-24.04
     steps:

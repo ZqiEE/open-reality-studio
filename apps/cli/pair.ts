@@ -4,6 +4,15 @@ import { readStoredCloudCredentials, writeStoredCloudCredentials } from '../../p
 
 const DEFAULT_CLOUD = 'https://api.rlsok.com';
 
+export function pairUsage(): string {
+  return [
+    'usage: rlsok pair [--cloud https://api.rlsok.com] [--no-browser] [--replace]',
+    '',
+    'Pair this robot-side runtime with Hosted RLSOK Cloud. Approval remains a',
+    'separate action performed by an authenticated Workspace administrator.',
+  ].join('\n');
+}
+
 export function openBrowser(url: string): void {
   const command = process.platform === 'win32' ? 'rundll32.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open';
   const args = process.platform === 'win32' ? ['url.dll,FileProtocolHandler', url] : [url];
@@ -22,10 +31,14 @@ export async function runPairCommand(args: string[]): Promise<number> {
   let launchBrowser = true;
   let replaceExisting = false;
   for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === '--help' || args[index] === '-h') {
+      process.stdout.write(`${pairUsage()}\n`);
+      return 0;
+    }
     if (args[index] === '--cloud' && args[index + 1]) apiUrl = args[++index];
     else if (args[index] === '--no-browser') launchBrowser = false;
     else if (args[index] === '--replace') replaceExisting = true;
-    else throw new Error('usage: rlsok pair [--cloud https://api.rlsok.com] [--no-browser] [--replace]');
+    else throw new Error(pairUsage().split('\n', 1)[0]);
   }
   const existing = readStoredCloudCredentials();
   if (existing && !replaceExisting) throw new Error('runtime_already_paired_use_--replace');

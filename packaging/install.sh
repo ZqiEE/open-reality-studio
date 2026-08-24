@@ -43,11 +43,24 @@ fi
 tar -xzf "$TEMP_DIR/$ARCHIVE" -C "$TEMP_DIR"
 
 VERSION_ROOT="$INSTALL_ROOT/$RLSOK_RUNTIME_VERSION"
+ROLLBACK_ROOT="$INSTALL_ROOT/$RLSOK_RUNTIME_VERSION.rollback"
 mkdir -p "$INSTALL_ROOT" "$BIN_DIR"
-rm -rf "$VERSION_ROOT.new"
+rm -rf "$VERSION_ROOT.new" "$ROLLBACK_ROOT"
 mv "$TEMP_DIR/rlsok-runtime-$RLSOK_RUNTIME_VERSION" "$VERSION_ROOT.new"
-rm -rf "$VERSION_ROOT"
-mv "$VERSION_ROOT.new" "$VERSION_ROOT"
+HAD_PREVIOUS=false
+if [ -e "$VERSION_ROOT" ]; then
+  mv "$VERSION_ROOT" "$ROLLBACK_ROOT"
+  HAD_PREVIOUS=true
+fi
+if ! mv "$VERSION_ROOT.new" "$VERSION_ROOT"; then
+  rm -rf "$VERSION_ROOT.new"
+  if [ "$HAD_PREVIOUS" = true ]; then
+    mv "$ROLLBACK_ROOT" "$VERSION_ROOT" ||
+      fail "activation failed and the previous runtime could not be restored from $ROLLBACK_ROOT."
+  fi
+  fail "runtime activation failed; the previous runtime remains selected."
+fi
+rm -rf "$ROLLBACK_ROOT"
 ln -sfn "$VERSION_ROOT/bin/rlsok" "$BIN_DIR/rlsok"
 ln -sfn "$VERSION_ROOT/uninstall.sh" "$INSTALL_ROOT/uninstall.sh"
 if [ -n "${RLSOK_PYTHON_SITE:-}" ]; then

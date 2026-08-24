@@ -21,8 +21,30 @@ import { runObserveCommand } from './observe';
 import { runUr5eValidationCommand } from './validate-ur5e';
 import { runCompatibilityCommand } from './compatibility';
 
-function fail(message: string): never {
-  process.stderr.write(`ERROR: ${message}\n`);
+function reasonCode(message: string): string {
+  if (/^[a-z0-9_:-]+$/.test(message)) return message;
+  return (
+    message
+      .split(/[.\n]/, 1)[0]
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 96) || 'fail_closed_before_dispatch'
+  );
+}
+
+function fail(
+  message: string,
+  report: { observed?: string; reason?: string; nextAction?: string } = {},
+): never {
+  process.stderr.write(
+    `FAILED\n` +
+      `Observed: ${report.observed ?? message}\n` +
+      `Reason: ${report.reason ?? reasonCode(message)}\n` +
+      `Hardware dispatch: NO\n` +
+      `Next action: ${report.nextAction ?? message}\n` +
+      `ERROR: ${message}\n`,
+  );
   process.exit(2);
 }
 
@@ -123,5 +145,9 @@ void main().catch((error) => {
     "runtime_already_paired_use_--replace":
       "This runtime is already paired. Continue with 'rlsok setup', or use 'rlsok pair --replace' only when intentionally replacing credentials.",
   };
-  fail(guidance[message] ?? message);
+  fail(guidance[message] ?? message, {
+    observed: message,
+    reason: reasonCode(message),
+    nextAction: guidance[message] ?? message,
+  });
 });
