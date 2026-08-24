@@ -61,6 +61,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             ros-jazzy-control-msgs \
+            ros-jazzy-ros2controlcli \
             ros-jazzy-ur \
             ros-jazzy-sensor-msgs \
             ros-jazzy-std-msgs \

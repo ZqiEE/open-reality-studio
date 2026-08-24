@@ -272,7 +272,10 @@ async function main(): Promise<void> {
       };
       assert.equal(pairingStarted, true);
       assert.equal(liveSetup.integration.supportLevel, "official");
-      assert.equal(liveSetup.integration.profileId, "universal-robots-ur5e");
+      assert.equal(
+        liveSetup.integration.profileId,
+        "universal-robots-ur5e-ros2-driver-jazzy",
+      );
       assert.equal(liveSetup.jointNames.length, 6);
       const proofPath = process.env.RLSOK_ACCEPTANCE_PROOF;
       if (proofPath) {
