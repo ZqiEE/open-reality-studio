@@ -213,6 +213,21 @@ async function testExecutionAndPermitBranches(): Promise<number> {
     /execution_permit_invalid:state_missing/
   );
   assert.equal(entries.at(-1)?.decisionReason, 'state_missing');
+  await assert.rejects(
+    gate.execute({ ...(await issued('execute-state-invalid')), stateObservedAt: 'not-a-date' }),
+    /execution_permit_invalid:state_stale_or_invalid/
+  );
+  assert.equal(entries.at(-1)?.decisionReason, 'state_stale_or_invalid');
+  assert.equal(entries.at(-1)?.hardwareSignalSent, false);
+  await assert.rejects(
+    gate.execute({
+      ...(await issued('execute-state-future')),
+      stateObservedAt: new Date(NOW.getTime() + 1).toISOString()
+    }),
+    /execution_permit_invalid:state_stale_or_invalid/
+  );
+  assert.equal(entries.at(-1)?.decisionReason, 'state_stale_or_invalid');
+  assert.equal(entries.at(-1)?.hardwareSignalSent, false);
   const longTtlRelease = { ...release, runtimePolicy: { ...release.runtimePolicy, maxStateAgeMs: 5_000 } };
   const longTtlResult = await gate.evaluate({
     ...base,

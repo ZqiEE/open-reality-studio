@@ -271,6 +271,10 @@ export class CloudConnectedRos2Workflow {
       this.options.release.runtimePolicy.maxStateAgeMs,
     );
     const binding = {
+      evaluationMode:
+        this.options.mode === "shadow"
+          ? ("shadow" as const)
+          : ("reference-run" as const),
       releaseId: this.options.release.metadata.releaseId,
       contentHash,
       actionHash,
