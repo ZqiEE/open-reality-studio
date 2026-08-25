@@ -18,6 +18,7 @@ MESSAGE_TYPE = "geometry_msgs/msg/TwistStamped"
 ODOMETRY_TYPE = "nav_msgs/msg/Odometry"
 COMMAND_TOPIC = "cmd_vel"
 STATE_TOPIC = "odometry/filtered"
+COMMAND_PATH_STABILITY_SECONDS = 1.0
 
 
 def normalize_namespace(value: str) -> str:
@@ -190,10 +191,23 @@ def run(namespace: str, use_sim_time: bool) -> int:
                     ):
                         raise ValueError("command_path_timeout_invalid")
                     deadline = time.monotonic() + timeout_ms / 1000
-                    while not command_path_ready(node, command_topic) and time.monotonic() < deadline:
+                    ready_since = None
+                    while time.monotonic() < deadline:
                         rclpy.spin_once(node, timeout_sec=min(0.02, max(0.0, deadline - time.monotonic())))
+                        if command_path_ready(node, command_topic):
+                            if ready_since is None:
+                                ready_since = time.monotonic()
+                            if time.monotonic() - ready_since >= COMMAND_PATH_STABILITY_SECONDS:
+                                break
+                        else:
+                            ready_since = None
+                    stable_ready = (
+                        ready_since is not None
+                        and command_path_ready(node, command_topic)
+                        and time.monotonic() - ready_since >= COMMAND_PATH_STABILITY_SECONDS
+                    )
                     result = {
-                        "ready": command_path_ready(node, command_topic),
+                        "ready": stable_ready,
                         "matchedSubscriptionNode": "twist_mux_controller",
                     }
                 elif operation == "publish":

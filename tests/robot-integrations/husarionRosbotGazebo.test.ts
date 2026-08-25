@@ -621,6 +621,8 @@ test('Husarion sidecar readiness requires the intended mux rather than an observ
   ), 'utf8');
   assert.match(source, /endpoint\.node_name == "twist_mux_controller"/);
   assert.match(source, /command_path_ready\(node, command_topic\)/);
+  assert.match(source, /COMMAND_PATH_STABILITY_SECONDS/);
+  assert.match(source, /ready_since = None/);
   assert.match(source, /0\.25 if command_published else 0\.0/);
   assert.doesNotMatch(source, /get_subscription_count/);
   assert.doesNotMatch(source, /wait_for_all_acked/);

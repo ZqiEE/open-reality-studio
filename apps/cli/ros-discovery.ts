@@ -33,7 +33,7 @@ export function discoverRos2Environment(
     return JSON.parse(readFileSync(fixture, "utf8")) as Ros2DiscoveryReport;
   }
 
-  const timeoutMs = options.timeoutMs ?? 15_000;
+  const timeoutMs = options.timeoutMs ?? 30_000;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 120_000) {
     throw new Error("Discovery timeout must be between 1000 and 120000 ms.");
   }

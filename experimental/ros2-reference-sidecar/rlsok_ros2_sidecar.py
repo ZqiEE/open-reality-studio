@@ -242,18 +242,19 @@ class DiscoveryNode(NodeBase):
         self.controller_futures: Dict[str, Any] = {}
         self.controller_clients = []
         self.graph_subscriptions = []
+        self.joint_subscriptions = []
 
     def subscribe_graph_sources(self) -> None:
         for name, types in self.get_topic_names_and_types():
             if "sensor_msgs/msg/JointState" in types:
-                self.graph_subscriptions.append(
-                    self.create_subscription(
-                        JointState,
-                        name,
-                        lambda message, topic=name: self._sample(topic, message),
-                        qos_profile_sensor_data,
-                    )
+                subscription = self.create_subscription(
+                    JointState,
+                    name,
+                    lambda message, topic=name: self._sample(topic, message),
+                    qos_profile_sensor_data,
                 )
+                self.graph_subscriptions.append(subscription)
+                self.joint_subscriptions.append(subscription)
             if "std_msgs/msg/String" in types and name.endswith("/robot_description"):
                 qos = QoSProfile(
                     depth=1,
@@ -280,6 +281,13 @@ class DiscoveryNode(NodeBase):
                     self.controller_futures[name] = client.call_async(
                         ListControllers.Request()
                     )
+
+    def joint_sources_matched(self) -> bool:
+        """Return true only after every discovered JointState reader is matched."""
+        return bool(self.joint_subscriptions) and all(
+            subscription.get_publisher_count() > 0
+            for subscription in self.joint_subscriptions
+        )
 
     def _sample(self, topic: str, message: Any) -> None:
         self.samples[topic] = {
@@ -479,19 +487,34 @@ def main() -> int:
         node = DiscoveryNode()
         # First discover graph endpoints, then subscribe to every standard
         # JointState source and wait a bounded period for a real sample.
-        discovery_deadline = (
+        warmup_deadline = (
             datetime.now(timezone.utc).timestamp()
-            + args.discovery_timeout_seconds
-        )
-        warmup_deadline = min(
-            discovery_deadline,
-            datetime.now(timezone.utc).timestamp()
-            + min(2.0, args.discovery_timeout_seconds / 2),
+            + min(2.0, args.discovery_timeout_seconds / 2)
         )
         while datetime.now(timezone.utc).timestamp() < warmup_deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
         node.subscribe_graph_sources()
-        while datetime.now(timezone.utc).timestamp() < discovery_deadline:
+
+        # Fast DDS endpoint matching is asynchronous for this new participant.
+        # Do not spend the JointState sample budget before its subscriptions
+        # have actually matched their already-discovered publishers.
+        matching_deadline = (
+            datetime.now(timezone.utc).timestamp()
+            + args.discovery_timeout_seconds
+        )
+        while datetime.now(timezone.utc).timestamp() < matching_deadline:
+            rclpy.spin_once(node, timeout_sec=0.1)
+            if node.joint_sources_matched():
+                break
+
+        sample_deadline = (
+            datetime.now(timezone.utc).timestamp()
+            + args.discovery_timeout_seconds
+        )
+        while (
+            node.joint_sources_matched()
+            and datetime.now(timezone.utc).timestamp() < sample_deadline
+        ):
             rclpy.spin_once(node, timeout_sec=0.1)
             report = node.report()
             sources = report["jointStateSources"]
