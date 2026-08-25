@@ -616,6 +616,16 @@ async function testNoBypass(): Promise<void> {
     /self\.action_client|self\.latest_state/,
     "read-only discovery must not depend on transport-only state",
   );
+  assert.match(
+    discoveryNode,
+    /def joint_sources_matched\(/,
+    "read-only discovery must expose DDS publisher matching readiness",
+  );
+  assert.match(
+    sidecar,
+    /matching_deadline[\s\S]+joint_sources_matched\(\)[\s\S]+sample_deadline/,
+    "JointState sampling must receive a full bounded window after DDS matching",
+  );
   assert.throws(
     () => new PythonRos2SidecarTransport({
       pythonExecutable: "python3",
