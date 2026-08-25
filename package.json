@@ -1,6 +1,6 @@
 {
   "name": "@realitywarden/rlsok",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "private": false,
   "description": "Release control and execution gating for learned robot policies.",
   "engines": {

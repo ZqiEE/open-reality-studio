@@ -240,7 +240,7 @@ class DiscoveryNode(NodeBase):
         self.robot_descriptions: Dict[str, str] = {}
         self.controller_managers: Dict[str, Dict[str, Any]] = {}
         self.controller_futures: Dict[str, Any] = {}
-        self.controller_clients = []
+        self.controller_clients: Dict[str, Any] = {}
         self.graph_subscriptions = []
         self.joint_subscriptions = []
 
@@ -276,11 +276,28 @@ class DiscoveryNode(NodeBase):
                 if "controller_manager_msgs/srv/ListControllers" not in types:
                     continue
                 client = self.create_client(ListControllers, name)
-                self.controller_clients.append(client)
-                if client.wait_for_service(timeout_sec=0.0):
-                    self.controller_futures[name] = client.call_async(
-                        ListControllers.Request()
-                    )
+                self.controller_clients[name] = client
+
+    def start_ready_controller_requests(self) -> None:
+        """Call each discovered controller manager once after DDS matching."""
+        for service_name, client in self.controller_clients.items():
+            if (
+                service_name in self.controller_futures
+                or service_name in self.controller_managers
+            ):
+                continue
+            if client.service_is_ready():
+                self.controller_futures[service_name] = client.call_async(
+                    ListControllers.Request()
+                )
+
+    def controller_services_matched(self) -> bool:
+        """Return true when every graph-discovered manager has a live request."""
+        return all(
+            service_name in self.controller_futures
+            or service_name in self.controller_managers
+            for service_name in self.controller_clients
+        )
 
     def joint_sources_matched(self) -> bool:
         """Return true only after every discovered JointState reader is matched."""
@@ -504,7 +521,11 @@ def main() -> int:
         )
         while datetime.now(timezone.utc).timestamp() < matching_deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
-            if node.joint_sources_matched():
+            node.start_ready_controller_requests()
+            if (
+                node.joint_sources_matched()
+                and node.controller_services_matched()
+            ):
                 break
 
         sample_deadline = (
