@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing draft release tag
+        description: New semantic-version release tag
         required: true
       run_id:
         description: Successful main CI run containing distribution-proof
@@ -24,7 +24,18 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-24.04
+    environment: production-release
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+
+      - name: Require GitHub-enforced immutable releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/release-platform-gates.mjs policy
+
       - name: Validate release inputs and CI provenance
         env:
           GH_TOKEN: ${{ github.token }}
@@ -36,43 +47,113 @@ jobs:
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           test "${#SOURCE_SHA}" -eq 40
+          test "$(node -p "'v' + require('./package.json').version")" = "$RELEASE_TAG"
           test "$(gh run view "$RUN_ID" --json conclusion --jq .conclusion)" = "success"
           test "$(gh run view "$RUN_ID" --json headSha --jq .headSha)" = "$SOURCE_SHA"
-          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = "true"
-          test "$(gh release view "$RELEASE_TAG" --json targetCommitish --jq .targetCommitish)" = "$SOURCE_SHA"
 
-      - name: Download and verify the main CI distribution
+      - name: Create a clean draft release once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = "true"
+            test "$(gh release view "$RELEASE_TAG" --json targetCommitish --jq .targetCommitish)" = "$SOURCE_SHA"
+            test "$(gh release view "$RELEASE_TAG" --json assets --jq '.assets | length')" = "0"
+          else
+            gh release create "$RELEASE_TAG" --draft --latest=false \
+              --target "$SOURCE_SHA" --generate-notes
+          fi
+
+      - name: Require live production Cloud compatibility first
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RLSOK_RUNTIME_TAG: ${{ inputs.tag }}
+          RLSOK_RUNTIME_SOURCE_SHA: ${{ inputs.source_sha }}
+          RLSOK_CLOUD_ORGANIZATION: ${{ secrets.RLSOK_CLOUD_ORGANIZATION }}
+          RLSOK_CLOUD_EMAIL: ${{ secrets.RLSOK_CLOUD_EMAIL }}
+          RLSOK_CLOUD_PASSWORD: ${{ secrets.RLSOK_CLOUD_PASSWORD }}
+        run: node scripts/verify-production-cloud.mjs
+
+      - name: Download and verify the exact main CI distribution
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ inputs.run_id }}
           SOURCE_SHA: ${{ inputs.source_sha }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
+          version="${RELEASE_TAG#v}"
           gh run download "$RUN_ID" --name distribution-proof --dir release-proof
           cd release-proof/artifacts
-          sha256sum -c rlsok-runtime-1.4.4-linux-x64.tar.gz.sha256
-          sha256sum -c realitywarden-rlsok-1.4.4.tgz.sha256
-          test "$(jq -r .sourceCommit realitywarden-rlsok-1.4.4.tgz.manifest.json)" = "$SOURCE_SHA"
+          expected=(
+            "licenses.json"
+            "realitywarden-rlsok-${version}.tgz"
+            "realitywarden-rlsok-${version}.tgz.manifest.json"
+            "realitywarden-rlsok-${version}.tgz.sha256"
+            "rlsok-runtime-${version}-linux-x64.tar.gz"
+            "rlsok-runtime-${version}-linux-x64.tar.gz.sha256"
+            "rlsok.cdx.json"
+          )
+          mapfile -t actual < <(find . -maxdepth 1 -type f -printf '%f\n' | sort)
+          diff -u <(printf '%s\n' "${expected[@]}" | sort) <(printf '%s\n' "${actual[@]}")
+          sha256sum -c "rlsok-runtime-${version}-linux-x64.tar.gz.sha256"
+          sha256sum -c "realitywarden-rlsok-${version}.tgz.sha256"
+          test "$(jq -r .sourceCommit "realitywarden-rlsok-${version}.tgz.manifest.json")" = "$SOURCE_SHA"
+          jq -e . rlsok.cdx.json licenses.json >/dev/null
 
-      - name: Upload the main bundle and publish the verified draft
+      - name: Upload every verified asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release upload "$RELEASE_TAG" release-proof/artifacts/*
+
+      - name: Verify draft asset set and platform digests
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          gh release upload "$RELEASE_TAG" \
-            release-proof/artifacts/rlsok-runtime-1.4.4-linux-x64.tar.gz \
-            release-proof/artifacts/rlsok-runtime-1.4.4-linux-x64.tar.gz.sha256 \
-            release-proof/artifacts/realitywarden-rlsok-1.4.4.tgz \
-            release-proof/artifacts/realitywarden-rlsok-1.4.4.tgz.sha256 \
-            release-proof/artifacts/realitywarden-rlsok-1.4.4.tgz.manifest.json \
-            --clobber
-          for name in rlsok-runtime-1.4.4-linux-x64.tar.gz realitywarden-rlsok-1.4.4.tgz; do
-            file="release-proof/artifacts/$name"
+          mapfile -t local_assets < <(find release-proof/artifacts -maxdepth 1 -type f -printf '%f\n' | sort)
+          mapfile -t remote_assets < <(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | sort)
+          diff -u <(printf '%s\n' "${local_assets[@]}") <(printf '%s\n' "${remote_assets[@]}")
+          for file in release-proof/artifacts/*; do
+            name="$(basename "$file")"
             expected="sha256:$(sha256sum "$file" | cut -d' ' -f1)"
             actual="$(gh release view "$RELEASE_TAG" --json assets --jq ".assets[] | select(.name == \"$name\") | .digest")"
             test "$actual" = "$expected"
           done
-          gh release edit "$RELEASE_TAG" --draft=false --latest
+
+      - name: Publish exactly once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --latest
+
+      - name: Verify immutable release and attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          immutable=false
+          for _ in $(seq 1 12); do
+            if node scripts/release-platform-gates.mjs published "$RELEASE_TAG"; then
+              immutable=true
+              break
+            fi
+            sleep 5
+          done
+          test "$immutable" = true
+          gh release verify "$RELEASE_TAG"
+          for file in release-proof/artifacts/*; do
+            gh release verify-asset "$RELEASE_TAG" "$file"
+          done

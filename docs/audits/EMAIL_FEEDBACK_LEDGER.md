@@ -4,6 +4,9 @@ Audit date: 2026-08-24 (Asia/Shanghai)
 Audited runtime baseline: `6ed21e2969272d857f19eb1ae5d91065205d7d9e` (merged PR #21)
 Closure artifacts: this feedback-closure branch; exact merge SHA is recorded after review
 
+External-validation request update: 2026-08-25 (Asia/Shanghai). Status counts
+remain unchanged until a human reply validates or corrects a reference.
+
 ## Method and classification rule
 
 The connected Gmail account was searched with `in:anywhere`, including Spam
@@ -209,3 +212,26 @@ ledger. Remaining gates are explicit and external:
 
 These are external validation gates, not permission to broaden Core or add a
 robot integration.
+
+## External reference-validation requests (2026-08-25)
+
+Each reply asks one narrow source-of-truth/capability question, limits any run
+to Shadow/simulation/reference review, and explicitly makes no support claim.
+The exact public reference set is
+`examples/adapter-references/selected-identity-references.json`,
+`packages/adapter-references/command-path.ts`,
+`packages/adapter-references/capabilities.ts`, and
+`tests/adapter-references/references.test.ts`, narrowed per row below.
+
+| Ledger row / project | Gmail SENT message ID | Exact review artifact | State |
+| --- | --- | --- | --- |
+| E05 ros2_canopen | `1a03819bc60f152c` | selected-identity CANopen fixture plus reference test | Awaiting external result |
+| E07 Clearpath | `1a03819d2a515d2a` | selected generated-configuration identity fixture plus reference test | Awaiting external result |
+| E24 GOLEM | `1a037d005f03ef8e` | `capabilities.ts` upper-body normalization plus reference test | Awaiting external result |
+| E25 CycloneDDS | `1a03819dd7e127bb` | `command-path.ts` authenticated DDS identity boundary plus reference test | Awaiting external result |
+| E26 Elite | `1a03819c6c6dda5d` | selected robot-model/driver identity fixture plus mismatch test | Awaiting external result |
+| E31 secured Fast DDS | `1a03819e73693009` | scoped authenticated command-path trust fixture plus negative tests | Awaiting external result |
+| E20 ros2_medkit | `1a03819f9c6a2c1c` | `capabilities.ts` degradation normalization plus reference test | Awaiting external result |
+| E14 Nav2 | `1a0381a2d8bdf85a` | selected velocity-smoother limits/controller identity fixture plus test | Awaiting external result |
+| E28 CRANE-X7 | `1a0381a381cec7d3` | selected limits versus live-state provenance fixture plus test | Awaiting external result |
+| E23 device serial/calibration | `1a0381a226b47c8b`, retry `1a0381bad0da0a3f` | serial-to-role/calibration identity fixture plus test | Awaiting external result; connector returned an ambiguous first send result, so one duplicate retry was sent |
