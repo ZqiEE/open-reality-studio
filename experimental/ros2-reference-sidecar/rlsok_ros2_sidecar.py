@@ -243,10 +243,14 @@ class DiscoveryNode(NodeBase):
         self.controller_clients: Dict[str, Any] = {}
         self.graph_subscriptions = []
         self.joint_subscriptions = []
+        self.subscribed_joint_topics = set()
+        self.subscribed_robot_description_topics = set()
 
     def subscribe_graph_sources(self) -> None:
         for name, types in self.get_topic_names_and_types():
             if "sensor_msgs/msg/JointState" in types:
+                if name in self.subscribed_joint_topics:
+                    continue
                 subscription = self.create_subscription(
                     JointState,
                     name,
@@ -255,7 +259,10 @@ class DiscoveryNode(NodeBase):
                 )
                 self.graph_subscriptions.append(subscription)
                 self.joint_subscriptions.append(subscription)
+                self.subscribed_joint_topics.add(name)
             if "std_msgs/msg/String" in types and name.endswith("/robot_description"):
+                if name in self.subscribed_robot_description_topics:
+                    continue
                 qos = QoSProfile(
                     depth=1,
                     durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -271,9 +278,12 @@ class DiscoveryNode(NodeBase):
                         qos,
                     )
                 )
+                self.subscribed_robot_description_topics.add(name)
         if ListControllers is not None:
             for name, types in self.get_service_names_and_types():
                 if "controller_manager_msgs/srv/ListControllers" not in types:
+                    continue
+                if name in self.controller_clients:
                     continue
                 client = self.create_client(ListControllers, name)
                 self.controller_clients[name] = client
@@ -521,6 +531,10 @@ def main() -> int:
         )
         while datetime.now(timezone.utc).timestamp() < matching_deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
+            # Graph endpoints can appear after the fixed warmup. Refresh
+            # idempotently so a late JointState publisher receives a reader
+            # and its own full bounded DDS matching/sample window.
+            node.subscribe_graph_sources()
             node.start_ready_controller_requests()
             if (
                 node.joint_sources_matched()

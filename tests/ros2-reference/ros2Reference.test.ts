@@ -633,6 +633,16 @@ async function testNoBypass(): Promise<void> {
   );
   assert.match(
     sidecar,
+    /matching_deadline[\s\S]+subscribe_graph_sources\(\)[\s\S]+start_ready_controller_requests\(\)[\s\S]+joint_sources_matched\(\)[\s\S]+controller_services_matched\(\)[\s\S]+sample_deadline/,
+    "late graph endpoints must be subscribed during the bounded DDS matching window",
+  );
+  assert.match(
+    discoveryNode,
+    /subscribed_joint_topics[\s\S]+name in self\.subscribed_joint_topics[\s\S]+self\.subscribed_joint_topics\.add\(name\)/,
+    "repeated graph refresh must not create duplicate JointState subscriptions",
+  );
+  assert.match(
+    sidecar,
     /matching_deadline[\s\S]+start_ready_controller_requests\(\)[\s\S]+joint_sources_matched\(\)[\s\S]+controller_services_matched\(\)[\s\S]+sample_deadline/,
     "sampling must receive a full bounded window after JointState and controller-service DDS matching",
   );
