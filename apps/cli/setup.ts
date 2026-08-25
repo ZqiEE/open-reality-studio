@@ -422,7 +422,7 @@ export async function runSetupCommand(args: string[]): Promise<number> {
   process.stdout.write("RLSOK Zero-to-Shadow\n\n[1/6] Detecting the supported environment...\n");
   const report = discoverRos2Environment({
     fixturePath: process.env.RLSOK_SETUP_DISCOVERY_FIXTURE,
-    timeoutMs: Number(option(options, "discovery-timeout-ms") ?? "15000"),
+    timeoutMs: Number(option(options, "discovery-timeout-ms") ?? "30000"),
     pythonExecutable: option(options, "python"),
     sidecarPath: option(options, "sidecar"),
   });

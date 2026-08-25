@@ -335,7 +335,7 @@ export async function runCompatibilityCommand(args: string[]): Promise<number> {
     return 0;
   }
   const report = discoverRos2Environment({
-    timeoutMs: Number(option(options, "discovery-timeout-ms") ?? "15000"),
+    timeoutMs: Number(option(options, "discovery-timeout-ms") ?? "30000"),
     pythonExecutable: option(options, "python"),
     sidecarPath: option(options, "sidecar"),
   });
