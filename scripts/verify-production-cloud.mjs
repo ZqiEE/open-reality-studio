@@ -28,11 +28,16 @@ export function assertCloudProof({
   if (readiness?.executionPolicy !== "shadow-only") {
     throw new Error("cloud_not_shadow_only");
   }
-  if (manifest?.runtimeSourceCommit !== candidateSource) {
-    throw new Error("cloud_rejects_runtime_source");
-  }
-  if (manifest?.releaseTag !== candidateTag) {
-    throw new Error("cloud_rejects_runtime_tag");
+  const activeRuntimeAccepted =
+    manifest?.runtimeSourceCommit === candidateSource &&
+    manifest?.releaseTag === candidateTag;
+  const candidateRuntimeAccepted = Array.isArray(manifest?.runtimeCandidates) &&
+    manifest.runtimeCandidates.some((candidate) =>
+      candidate?.sourceCommit === candidateSource &&
+      candidate?.releaseTag === candidateTag
+    );
+  if (!activeRuntimeAccepted && !candidateRuntimeAccepted) {
+    throw new Error("cloud_rejects_runtime_candidate");
   }
   if (!/^[0-9a-f]{40}$/.test(manifest?.minimumCloudSourceCommit ?? "")) {
     throw new Error("cloud_minimum_source_missing");

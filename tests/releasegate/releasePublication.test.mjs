@@ -41,6 +41,14 @@ test('future immutable release policy and published release must both be enforce
 
 test('Cloud-first proof binds the exact runtime and production Shadow-only state', () => {
   assert.doesNotThrow(() => assertCloudProof(proof()));
+  const prePublicationCandidate = proof();
+  prePublicationCandidate.manifest.runtimeSourceCommit = 'd'.repeat(40);
+  prePublicationCandidate.manifest.releaseTag = 'v1.4.4';
+  prePublicationCandidate.manifest.runtimeCandidates = [{
+    sourceCommit: 'a'.repeat(40),
+    releaseTag: 'v1.5.0',
+  }];
+  assert.doesNotThrow(() => assertCloudProof(prePublicationCandidate));
   assert.doesNotThrow(() => assertMinimumCommit({ status: 'ahead' }));
   assert.doesNotThrow(() => assertMinimumCommit({ status: 'identical' }));
 });
@@ -48,7 +56,18 @@ test('Cloud-first proof binds the exact runtime and production Shadow-only state
 test('old or mismatched Cloud cannot be bypassed by a new runtime candidate', () => {
   const oldCloud = proof();
   oldCloud.manifest.runtimeSourceCommit = 'd'.repeat(40);
-  assert.throws(() => assertCloudProof(oldCloud), /rejects_runtime_source/);
+  assert.throws(() => assertCloudProof(oldCloud), /rejects_runtime_candidate/);
+
+  const mismatchedCandidate = proof();
+  mismatchedCandidate.manifest.runtimeSourceCommit = 'd'.repeat(40);
+  mismatchedCandidate.manifest.runtimeCandidates = [{
+    sourceCommit: 'a'.repeat(40),
+    releaseTag: 'v1.4.9',
+  }];
+  assert.throws(
+    () => assertCloudProof(mismatchedCandidate),
+    /rejects_runtime_candidate/,
+  );
 
   const runEnabled = proof();
   runEnabled.readiness.executionPolicy = 'reference-run-enabled';
