@@ -22,7 +22,7 @@ source /opt/ros/jazzy/setup.bash
 rlsok setup
 ```
 
-The released runtime 1.4.3 bundle is self-contained. Normal users do not need
+The released runtime 1.4.4 bundle is self-contained. Normal users do not need
 Node.js, npm, a source checkout, API keys, Workspace IDs, hand-calculated
 hashes, or a blank ExecSpec.
 

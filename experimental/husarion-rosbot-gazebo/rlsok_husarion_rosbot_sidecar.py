@@ -81,6 +81,18 @@ def command_path_ready(node: Any, topic: str) -> bool:
     )
 
 
+def required_observer_ready(
+    node: Any, topic: str, required_observer_node: str | None
+) -> bool:
+    """Optionally arm an independent acceptance observer before one-shot Run."""
+    if required_observer_node is None:
+        return True
+    return any(
+        endpoint.node_name == required_observer_node
+        for endpoint in node.get_subscriptions_info_by_topic(topic)
+    )
+
+
 def self_test() -> int:
     assert normalize_namespace("") == ""
     assert normalize_namespace("/robot1/") == "robot1"
@@ -114,8 +126,13 @@ def self_test() -> int:
 
     fake_node = FakeNode()
     assert command_path_ready(fake_node, "/cmd_vel") is False
+    assert required_observer_ready(fake_node, "/cmd_vel", None) is True
+    assert required_observer_ready(
+        fake_node, "/cmd_vel", "acceptance_monitor"
+    ) is True
     fake_node.endpoints.append(Endpoint("twist_mux_controller"))
     assert command_path_ready(fake_node, "/cmd_vel") is True
+    assert required_observer_ready(fake_node, "/cmd_vel", "missing_monitor") is False
     print("husarion_rosbot_sidecar_self_test_passed")
     return 0
 
@@ -142,6 +159,7 @@ def run(namespace: str, use_sim_time: bool) -> int:
             raise RuntimeError("rosbot_sim_time_configuration_failed")
     publisher = node.create_publisher(TwistStamped, COMMAND_TOPIC, 10)
     command_published = False
+    required_observer_node: str | None = None
     command_topic = resolved_topic(normalized_namespace, COMMAND_TOPIC)
 
     def on_odometry(message: Any) -> None:
@@ -183,6 +201,7 @@ def run(namespace: str, use_sim_time: bool) -> int:
                     }
                 elif operation == "wait_command_path":
                     timeout_ms = params.get("timeoutMs")
+                    requested_observer = params.get("requiredObserverNode")
                     if (
                         isinstance(timeout_ms, bool)
                         or not isinstance(timeout_ms, int)
@@ -190,11 +209,27 @@ def run(namespace: str, use_sim_time: bool) -> int:
                         or timeout_ms > 120_000
                     ):
                         raise ValueError("command_path_timeout_invalid")
+                    if requested_observer is not None and (
+                        not isinstance(requested_observer, str)
+                        or not requested_observer
+                        or len(requested_observer) > 255
+                        or not all(
+                            character.isalnum() or character in "_-"
+                            for character in requested_observer
+                        )
+                    ):
+                        raise ValueError("command_path_observer_invalid")
+                    required_observer_node = requested_observer
                     deadline = time.monotonic() + timeout_ms / 1000
                     ready_since = None
                     while time.monotonic() < deadline:
                         rclpy.spin_once(node, timeout_sec=min(0.02, max(0.0, deadline - time.monotonic())))
-                        if command_path_ready(node, command_topic):
+                        if (
+                            command_path_ready(node, command_topic)
+                            and required_observer_ready(
+                                node, command_topic, required_observer_node
+                            )
+                        ):
                             if ready_since is None:
                                 ready_since = time.monotonic()
                             if time.monotonic() - ready_since >= COMMAND_PATH_STABILITY_SECONDS:
@@ -204,11 +239,15 @@ def run(namespace: str, use_sim_time: bool) -> int:
                     stable_ready = (
                         ready_since is not None
                         and command_path_ready(node, command_topic)
+                        and required_observer_ready(
+                            node, command_topic, required_observer_node
+                        )
                         and time.monotonic() - ready_since >= COMMAND_PATH_STABILITY_SECONDS
                     )
                     result = {
                         "ready": stable_ready,
                         "matchedSubscriptionNode": "twist_mux_controller",
+                        "matchedObserverNode": required_observer_node,
                     }
                 elif operation == "publish":
                     action = validate_action(params.get("action"))
@@ -219,6 +258,10 @@ def run(namespace: str, use_sim_time: bool) -> int:
                     message.twist.angular.z = float(action["angular"]["z"])
                     if not command_path_ready(node, command_topic):
                         raise RuntimeError("command_path_unavailable")
+                    if not required_observer_ready(
+                        node, command_topic, required_observer_node
+                    ):
+                        raise RuntimeError("command_path_observer_unavailable")
                     publisher.publish(message)
                     command_published = True
                     result = {

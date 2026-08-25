@@ -620,6 +620,8 @@ test('Husarion sidecar readiness requires the intended mux rather than an observ
     'experimental/husarion-rosbot-gazebo/rlsok_husarion_rosbot_sidecar.py'
   ), 'utf8');
   assert.match(source, /endpoint\.node_name == "twist_mux_controller"/);
+  assert.match(source, /def required_observer_ready\(/);
+  assert.match(source, /command_path_observer_unavailable/);
   assert.match(source, /command_path_ready\(node, command_topic\)/);
   assert.match(source, /COMMAND_PATH_STABILITY_SECONDS/);
   assert.match(source, /ready_since = None/);
@@ -627,6 +629,15 @@ test('Husarion sidecar readiness requires the intended mux rather than an observ
   assert.doesNotMatch(source, /get_subscription_count/);
   assert.doesNotMatch(source, /wait_for_all_acked/);
   assert.doesNotMatch(source, /publisher\.publish\(message\)[\s\S]{0,160}publisher\.publish/);
+  const acceptance = readFileSync(join(
+    process.cwd(),
+    'scripts/husarion-gazebo-acceptance.sh'
+  ), 'utf8');
+  assert.match(
+    acceptance,
+    /run_monitor run 30/,
+    'independent Run observation must outlive the 2 s arm and 15 s bounded readiness window'
+  );
 });
 
 test('checked-in example fixtures retain their strict v2 approval binding', () => {

@@ -113,6 +113,7 @@ common_args=(
   --proposer-identity learned-policy@example.test
   --namespace ''
   --use-sim-time true
+  --required-observer-node rlsok_husarion_acceptance_monitor
 )
 
 run_monitor shadow 8
@@ -131,7 +132,10 @@ node scripts/run-rlsok.cjs --test apps/cli/rlsok.ts verify-evidence \
   "$proof_dir/evidence.shadow.json" \
   | tee "$proof_dir/shadow-evidence.log"
 
-run_monitor run 10
+# Cover the 2 s pre-start arm, the transport's bounded 15 s DDS readiness
+# window, dispatch, and independent odometry/source observation. The monitor
+# publishes nothing and does not extend the runtime's readiness deadline.
+run_monitor run 30
 node scripts/run-rlsok.cjs --test apps/demo/husarion-rosbot-gazebo.ts \
   --mode run \
   --release examples/husarion-rosbot-gazebo/release.run.json \

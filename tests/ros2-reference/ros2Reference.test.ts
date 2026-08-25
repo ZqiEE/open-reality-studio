@@ -622,9 +622,19 @@ async function testNoBypass(): Promise<void> {
     "read-only discovery must expose DDS publisher matching readiness",
   );
   assert.match(
+    discoveryNode,
+    /def start_ready_controller_requests\([\s\S]+client\.service_is_ready\(\)[\s\S]+client\.call_async\(/,
+    "controller-manager discovery must wait for DDS service matching before its one read-only request",
+  );
+  assert.doesNotMatch(
+    discoveryNode,
+    /wait_for_service\(timeout_sec=0\.0\)/,
+    "controller-manager discovery must not permanently skip a newly created unmatched service client",
+  );
+  assert.match(
     sidecar,
-    /matching_deadline[\s\S]+joint_sources_matched\(\)[\s\S]+sample_deadline/,
-    "JointState sampling must receive a full bounded window after DDS matching",
+    /matching_deadline[\s\S]+start_ready_controller_requests\(\)[\s\S]+joint_sources_matched\(\)[\s\S]+controller_services_matched\(\)[\s\S]+sample_deadline/,
+    "sampling must receive a full bounded window after JointState and controller-service DDS matching",
   );
   assert.throws(
     () => new PythonRos2SidecarTransport({
