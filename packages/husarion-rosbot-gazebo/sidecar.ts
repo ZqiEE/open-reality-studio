@@ -24,6 +24,7 @@ interface PythonHusarionRosbotTransportOptions {
   namespace?: string;
   discoveryTimeoutMs?: number;
   useSimTime?: boolean;
+  requiredObserverNode?: string;
 }
 
 /** JSONL IPC transport. Policy, release state, permits, and Evidence stay in TypeScript Core. */
@@ -46,6 +47,10 @@ export class PythonHusarionRosbotTransport implements HusarionRosbotTransport {
       throw new Error('ros2_discovery_timeout_out_of_range');
     }
     this.discoveryTimeoutMs = timeout;
+    if (
+      options.requiredObserverNode !== undefined
+      && !/^[A-Za-z0-9_-]{1,255}$/.test(options.requiredObserverNode)
+    ) throw new Error('rosbot_command_path_observer_invalid');
   }
 
   async getOdometryObservation(): Promise<unknown | undefined> {
@@ -78,7 +83,8 @@ export class PythonHusarionRosbotTransport implements HusarionRosbotTransport {
 
   async waitForCommandPathReady(): Promise<boolean> {
     const result = await this.request('wait_command_path', {
-      timeoutMs: this.discoveryTimeoutMs
+      timeoutMs: this.discoveryTimeoutMs,
+      requiredObserverNode: this.options.requiredObserverNode
     }) as { ready?: unknown };
     if (typeof result.ready !== 'boolean') {
       throw new Error('rosbot_command_path_readiness_invalid');

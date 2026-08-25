@@ -113,6 +113,7 @@ common_args=(
   --proposer-identity learned-policy@example.test
   --namespace ''
   --use-sim-time true
+  --required-observer-node rlsok_husarion_acceptance_monitor
 )
 
 run_monitor shadow 8

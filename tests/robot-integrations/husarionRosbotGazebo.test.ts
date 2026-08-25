@@ -620,6 +620,8 @@ test('Husarion sidecar readiness requires the intended mux rather than an observ
     'experimental/husarion-rosbot-gazebo/rlsok_husarion_rosbot_sidecar.py'
   ), 'utf8');
   assert.match(source, /endpoint\.node_name == "twist_mux_controller"/);
+  assert.match(source, /def required_observer_ready\(/);
+  assert.match(source, /command_path_observer_unavailable/);
   assert.match(source, /command_path_ready\(node, command_topic\)/);
   assert.match(source, /COMMAND_PATH_STABILITY_SECONDS/);
   assert.match(source, /ready_since = None/);

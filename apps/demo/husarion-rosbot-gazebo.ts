@@ -113,7 +113,8 @@ async function main(): Promise<void> {
     pythonExecutable: python,
     sidecarPath: sidecar,
     namespace: options.namespace ?? '',
-    useSimTime: useSimTimeValue === 'true'
+    useSimTime: useSimTimeValue === 'true',
+    requiredObserverNode: options['required-observer-node']
   });
   const record = releaseRecord(release);
   const gateway = new HusarionRosbotGazeboGateway({
