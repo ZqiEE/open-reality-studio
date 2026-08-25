@@ -629,6 +629,15 @@ test('Husarion sidecar readiness requires the intended mux rather than an observ
   assert.doesNotMatch(source, /get_subscription_count/);
   assert.doesNotMatch(source, /wait_for_all_acked/);
   assert.doesNotMatch(source, /publisher\.publish\(message\)[\s\S]{0,160}publisher\.publish/);
+  const acceptance = readFileSync(join(
+    process.cwd(),
+    'scripts/husarion-gazebo-acceptance.sh'
+  ), 'utf8');
+  assert.match(
+    acceptance,
+    /run_monitor run 30/,
+    'independent Run observation must outlive the 2 s arm and 15 s bounded readiness window'
+  );
 });
 
 test('checked-in example fixtures retain their strict v2 approval binding', () => {
