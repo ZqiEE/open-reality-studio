@@ -32,7 +32,7 @@ their wording:
 ## Clean Zero-to-Shadow
 
 Follow the public install path at <https://rlsok.com/download>, confirm
-`rlsok --version` reports runtime `1.4.4`, run `rlsok setup`, and complete the
+`rlsok --version` reports runtime `1.4.5`, run `rlsok setup`, and complete the
 documented Zero-to-Shadow flow. Do not enable reference Run.
 
 Record:
