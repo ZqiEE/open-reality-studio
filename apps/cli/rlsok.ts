@@ -143,6 +143,8 @@ void main().catch((error) => {
   const guidance: Record<string, string> = {
     dds_discovery_timeout:
       "ROS 2 discovery timed out. Confirm this terminal sourced /opt/ros/jazzy/setup.bash, check ROS_DOMAIN_ID matches the robot graph, and run 'rlsok ros2 doctor'.",
+    proposal_timeout:
+      "No proposal arrived before the bounded wait expired. Confirm the proposal publisher and ROS_DOMAIN_ID, then submit a fresh uniquely identified proposal.",
     "ROS 2 unavailable":
       "ROS 2 is unavailable. Source /opt/ros/jazzy/setup.bash and run 'rlsok ros2 doctor' before retrying.",
     "controller action server unavailable":

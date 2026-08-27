@@ -1,6 +1,37 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BoundedProposalProcessor } from "../../apps/cli/ros2";
+import {
+  BoundedProposalProcessor,
+  proposalTimeoutMs,
+  waitForFirstProposal,
+} from "../../apps/cli/ros2";
+
+test("one-shot proposal timeout is bounded and validates every configured source", async () => {
+  assert.equal(proposalTimeoutMs({}), 30_000);
+  assert.equal(
+    proposalTimeoutMs({}, { RLSOK_ROS2_PROPOSAL_TIMEOUT_MS: "45000" }),
+    45_000,
+  );
+  assert.equal(
+    proposalTimeoutMs(
+      { "proposal-timeout-ms": "1200" },
+      { RLSOK_ROS2_PROPOSAL_TIMEOUT_MS: "45000" },
+    ),
+    1_200,
+  );
+  for (const value of ["999", "600001", "1.5", "NaN", "Infinity"]) {
+    assert.throws(
+      () => proposalTimeoutMs({ "proposal-timeout-ms": value }, {}),
+      /proposal timeout must be an integer from 1000 to 600000 ms/,
+    );
+  }
+
+  await assert.rejects(
+    waitForFirstProposal(new Promise<void>(() => undefined), 5),
+    /proposal_timeout/,
+  );
+  await waitForFirstProposal(Promise.resolve(), 60_000);
+});
 
 test("bounded proposal processor evaluates later proposals without an unbounded queue", async () => {
   const handled: string[] = [];

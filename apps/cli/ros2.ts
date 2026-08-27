@@ -140,6 +140,40 @@ function discoveryTimeoutMs(options: Options): number {
   return value;
 }
 
+export function proposalTimeoutMs(
+  options: Readonly<Options>,
+  environment: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw =
+    options["proposal-timeout-ms"] ??
+    environment.RLSOK_ROS2_PROPOSAL_TIMEOUT_MS ??
+    "30000";
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1_000 || value > 600_000) {
+    throw new Error(
+      "ROS 2 proposal timeout must be an integer from 1000 to 600000 ms",
+    );
+  }
+  return value;
+}
+
+export async function waitForFirstProposal(
+  completion: Promise<void>,
+  timeoutMs: number,
+): Promise<void> {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      completion,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error("proposal_timeout")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
 function readRelease(path: string): ExecutablePolicySpec {
   const resolved = resolve(path);
   if (!existsSync(resolved))
@@ -443,7 +477,12 @@ async function runCloudConnectedGateway(
     }
   });
   if (options.once === "true") {
-    await completion;
+    try {
+      await waitForFirstProposal(completion, proposalTimeoutMs(options));
+    } catch (error) {
+      completed = true;
+      throw error;
+    }
   } else {
     await Promise.race([
       completion,
@@ -571,6 +610,7 @@ export function ros2Usage(): string {
     "Set RLSOK_EXECUTION_MODE=cloud-connected to require the versioned cloud",
     "release, Permit, final refresh/consumption, and cloud Evidence path.",
     "Cloud credentials are read only from environment/protected-file settings.",
+    "Cloud --once true waits at most --proposal-timeout-ms (default 30000).",
     "",
     "ROS 2 support is experimental/reference-only, not safety-rated, and not hard realtime.",
   ].join("\n");
