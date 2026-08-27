@@ -13,6 +13,36 @@
       "displayName": "Laurentiu Popa",
       "contribution": "Provided technical review feedback on RLSOK.",
       "optInConfirmed": true
+    },
+    {
+      "id": "ruddrho-mollik",
+      "displayName": "Ruddrho Mollik",
+      "project": "A ROS 2 Vision-Guided Pick-and-Place Robotic Arm",
+      "contribution": "Provided architecture feedback on selecting camera calibration, robot-camera transforms, workcell setup, and object/bin mapping as execution-relevant inputs.",
+      "preferredUrl": "https://github.com/ruddrho/ros2-vision-guided-robot-arm-color-sorting-robot",
+      "optInConfirmed": true
+    },
+    {
+      "id": "aditya-jindal",
+      "displayName": "Aditya Jindal",
+      "project": "Independent contributor",
+      "contribution": "Provided lifecycle ERROR/FAILURE continuity feedback on requiring fresh execution authority after invalidating internal state.",
+      "preferredUrl": "https://github.com/AdityaJindal07",
+      "optInConfirmed": true
+    },
+    {
+      "id": "bartosz-burda",
+      "displayName": "Bartosz Burda",
+      "project": "selfpatch.ai / ros2_medkit",
+      "contribution": "Provided architecture feedback on separating fault/degradation ownership from execution authorization and consuming available capabilities at that boundary. Independent feedback; no endorsement, integration, or support relationship implied.",
+      "preferredUrl": "https://github.com/selfpatch/ros2_medkit",
+      "optInConfirmed": true
+    },
+    {
+      "id": "denis-stogl",
+      "displayName": "Dr. Denis Stogl",
+      "contribution": "Critiqued the earlier public explanation and later confirmed that the clarified execution boundary is understandable, cleanly separated from ros2_control, and resembles approaches seen previously.",
+      "optInConfirmed": true
     }
   ]
 }

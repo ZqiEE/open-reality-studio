@@ -11,6 +11,21 @@ organization relationship. No logos are used.
   path-scoped failure behavior, and the distinction between authenticated
   evidence and raw ROS graph identity.
 - Laurentiu Popa — Provided technical review feedback on RLSOK.
+- [Ruddrho Mollik](https://github.com/ruddrho/ros2-vision-guided-robot-arm-color-sorting-robot)
+  — A ROS 2 Vision-Guided Pick-and-Place Robotic Arm. Provided architecture
+  feedback on selecting camera calibration, robot-camera transforms, workcell
+  setup, and object/bin mapping as execution-relevant inputs.
+- [Aditya Jindal](https://github.com/AdityaJindal07) — Independent contributor.
+  Provided lifecycle ERROR/FAILURE continuity feedback on requiring fresh
+  execution authority after invalidating internal state.
+- [Bartosz Burda](https://github.com/selfpatch/ros2_medkit) — selfpatch.ai /
+  ros2_medkit. Provided architecture feedback on separating fault/degradation
+  ownership from execution authorization and consuming available capabilities
+  at that boundary. Independent feedback; no endorsement, integration, or
+  support relationship implied.
+- Dr. Denis Stogl — Critiqued the earlier public explanation and later
+  confirmed that the clarified execution boundary is understandable, cleanly
+  separated from ros2_control, and resembles approaches seen previously.
 
 The machine-readable source of truth is
 [`docs/technical-contributors.json`](docs/technical-contributors.json). Add a
