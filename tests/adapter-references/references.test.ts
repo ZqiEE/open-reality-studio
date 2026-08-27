@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   collectInferenceProvenance,
@@ -15,7 +16,7 @@ const observedAt = '2026-08-24T13:00:00.000Z';
 const now = new Date('2026-08-24T13:00:01.000Z');
 
 test('Fast DDS reference scopes trust to the command path and never trusts names or GUIDs alone', () => {
-  const trusted = fastDdsCommandPathObservation({
+  const trustedObservation = {
     pathIdentity: '/cmd_vel->twist_mux',
     observedAt,
     continuityToken: 'security-session-4',
@@ -24,8 +25,10 @@ test('Fast DDS reference scopes trust to the command path and never trusts names
     participantAuthenticated: true,
     governanceEnforced: true,
     permissionsValidated: true,
+    commandPathExplicitlyUntrusted: false,
     source: 'fastdds-security-listener-fixture'
-  });
+  };
+  const trusted = fastDdsCommandPathObservation(trustedObservation);
   const capability = 'dds.command_path.trusted:/cmd_vel->twist_mux';
   assert.equal(evaluateRuntimeAttestation({
     requiredCapabilities: [capability],
@@ -35,12 +38,13 @@ test('Fast DDS reference scopes trust to the command path and never trusts names
   }).allowed, true);
 
   const unproven = fastDdsCommandPathObservation({
-    ...trusted,
+    ...trustedObservation,
     matchedCommandWriter: true,
     matchedCommandReader: true,
     participantAuthenticated: false,
     governanceEnforced: false,
     permissionsValidated: false,
+    commandPathExplicitlyUntrusted: false,
     source: 'raw-guid-only'
   });
   assert.equal(unproven.trust, 'unknown');
@@ -50,6 +54,28 @@ test('Fast DDS reference scopes trust to the command path and never trusts names
     maxAgeMs: 5_000,
     now
   }).reason, 'runtime_capability_missing');
+
+  const explicitlyUntrusted = fastDdsCommandPathObservation({
+    ...trustedObservation,
+    commandPathExplicitlyUntrusted: true,
+    source: 'fastdds-security-rejection'
+  });
+  assert.equal(explicitlyUntrusted.trust, 'untrusted');
+  assert.deepEqual(explicitlyUntrusted.capabilities, []);
+  assert.equal(evaluateRuntimeAttestation({
+    requiredCapabilities: [capability],
+    attestation: commandPathRuntimeAttestation(explicitlyUntrusted),
+    maxAgeMs: 5_000,
+    now
+  }).reason, 'runtime_capability_missing');
+
+  const authenticationOnly = fastDdsCommandPathObservation({
+    ...trustedObservation,
+    governanceEnforced: false,
+    permissionsValidated: false
+  });
+  assert.equal(authenticationOnly.trust, 'unknown');
+  assert.deepEqual(authenticationOnly.capabilities, []);
 });
 
 test('fault cleared without capability restoration remains blocked', () => {
@@ -135,7 +161,48 @@ test('remaining integration references declare selected identity, volatile exclu
     'nav2-velocity-smoother',
     'elite-cs-model',
     'crane-x7-selected-limits',
-    'device-serial-calibration'
+    'device-serial-calibration',
+    'physical-execution-identity',
+    'ros2-control-runtime-compatibility'
   ]);
   assert.equal(references.every(({ externalTestGate }) => externalTestGate.length > 20), true);
+
+  const physicalIdentity = references.find(({ integration }) =>
+    integration === 'physical-execution-identity'
+  )!;
+  assert.equal(
+    physicalIdentity.stableApprovedInputs.includes('controller interface and command-semantics digests'),
+    true
+  );
+  assert.equal(physicalIdentity.excludedVolatileInputs.includes('simulator world'), true);
+  assert.equal(physicalIdentity.excludedVolatileInputs.includes('unselected interfaces and sensors'), true);
+
+  const runtimeCompatibility = references.find(({ integration }) =>
+    integration === 'ros2-control-runtime-compatibility'
+  )!;
+  assert.equal(
+    runtimeCompatibility.stableApprovedInputs.includes('integration-qualified compatibility-envelope identity when one exists'),
+    true
+  );
+  assert.match(runtimeCompatibility.externalTestGate, /lifecycle, resource, timing or failure semantics/);
+});
+
+test('technical contributor attribution is opt-in, factual and does not imply endorsement', () => {
+  const document = JSON.parse(
+    readFileSync('docs/technical-contributors.json', 'utf8')
+  ) as { contributors: Array<Record<string, unknown>> };
+  const contributors = document.contributors;
+  assert.deepEqual(contributors.map(({ displayName }) => displayName), [
+    'Xiaoyang',
+    'Laurentiu Popa'
+  ]);
+  assert.equal(contributors.every(({ optInConfirmed }) => optInConfirmed === true), true);
+  assert.equal(contributors[0]?.preferredUrl, 'https://github.com/xiao-yang25');
+  assert.equal('preferredUrl' in contributors[1]!, false);
+  for (const contributor of contributors) {
+    assert.equal('organization' in contributor, false);
+    assert.equal('title' in contributor, false);
+    assert.equal('logo' in contributor, false);
+    assert.equal('supportedIntegration' in contributor, false);
+  }
 });

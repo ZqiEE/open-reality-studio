@@ -8,7 +8,7 @@ export const commandPathAttestationSchema = z.object({
   schemaVersion: z.literal(1),
   pathIdentity: identity,
   ready: z.boolean(),
-  trust: z.enum(['authenticated', 'unauthenticated', 'unknown']),
+  trust: z.enum(['authenticated', 'untrusted', 'unknown']),
   observedAt: timestamp,
   continuityToken: identity,
   middleware: identity,
@@ -27,6 +27,7 @@ export interface FastDdsSecurityObservation {
   participantAuthenticated: boolean;
   governanceEnforced: boolean;
   permissionsValidated: boolean;
+  commandPathExplicitlyUntrusted?: boolean;
   source: string;
 }
 
@@ -40,14 +41,17 @@ export function fastDdsCommandPathObservation(
   observation: FastDdsSecurityObservation
 ): CommandPathAttestation {
   const ready = observation.matchedCommandWriter && observation.matchedCommandReader;
-  const authenticated = observation.participantAuthenticated
+  const authenticated = !observation.commandPathExplicitlyUntrusted
+    && observation.participantAuthenticated
     && observation.governanceEnforced
     && observation.permissionsValidated;
   return commandPathAttestationSchema.parse({
     schemaVersion: 1,
     pathIdentity: observation.pathIdentity,
     ready,
-    trust: authenticated ? 'authenticated' : 'unknown',
+    trust: authenticated
+      ? 'authenticated'
+      : observation.commandPathExplicitlyUntrusted ? 'untrusted' : 'unknown',
     observedAt: observation.observedAt,
     continuityToken: observation.continuityToken,
     middleware: 'fastdds-security',

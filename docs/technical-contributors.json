@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "contributors": [
+    {
+      "id": "xiaoyang",
+      "displayName": "Xiaoyang",
+      "contribution": "Reviewed DDS command-path trust, path-scoped failure behavior, and the distinction between authenticated evidence and raw ROS graph identity.",
+      "preferredUrl": "https://github.com/xiao-yang25",
+      "optInConfirmed": true
+    },
+    {
+      "id": "laurentiu-popa",
+      "displayName": "Laurentiu Popa",
+      "contribution": "Provided technical review feedback on RLSOK.",
+      "optInConfirmed": true
+    }
+  ]
+}

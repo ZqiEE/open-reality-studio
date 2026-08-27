@@ -58,5 +58,25 @@
     "excludedVolatileInputs": ["USB port number", "enumeration order"],
     "mismatchBehavior": "block-before-dispatch",
     "externalTestGate": "Swap USB ports and then swap physical serials; only the latter must invalidate authorization."
+  },
+  {
+    "schemaVersion": 1,
+    "integration": "physical-execution-identity",
+    "status": "reference-contract",
+    "stableApprovedInputs": ["selected base robot-description digest", "selected actuator and sensor configuration digests", "controller interface and command-semantics digests", "execution-relevant runtime, software and configuration identities"],
+    "runtimeCapabilities": [],
+    "excludedVolatileInputs": ["simulator world", "visual assets", "incidental simulator plugins", "unselected interfaces and sensors", "unrelated environment observations"],
+    "mismatchBehavior": "block-before-dispatch",
+    "externalTestGate": "Change one selected interface semantic source and require denial while an unselected interface or simulator-only asset change leaves the approval identity unchanged."
+  },
+  {
+    "schemaVersion": 1,
+    "integration": "ros2-control-runtime-compatibility",
+    "status": "reference-contract",
+    "stableApprovedInputs": ["selected controller and hardware-interface configuration", "ros2_control and hardware_interface execution-semantics identity", "integration-qualified compatibility-envelope identity when one exists"],
+    "runtimeCapabilities": [],
+    "excludedVolatileInputs": ["unchanged action or topic name by itself", "unrelated ROS packages", "simulator-only world and visual state"],
+    "mismatchBehavior": "block-before-dispatch",
+    "externalTestGate": "Change lifecycle, resource, timing or failure semantics beneath an unchanged public interface and require denial unless the adapter maps both runtimes to the same reviewed compatibility envelope."
   }
 ]
