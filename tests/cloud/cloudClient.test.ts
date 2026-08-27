@@ -340,7 +340,7 @@ test("new runtime Permit consume remains compatible with new Cloud", async () =>
   assert.equal(consumeBody?.evaluationMode, "shadow");
 });
 
-test("cloud dispatch boundary refreshes state and consumes exactly once before dispatch", async () => {
+test("cloud dispatch boundary requires and consumes its exact local permit before dispatch", async () => {
   const calls: string[] = [];
   const permitId = "11111111-1111-4111-8111-111111111111";
   const client = new RlsokCloudClient(config, async (input, init) => {
@@ -379,7 +379,40 @@ test("cloud dispatch boundary refreshes state and consumes exactly once before d
     },
     async () => configurationDigest,
   );
-  assert.equal(await boundary.dispatch(fixture.action, {}), "accepted");
+  await assert.rejects(
+    boundary.dispatch(fixture.action, {}),
+    /local_execution_permit_invalid/,
+  );
+  assert.equal(calls.length, 0);
+  assert.equal(dispatches, 0);
+
+  const validBoundary = new CloudConnectedDispatchBoundary(
+    client,
+    permitId,
+    {
+      evaluationMode: "reference-run",
+      releaseId: "fixture-release-001",
+      contentHash: fixture.expected.contentHash,
+      actionHash: fixture.expected.actionHash,
+      deviceId: "fixture-arm-01",
+      controllerId:
+        "1111111111111111111111111111111111111111111111111111111111111111",
+      configurationDigest,
+    },
+    {
+      async dispatch() {
+        dispatches += 1;
+        calls.push("controller:dispatch");
+        return "accepted";
+      },
+    },
+    async () => configurationDigest,
+  );
+  const localPermit = validBoundary.issueLocalPermit(fixture.action);
+  assert.equal(
+    await validBoundary.dispatch(fixture.action, localPermit),
+    "accepted",
+  );
   assert.deepEqual(calls, [
     "GET:/v1/releases/fixture-release-001",
     `POST:/v1/permits/${permitId}/consume`,
@@ -387,7 +420,7 @@ test("cloud dispatch boundary refreshes state and consumes exactly once before d
   ]);
   assert.equal(dispatches, 1);
   await assert.rejects(
-    boundary.dispatch(fixture.action, {}),
+    validBoundary.dispatch(fixture.action, localPermit),
     /boundary_reused/,
   );
 });
@@ -422,8 +455,9 @@ test("revocation refresh denies before permit consumption or controller dispatch
     },
     async () => configurationDigest,
   );
+  const localPermit = boundary.issueLocalPermit(fixture.action);
   await assert.rejects(
-    boundary.dispatch(fixture.action, {}),
+    boundary.dispatch(fixture.action, localPermit),
     /cloud_release_not_currently_approved/,
   );
   assert.equal(calls, 1);

@@ -68,7 +68,7 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
       localPermit === null ||
       !this.localPermits.has(localPermit)
     ) {
-      return;
+      throw new Error("local_execution_permit_invalid");
     }
     const record = this.localPermits.get(localPermit)!;
     this.localPermits.delete(localPermit);
