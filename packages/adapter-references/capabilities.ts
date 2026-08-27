@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canonicalJson, sha256 } from '../core/evidence';
 import type { RuntimeAttestation } from '../core/runtime-attestation';
 
 const timestamp = z.string().datetime({ offset: true });
@@ -33,6 +34,46 @@ export function degradationRuntimeAttestation(
       .filter(([, available]) => available)
       .map(([capability]) => capability)
       .sort()
+  };
+}
+
+export const selectedObservedStateReportSchema = z.object({
+  schemaVersion: z.literal(1),
+  sourceIdentity: identity,
+  selectionIdentity: identity,
+  observedAt: timestamp,
+  stateEpoch: identity,
+  monitorVersion: identity,
+  selectedCapability: identity,
+  status: z.enum(['ready', 'not_ready', 'unknown'])
+}).strict();
+
+export type SelectedObservedStateReport = z.infer<typeof selectedObservedStateReportSchema>;
+
+/**
+ * Normalizes one explicitly selected, execution-relevant state contract.
+ * The adapter owns stateEpoch and must change it for relevant transitions while
+ * keeping it stable across unselected sensor or environment noise.
+ */
+export function selectedObservedStateRuntimeAttestation(
+  report: SelectedObservedStateReport
+): RuntimeAttestation {
+  const parsed = selectedObservedStateReportSchema.parse(report);
+  return {
+    schemaVersion: 1,
+    source: {
+      identity: parsed.sourceIdentity,
+      kind: 'selected-observed-state-monitor',
+      version: parsed.monitorVersion
+    },
+    observedAt: parsed.observedAt,
+    continuityToken: sha256(canonicalJson({
+      selectionIdentity: parsed.selectionIdentity,
+      stateEpoch: parsed.stateEpoch
+    })),
+    availableCapabilities: parsed.status === 'ready'
+      ? [parsed.selectedCapability]
+      : []
   };
 }
 

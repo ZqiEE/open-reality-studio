@@ -90,8 +90,6 @@ for line in sys.stdin:
         )
     elif operation == "dispatch":
         reply(message, {"accepted": True, "detail": "simulated_goal_accepted"})
-    elif operation == "cancel":
-        reply(message, {"requested": True, "detail": "simulated_cancel"})
     elif operation == "shutdown":
         stop_publisher.set()
         reply(message, {"closed": True})

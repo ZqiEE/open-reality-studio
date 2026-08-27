@@ -127,12 +127,12 @@ security layer authenticates them.
 ## ROS 2 boundary
 
 `packages/ros2-reference-gateway/` validates proposal and joint-state
-contracts, resolves the active release, invokes Core, and records dispatch or
-cancellation evidence.
+contracts, resolves the active release, invokes Core, and records dispatch
+evidence.
 
 `experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py` is an untrusted
 transport process. It subscribes to proposal and `JointState` topics and uses
-`FollowJointTrajectory` for goals and cancellation. JSONL IPC is the only
+`FollowJointTrajectory` for goals. JSONL IPC is the only
 boundary between it and TypeScript. Python cannot approve a release or issue a
 permit.
 
@@ -153,10 +153,13 @@ Reference Run requires:
 
 ## Evidence
 
-Evidence distinguishes `not_sent` from `attempted_unconfirmed`. Controller goal
-acceptance and cancellation requests do not prove physical motion or a physical
-stop. Entries are canonicalized, SHA-256 hash-chained, and verified against the
-bundle release identity.
+Evidence distinguishes `not_sent` from `attempted_unconfirmed`. A queued
+pre-dispatch rejection is `not_sent`; controller goal acceptance begins the
+execution-side boundary and remains `attempted_unconfirmed` unless a terminal
+result is recorded. Revocation prevents a later dispatch but sends no cancel,
+stop, hold, zero, or retry command. Controlled or safety-rated stopping of an
+already executing trajectory is outside RLSOK. Entries are canonicalized,
+SHA-256 hash-chained, and verified against the bundle release identity.
 
 ## Security limits
 

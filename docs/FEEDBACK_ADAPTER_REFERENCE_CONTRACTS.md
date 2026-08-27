@@ -33,6 +33,32 @@ Both non-authenticated states emit no trusted capability and therefore fail
 closed. Participant authentication alone is insufficient: governance and
 permissions for the configured path must also be proven.
 
+## Selected observed-state epoch
+
+`selectedObservedStateRuntimeAttestation` is the generic last-mile reference
+for a command that depends on an execution-relevant state transition. The
+integration explicitly names one selected state contract and capability. Its
+adapter owns an opaque `stateEpoch`, changes it on a relevant transition, and
+keeps it stable across unrelated sensor or environment noise. `ready` emits the
+selected capability; `not_ready`, `unknown`, missing, or stale input emits no
+trusted capability or otherwise fails closed.
+
+No additional Permit or Core schema field is required. The existing Permit is
+already exact-action, release, device, controller, configuration and
+short-TTL/single-use bound. When a selected capability is required,
+`RuntimeAttestation` is refreshed immediately before dispatch. The issuance
+attestation digest protects the queued request from mutation; source identity
+and version protect the selected monitor contract; and the continuity token
+binds the selected state epoch. A changed epoch records
+`runtime_continuity_changed`, while missing, stale, or unknown observations
+record `runtime_attestation_missing`, `runtime_attestation_stale`, or
+`runtime_capability_missing`, all with `hardwareSignalSent: false`. A newer
+timestamp or a change to an unrequired capability is not a global invalidator.
+
+This contract must not contain raw sensor streams or whole-world state. It
+does not add stop, hold, zero, retry, or safety behavior after a controller has
+accepted execution.
+
 ## Degradation and GOLEM capability references
 
 `capabilities.ts` maps an external degradation classifier to available
@@ -40,10 +66,33 @@ capabilities. A cleared fault with capability still false remains blocked; a
 fresh new continuity observation with restored capability may pass. RLSOK does
 not classify or manage faults.
 
-The GOLEM reference consumes only an external `upperBodyMotionReady` verdict
-and maps it to `upper_body.motion_ready`. It does not infer collision, contact,
-caught state or motor safety. A GOLEM owner/simulator must exercise the fixture
-before any support statement is made.
+The GOLEM reference expects exactly a schema-v1 report containing
+`sourceIdentity`, `observedAt`, `continuityToken`, `monitorVersion`, and the
+external boolean verdict `upperBodyMotionReady`. It maps only a fresh `true`
+verdict to `upper_body.motion_ready`. This means only that the selected external
+monitor says the upper-body motion capability needed by the next command is
+available. It does not mean that RLSOK detected collision, contact, caught
+state, motor safety, or a safety-rated condition.
+
+Review examples:
+
+- ALLOW eligibility: the ExecSpec explicitly requires
+  `upper_body.motion_ready`; the report is present, fresh and continuous; the
+  monitor identity/version match; and `upperBodyMotionReady` is `true`.
+- BLOCK: the verdict is `false`, missing, stale, malformed/unknown, produced by
+  a replacement monitor, or has changed continuity. The exact Core diagnostic
+  is recorded in Evidence and `hardwareSignalSent` remains `false`.
+- Shadow uses the same eligibility facts but never dispatches, including when
+  every fact would otherwise allow Run.
+
+RLSOK never infers contact and never sends a cancellation, controlled stop,
+hold, zero command, or retry for an executing H12 trajectory. A GOLEM
+owner/simulator must exercise the fixture before any support statement is
+made. The questions reserved for Max/CorrellLab are: (1) is this exact monitor
+report the correct owner boundary, (2) does `upper_body.motion_ready` accurately
+name the capability needed before a new H12 command, (3) which transitions must
+rotate continuity, and (4) which concrete Shadow fixtures represent ready,
+not-ready, missing, stale, and monitor-replacement cases?
 
 ## Inference provenance and selected integration identities
 

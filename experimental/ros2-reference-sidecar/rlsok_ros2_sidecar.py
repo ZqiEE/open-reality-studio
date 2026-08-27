@@ -67,7 +67,6 @@ class ReferenceTransportNode(NodeBase):
         super().__init__("rlsok_reference_gateway")
         self.args = args
         self.latest_state: Optional[Dict[str, Any]] = None
-        self.active_goal = None
         self.create_subscription(String, args.proposal_topic, self._proposal, 10)
         # JointState is sensor data. Request Best Effort so this subscriber is
         # compatible with both Best Effort ros2_control publishers and
@@ -138,7 +137,6 @@ class ReferenceTransportNode(NodeBase):
         handle = future.result()
         if handle is None or not handle.accepted:
             return {"accepted": False, "detail": "goal_rejected"}
-        self.active_goal = handle
         result_future = handle.get_result_async()
         try:
             self._wait_for_future(result_future, self.args.result_timeout_seconds)
@@ -159,7 +157,6 @@ class ReferenceTransportNode(NodeBase):
             }
         result = wrapped.result
         error_code = int(result.error_code)
-        self.active_goal = None
         return {
             "accepted": True,
             "completed": True,
@@ -168,20 +165,6 @@ class ReferenceTransportNode(NodeBase):
             "errorCode": error_code,
             "errorString": str(result.error_string),
             "detail": "controller_succeeded" if error_code == 0 else "controller_reported_failure",
-        }
-
-    def cancel(self, _params: Dict[str, Any]) -> Dict[str, Any]:
-        if self.active_goal is None:
-            return {"requested": False, "detail": "no_active_goal"}
-        future = self.active_goal.cancel_goal_async()
-        self._wait_for_future(future, 2.0)
-        response = future.result()
-        requested = response is not None and len(response.goals_canceling) > 0
-        if requested:
-            self.active_goal = None
-        return {
-            "requested": requested,
-            "detail": "cancel_requested" if requested else "cancel_rejected",
         }
 
     @staticmethod
@@ -596,8 +579,6 @@ def main() -> int:
                     result = node.inspect_graph()
                 elif operation == "dispatch":
                     result = node.dispatch(params)
-                elif operation == "cancel":
-                    result = node.cancel(params)
                 elif operation == "shutdown":
                     result = {"closed": True}
                 else:

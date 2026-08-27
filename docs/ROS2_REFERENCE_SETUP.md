@@ -76,8 +76,10 @@ npm run rlsok -- ros2 run \
 ```
 
 Stop on stale state, clock skew, discovery changes, SROS2 permissive mode,
-controller rejection, timeout, cancellation ambiguity, or evidence verification
-failure. A cancellation request is not proof that physical motion stopped.
+controller rejection, timeout, or evidence verification failure. RLSOK
+revocation blocks a later dispatch and deliberately sends no cancellation,
+stop, hold, zero, or retry command for an already executing trajectory; that
+controlled-stop or safety-rated responsibility belongs outside RLSOK.
 Blocked and failed cloud-connected executions return a nonzero process status;
 when the cloud release identity is known, revocation and other eligibility
 denials are written as zero-dispatch Evidence without issuing a Permit.

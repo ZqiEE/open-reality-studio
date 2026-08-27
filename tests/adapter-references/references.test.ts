@@ -6,7 +6,8 @@ import {
   commandPathRuntimeAttestation,
   degradationRuntimeAttestation,
   fastDdsCommandPathObservation,
-  golemUpperBodyRuntimeAttestation
+  golemUpperBodyRuntimeAttestation,
+  selectedObservedStateRuntimeAttestation
 } from '../../packages/adapter-references';
 import { selectedIdentityReferenceSchema } from '../../packages/adapter-references';
 import selectedIdentityReferences from '../../examples/adapter-references/selected-identity-references.json';
@@ -106,6 +107,36 @@ test('fault cleared without capability restoration remains blocked', () => {
   }).allowed, true);
 });
 
+test('selected observed-state reference scopes continuity to one adapter-owned epoch', () => {
+  const selected = {
+    schemaVersion: 1 as const,
+    sourceIdentity: 'cell-state-monitor',
+    selectionIdentity: 'workcell-clearance-v1',
+    observedAt,
+    stateEpoch: 'clearance-epoch-7',
+    monitorVersion: 'fixture-v1',
+    selectedCapability: 'workcell.clear_for_pick',
+    status: 'ready' as const
+  };
+  const ready = selectedObservedStateRuntimeAttestation(selected);
+  assert.equal(ready.source.identity, 'cell-state-monitor');
+  assert.match(ready.continuityToken, /^[a-f0-9]{64}$/);
+  assert.deepEqual(ready.availableCapabilities, ['workcell.clear_for_pick']);
+
+  const unknown = selectedObservedStateRuntimeAttestation({
+    ...selected,
+    stateEpoch: 'clearance-epoch-unknown',
+    status: 'unknown'
+  });
+  assert.deepEqual(unknown.availableCapabilities, []);
+  assert.equal(evaluateRuntimeAttestation({
+    requiredCapabilities: ['workcell.clear_for_pick'],
+    attestation: unknown,
+    maxAgeMs: 5_000,
+    now
+  }).reason, 'runtime_capability_missing');
+});
+
 test('GOLEM reference consumes an external upper-body verdict without inferring contact', () => {
   const blocked = golemUpperBodyRuntimeAttestation({
     schemaVersion: 1,
@@ -116,6 +147,12 @@ test('GOLEM reference consumes an external upper-body verdict without inferring 
     upperBodyMotionReady: false
   });
   assert.deepEqual(blocked.availableCapabilities, []);
+  assert.equal(evaluateRuntimeAttestation({
+    requiredCapabilities: ['upper_body.motion_ready'],
+    attestation: blocked,
+    maxAgeMs: 5_000,
+    now
+  }).reason, 'runtime_capability_missing');
   const ready = golemUpperBodyRuntimeAttestation({
     schemaVersion: 1,
     sourceIdentity: 'golem-h12-monitor',
@@ -125,6 +162,12 @@ test('GOLEM reference consumes an external upper-body verdict without inferring 
     upperBodyMotionReady: true
   });
   assert.deepEqual(ready.availableCapabilities, ['upper_body.motion_ready']);
+  assert.equal(evaluateRuntimeAttestation({
+    requiredCapabilities: ['upper_body.motion_ready'],
+    attestation: ready,
+    maxAgeMs: 5_000,
+    now
+  }).allowed, true);
 });
 
 test('inference provenance is explicit, stable and rejects missing or changed allowlisted dependencies', () => {
@@ -194,15 +237,33 @@ test('technical contributor attribution is opt-in, factual and does not imply en
   const contributors = document.contributors;
   assert.deepEqual(contributors.map(({ displayName }) => displayName), [
     'Xiaoyang',
-    'Laurentiu Popa'
+    'Laurentiu Popa',
+    'Ruddrho Mollik',
+    'Aditya Jindal',
+    'Bartosz Burda',
+    'Dr. Denis Stogl'
   ]);
   assert.equal(contributors.every(({ optInConfirmed }) => optInConfirmed === true), true);
   assert.equal(contributors[0]?.preferredUrl, 'https://github.com/xiao-yang25');
   assert.equal('preferredUrl' in contributors[1]!, false);
+  assert.equal(
+    contributors[2]?.preferredUrl,
+    'https://github.com/ruddrho/ros2-vision-guided-robot-arm-color-sorting-robot'
+  );
+  assert.equal(contributors[2]?.project, 'A ROS 2 Vision-Guided Pick-and-Place Robotic Arm');
+  assert.equal(contributors[3]?.preferredUrl, 'https://github.com/AdityaJindal07');
+  assert.equal(contributors[3]?.project, 'Independent contributor');
+  assert.equal(contributors[4]?.preferredUrl, 'https://github.com/selfpatch/ros2_medkit');
+  assert.equal(contributors[4]?.project, 'selfpatch.ai / ros2_medkit');
+  assert.equal('preferredUrl' in contributors[5]!, false);
   for (const contributor of contributors) {
     assert.equal('organization' in contributor, false);
     assert.equal('title' in contributor, false);
     assert.equal('logo' in contributor, false);
     assert.equal('supportedIntegration' in contributor, false);
   }
+  assert.equal(
+    contributors.some(({ displayName }) => displayName === 'Max Conway'),
+    false
+  );
 });

@@ -92,15 +92,6 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
     >;
   }
 
-  async cancelActiveGoal(
-    reason: string,
-  ): Promise<{ requested: boolean; detail: string }> {
-    return this.request("cancel", { reason }) as Promise<{
-      requested: boolean;
-      detail: string;
-    }>;
-  }
-
   async doctor(): Promise<Ros2DoctorReport> {
     return this.request("doctor", {}) as Promise<Ros2DoctorReport>;
   }

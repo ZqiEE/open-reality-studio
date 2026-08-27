@@ -232,7 +232,6 @@ class SpyTransport implements Ros2ReferenceTransport {
     observedAt: NOW.toISOString(),
   };
   dispatches = 0;
-  cancellations = 0;
   accepted = true;
   dispatchError?: string;
 
@@ -256,10 +255,6 @@ class SpyTransport implements Ros2ReferenceTransport {
       errorCode: this.accepted ? 0 : -1,
       detail: this.accepted ? "accepted" : "unavailable",
     };
-  }
-  async cancelActiveGoal(): Promise<{ requested: boolean; detail: string }> {
-    this.cancellations += 1;
-    return { requested: true, detail: "cancel_requested" };
   }
   async doctor(): Promise<Ros2DoctorReport> {
     return {
@@ -499,19 +494,20 @@ async function testV2ObservationBoundary(): Promise<void> {
 async function testRevocation(): Promise<void> {
   const active = setup("run");
   await active.gateway.handlePayload(proposal(active.spec));
+  assert.equal(active.entries.at(-1)?.hardwareSignalState, "attempted_unconfirmed");
+  const entriesBeforeRevocation = active.entries.length;
   await active.gateway.revoke(active.spec.metadata.releaseId, "operator_stop");
-  assert.equal(active.transport.cancellations, 1);
-  assert.match(
-    active.entries.at(-1)?.decisionReason ?? "",
-    /release_revoked:cancel_requested/,
+  assert.equal(active.entries.length, entriesBeforeRevocation);
+  assert.doesNotMatch(
+    readFileSync(join(process.cwd(), "packages/ros2-reference-gateway/index.ts"), "utf8"),
+    /cancelActiveGoal/,
   );
-  assert.equal(
-    active.entries.at(-1)?.hardwareSignalState,
-    "attempted_unconfirmed",
-  );
-  assert.equal(
-    active.entries.at(-1)?.executionEvidence,
-    "cancellation_requested",
+  assert.doesNotMatch(
+    readFileSync(
+      join(process.cwd(), "experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py"),
+      "utf8",
+    ),
+    /operation == ["']cancel["']/,
   );
   const next = JSON.parse(proposal(active.spec, "proposal-2")) as Record<
     string,
@@ -520,6 +516,8 @@ async function testRevocation(): Promise<void> {
   const blocked = await active.gateway.handlePayload(JSON.stringify(next));
   assert.equal(blocked.decision, "blocked");
   assert.equal(active.transport.dispatches, 1);
+  assert.equal(active.entries.at(-1)?.decisionReason, "release_revoked");
+  assert.equal(active.entries.at(-1)?.hardwareSignalSent, false);
 }
 
 async function testEvidence(): Promise<void> {

@@ -7,11 +7,9 @@ import {
 } from '../core/execution-gate';
 import {
   canonicalJson,
-  sha256,
-  type ExecutionEvidence
+  sha256
 } from '../core/evidence';
 import {
-  executablePolicyHash,
   type ExecutablePolicySpec
 } from '../core/exec-spec';
 import type { ReleaseRecord } from '../core/release-policy';
@@ -103,7 +101,6 @@ export interface Ros2ReferenceTransport {
     errorCode?: number;
     errorString?: string;
   }>;
-  cancelActiveGoal(reason: string): Promise<{ requested: boolean; detail: string }>;
   doctor(): Promise<Ros2DoctorReport>;
   close(): Promise<void>;
 }
@@ -173,36 +170,6 @@ function sameOrder(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function evidenceForLifecycle(
-  release: ExecutablePolicySpec,
-  proposalId: string,
-  deviceId: string,
-  reason: string,
-  at: string,
-  signalSent: boolean,
-  executionEvidence: string
-): ExecutionEvidence {
-  return {
-    releaseId: release.metadata.releaseId,
-    executablePolicyHash: executablePolicyHash(release),
-    modelHash: release.model.sha256,
-    actionContractHash: sha256(canonicalJson(release.actionContract)),
-    robotProfileHash: release.robot.profileSha256,
-    controllerProfileHash: release.robot.controllerConfigSha256,
-    runtimePolicyHash: release.runtimePolicy.policySha256,
-    deviceId,
-    proposalId,
-    proposedAction: null,
-    decision: 'blocked',
-    decisionReason: reason,
-    matchedRuleIds: ['release_revocation'],
-    decisionMadeAt: at,
-    hardwareSignalSent: signalSent,
-    hardwareSignalState: signalSent ? 'attempted_unconfirmed' : 'not_sent',
-    executionEvidence
-  };
-}
-
 /**
  * Experimental ROS 2 reference gateway. ROS 2 is a source/adapter only:
  * release admission, permits, Shadow Mode and evidence stay in Core.
@@ -210,11 +177,6 @@ function evidenceForLifecycle(
 export class Ros2ReferenceGateway {
   private readonly mode: 'shadow' | 'run';
   private readonly seenProposalIds = new Set<string>();
-  private active?: {
-    release: ExecutablePolicySpec;
-    proposalId: string;
-    deviceId: string;
-  };
   private goalCount = 0;
 
   constructor(private readonly options: Ros2GatewayOptions) {
@@ -367,11 +329,6 @@ export class Ros2ReferenceGateway {
           if (result.completed === true && result.succeeded !== true) {
             throw new Error(`controller_goal_failed:${result.errorCode ?? 'unknown'}:${result.detail}`);
           }
-          this.active = {
-            release,
-            proposalId: proposal.proposalId,
-            deviceId: proposal.deviceId
-          };
           return result;
         }
       },
@@ -436,26 +393,6 @@ export class Ros2ReferenceGateway {
   async revoke(releaseId: string, reason: string): Promise<void> {
     const at = (this.options.now?.() ?? new Date()).toISOString();
     await this.options.releaseRecords.revoke(releaseId, reason, at);
-    if (!this.active || this.active.release.metadata.releaseId !== releaseId) return;
-    let requested = false;
-    let detail = 'active_goal_cancel_not_requested';
-    try {
-      const cancellation = await this.options.transport.cancelActiveGoal(reason);
-      requested = cancellation.requested;
-      detail = cancellation.detail;
-    } catch (error) {
-      detail = error instanceof Error ? error.message : 'controller_cancel_failed';
-    }
-    await this.options.evidence.append(evidenceForLifecycle(
-      this.active.release,
-      this.active.proposalId,
-      this.active.deviceId,
-      `release_revoked:${detail}`,
-      at,
-      requested,
-      requested ? 'cancellation_requested' : 'cancellation_not_sent'
-    ));
-    this.active = undefined;
   }
 
   private async blocked(

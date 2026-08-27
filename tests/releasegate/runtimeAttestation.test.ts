@@ -172,6 +172,7 @@ function gate(input: {
   dispatch: () => void;
   refreshedAttestation?: () => Promise<RuntimeAttestation | undefined>;
   refreshedRecord?: () => Promise<ReleaseRecord>;
+  refreshedConfiguration?: () => Promise<ExecutionConfiguration | undefined>;
 }) {
   return new ReleaseExecutionGate(
     {
@@ -184,7 +185,7 @@ function gate(input: {
     async () => ({ allowed: true, reason: 'policy_passed', matchedRuleIds: ['policy'] }),
     hashAction,
     input.refreshedRecord ?? (async () => record(input.spec)),
-    async () => input.spec.executionConfiguration,
+    input.refreshedConfiguration ?? (async () => input.spec.executionConfiguration),
     input.refreshedAttestation
   );
 }
@@ -471,6 +472,110 @@ test('permit refresh allows a newer observation and irrelevant capability change
     entries.at(-1)?.observedAvailableCapabilities,
     refreshed.availableCapabilities
   );
+});
+
+test('queued authority dies before dispatch when release, configuration, policy, or selected state changes', async () => {
+  const spec = release(['workcell.clear_for_pick']);
+  const issued = attestation({
+    observedAt: new Date(NOW.getTime() - 500).toISOString(),
+    continuityToken: 'selected-state-epoch-7',
+    availableCapabilities: ['workcell.clear_for_pick']
+  });
+  const changedConfiguration = configuration({ robotIdentity: 'runtime-robot-b' });
+  const changedPolicy = executablePolicySpecSchema.parse({
+    ...spec,
+    runtimePolicy: {
+      ...spec.runtimePolicy,
+      policySha256: H('9')
+    }
+  });
+  const cases: Array<{
+    name: string;
+    expectedReason: string;
+    refreshedRecord?: () => Promise<ReleaseRecord>;
+    refreshedConfiguration?: () => Promise<ExecutionConfiguration | undefined>;
+    refreshedAttestation?: () => Promise<RuntimeAttestation | undefined>;
+  }> = [
+    {
+      name: 'revocation epoch',
+      expectedReason: 'release_revoked',
+      refreshedRecord: async () => record(spec, 'revoked')
+    },
+    {
+      name: 'configuration epoch',
+      expectedReason: 'configuration_mismatch',
+      refreshedConfiguration: async () => changedConfiguration
+    },
+    {
+      name: 'policy epoch',
+      expectedReason: 'release_identity_changed_reapproval_required',
+      refreshedRecord: async () => record(changedPolicy)
+    },
+    {
+      name: 'selected observed-state epoch',
+      expectedReason: 'runtime_continuity_changed',
+      refreshedAttestation: async () => attestation({
+        continuityToken: 'selected-state-epoch-8',
+        availableCapabilities: ['workcell.clear_for_pick']
+      })
+    }
+  ];
+
+  for (const current of cases) {
+    const entries: ExecutionEvidence[] = [];
+    let dispatches = 0;
+    const executionGate = gate({
+      spec,
+      entries,
+      dispatch: () => { dispatches += 1; },
+      refreshedRecord: current.refreshedRecord,
+      refreshedConfiguration: current.refreshedConfiguration,
+      refreshedAttestation: current.refreshedAttestation ?? (async () => issued)
+    });
+    const decision = await executionGate.evaluate(request(spec, issued));
+    assert.equal(decision.status, 'allowed', current.name);
+    if (decision.status !== 'allowed') throw new Error('expected permit');
+    await assert.rejects(
+      executionGate.execute(decision.authorizedRequest),
+      new RegExp(current.expectedReason),
+      current.name
+    );
+    assert.equal(dispatches, 0, current.name);
+    assert.equal(entries.at(-1)?.decisionReason, current.expectedReason, current.name);
+    assert.equal(entries.at(-1)?.hardwareSignalSent, false, current.name);
+  }
+});
+
+test('selected state refresh ignores unselected observation noise and consumes the permit once', async () => {
+  const spec = release(['workcell.clear_for_pick']);
+  const issued = attestation({
+    continuityToken: 'selected-state-epoch-7',
+    availableCapabilities: ['workcell.clear_for_pick']
+  });
+  const refreshed = attestation({
+    observedAt: NOW.toISOString(),
+    continuityToken: 'selected-state-epoch-7',
+    availableCapabilities: ['camera.unselected_noise', 'workcell.clear_for_pick']
+  });
+  const entries: ExecutionEvidence[] = [];
+  let dispatches = 0;
+  const executionGate = gate({
+    spec,
+    entries,
+    dispatch: () => { dispatches += 1; },
+    refreshedAttestation: async () => refreshed
+  });
+  const decision = await executionGate.evaluate(request(spec, issued));
+  assert.equal(decision.status, 'allowed');
+  if (decision.status !== 'allowed') throw new Error('expected permit');
+  await executionGate.execute(decision.authorizedRequest);
+  await assert.rejects(
+    executionGate.execute(decision.authorizedRequest),
+    /permit_unknown_or_reused/
+  );
+  assert.equal(dispatches, 1);
+  assert.equal(entries.at(-1)?.decisionReason, 'permit_unknown_or_reused');
+  assert.equal(entries.at(-1)?.hardwareSignalSent, false);
 });
 
 test('permit refresh fails closed on continuity, capability, refresh, or attestation mutation', async () => {
