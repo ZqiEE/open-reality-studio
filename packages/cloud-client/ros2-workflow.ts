@@ -55,6 +55,8 @@ interface WorkflowOptions {
   runtimeAttestation?: () => Promise<RuntimeAttestation | undefined>;
   beforeFinalBoundary?: () => Promise<void>;
   localEvidence: (result: CloudConnectedRos2Result) => void | Promise<void>;
+  /** Bounded in-memory replay registry; exhaustion fails closed. */
+  maximumProposalIds?: number;
 }
 
 interface EvidenceContext {
@@ -127,7 +129,19 @@ export function assertFreshStateTimestamp(
 }
 
 export class CloudConnectedRos2Workflow {
-  constructor(private readonly options: WorkflowOptions) {}
+  private readonly seenProposalIds = new Set<string>();
+  private readonly maximumProposalIds: number;
+
+  constructor(private readonly options: WorkflowOptions) {
+    this.maximumProposalIds = options.maximumProposalIds ?? 65_536;
+    if (
+      !Number.isInteger(this.maximumProposalIds) ||
+      this.maximumProposalIds < 1 ||
+      this.maximumProposalIds > 1_000_000
+    ) {
+      throw new Error("proposal_replay_registry_capacity_invalid");
+    }
+  }
 
   private async persistEvidence(
     result: CloudConnectedRos2Result,
@@ -183,6 +197,41 @@ export class CloudConnectedRos2Workflow {
       this.options.release.approvedConfigurationDigest;
     if (!expectedConfigurationDigest) {
       throw new Error("configuration_unbound");
+    }
+    let replayDenial: string | null = null;
+    if (this.seenProposalIds.has(proposal.proposalId)) {
+      replayDenial = "proposal_id_duplicate";
+    } else if (this.seenProposalIds.size >= this.maximumProposalIds) {
+      replayDenial = "proposal_replay_registry_capacity_exceeded";
+    } else {
+      this.seenProposalIds.add(proposal.proposalId);
+    }
+    if (replayDenial) {
+      return this.persistEvidence(
+        {
+          executionMode: "cloud-connected",
+          mode: this.options.mode,
+          releaseId: this.options.release.metadata.releaseId,
+          proposalId: proposal.proposalId,
+          decision: "blocked",
+          reason: replayDenial,
+          cloudPermitId: null,
+          cloudPermitConsumed: false,
+          localPermitConsumed: false,
+          controllerGoalsAttempted: 0,
+          hardwareSignalSent: false,
+          cloudEvidenceId: null,
+          evidenceVerified: false,
+        },
+        {
+          contentHash,
+          actionHash,
+          deviceId: proposal.deviceId,
+          controllerId: this.options.controllerIdentity,
+          expectedConfigurationDigest,
+          observedConfigurationDigest: null,
+        },
+      );
     }
     const observeConfiguration = async () => {
       const observed = await this.options.executionConfiguration();

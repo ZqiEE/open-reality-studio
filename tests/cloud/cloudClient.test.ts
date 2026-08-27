@@ -609,12 +609,15 @@ test("cloud configuration drift after Permit issuance blocks before cloud consum
 test("initial revoked release denial writes and verifies Evidence without a Permit or dispatch", async () => {
   const spec = executablePolicySpecSchema.parse(fixture.execSpec);
   let submitted: any;
+  const submissions: any[] = [];
+  let releaseReads = 0;
   let stateReads = 0;
   let dispatches = 0;
   const createdAt = "2026-01-01T00:02:00.000Z";
   const evidenceId = "22222222-2222-4222-8222-222222222222";
   const cloud = {
     async getRelease() {
+      releaseReads += 1;
       return {
         releaseId: spec.metadata.releaseId,
         contentHash: executablePolicyHash(spec),
@@ -626,6 +629,7 @@ test("initial revoked release denial writes and verifies Evidence without a Perm
     },
     async submitEvidence(value: any) {
       submitted = value;
+      submissions.push(structuredClone(value));
       return {
         evidenceId,
         sequence: 0,
@@ -695,6 +699,98 @@ test("initial revoked release denial writes and verifies Evidence without a Perm
   assert.equal(submitted.permitId, null);
   assert.equal(submitted.payload.evaluationMode, "denial");
   assert.equal(localResults.length, 2);
+
+  const duplicate = await workflow.runProposal(payload);
+  assert.equal(duplicate.decision, "blocked");
+  assert.equal(duplicate.reason, "proposal_id_duplicate");
+  assert.equal(duplicate.cloudPermitId, null);
+  assert.equal(duplicate.controllerGoalsAttempted, 0);
+  assert.equal(duplicate.hardwareSignalSent, false);
+  assert.equal(duplicate.evidenceVerified, true);
+  assert.equal(releaseReads, 1);
+  assert.equal(stateReads, 0);
+  assert.equal(dispatches, 0);
+  assert.equal(submissions.length, 2);
+  assert.equal(submissions[1].payload.reason, "proposal_id_duplicate");
+  assert.equal(localResults.length, 4);
+});
+
+test("cloud proposal replay registry fails closed when its bounded capacity is exhausted", async () => {
+  const spec = executablePolicySpecSchema.parse(fixture.execSpec);
+  let submitted: any;
+  let releaseReads = 0;
+  const createdAt = "2026-01-01T00:02:00.000Z";
+  const evidenceId = "22222222-2222-4222-8222-222222222222";
+  const cloud = {
+    async getRelease() {
+      releaseReads += 1;
+      return {
+        releaseId: spec.metadata.releaseId,
+        contentHash: executablePolicyHash(spec),
+        state: "revoked" as const,
+      };
+    },
+    async requestPermit() {
+      throw new Error("permit_must_not_be_requested");
+    },
+    async submitEvidence(value: any) {
+      submitted = value;
+      return {
+        evidenceId,
+        sequence: 0,
+        previousHash: null,
+        evidenceHash: "0".repeat(64),
+        createdAt,
+      };
+    },
+    async getEvidence() {
+      const body = {
+        sequence: 0,
+        previousHash: null,
+        releaseId: submitted.releaseId,
+        permitId: submitted.permitId ?? null,
+        decision: submitted.decision,
+        hardwareSignalSent: submitted.hardwareSignalSent,
+        payload: submitted.payload,
+        createdAt,
+      };
+      return { id: evidenceId, ...body, evidenceHash: sha256(canonicalJson(body)) };
+    },
+  } as unknown as RlsokCloudClient;
+  const transport = {
+    async getFreshJointState() {
+      throw new Error("state_must_not_be_read");
+    },
+    async dispatchTrajectory() {
+      throw new Error("dispatch_must_not_happen");
+    },
+  } as unknown as Ros2ReferenceTransport;
+  const workflow = new CloudConnectedRos2Workflow({
+    mode: "shadow",
+    release: spec,
+    cloud,
+    transport,
+    controllerIdentity: spec.robot.controllerConfigSha256,
+    executionConfiguration: async () => currentExecutionConfiguration(),
+    localEvidence: () => undefined,
+    maximumProposalIds: 1,
+  });
+  const proposal = (proposalId: string) => JSON.stringify({
+    proposalId,
+    releaseId: spec.metadata.releaseId,
+    deviceId: spec.deployment.allowedDeviceIds[0],
+    proposerIdentity: "fixture-policy",
+    actionRepresentation: "trajectory",
+    actionPayload: fixture.action,
+    createdAt,
+  });
+  assert.equal((await workflow.runProposal(proposal("first"))).reason, "cloud_release_not_eligible:revoked");
+  const exhausted = await workflow.runProposal(proposal("second"));
+  assert.equal(exhausted.decision, "blocked");
+  assert.equal(exhausted.reason, "proposal_replay_registry_capacity_exceeded");
+  assert.equal(exhausted.controllerGoalsAttempted, 0);
+  assert.equal(exhausted.hardwareSignalSent, false);
+  assert.equal(releaseReads, 1);
 });
 
 test("cloud-connected release with capability requirements fails closed without attestation", async () => {
