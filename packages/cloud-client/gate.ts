@@ -73,7 +73,7 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
     const record = this.localPermits.get(localPermit)!;
     this.localPermits.delete(localPermit);
     if (
-      record.expiresAt < now ||
+      record.expiresAt <= now ||
       record.actionHash !== this.binding.actionHash ||
       record.configurationDigest !== this.binding.configurationDigest ||
       sha256(canonicalJson(action)) !== record.actionHash

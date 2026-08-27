@@ -463,6 +463,43 @@ test("revocation refresh denies before permit consumption or controller dispatch
   assert.equal(calls, 1);
 });
 
+test("cloud dispatch boundary rejects a local permit at its exact expiry", async (context) => {
+  let cloudCalls = 0;
+  let dispatches = 0;
+  const client = new RlsokCloudClient(config, async () => {
+    cloudCalls += 1;
+    throw new Error("cloud_must_not_be_called");
+  });
+  const boundary = new CloudConnectedDispatchBoundary(
+    client,
+    "11111111-1111-4111-8111-111111111111",
+    {
+      releaseId: "fixture-release-001",
+      contentHash: fixture.expected.contentHash,
+      actionHash: fixture.expected.actionHash,
+      deviceId: "fixture-arm-01",
+      controllerId: "controller",
+      configurationDigest,
+      evaluationMode: "reference-run",
+    },
+    {
+      async dispatch() {
+        dispatches += 1;
+        return "must_not_dispatch";
+      },
+    },
+    async () => configurationDigest,
+  );
+  const permit = boundary.issueLocalPermit(fixture.action, 1_000);
+  context.mock.method(Date, "now", () => 2_000);
+  await assert.rejects(
+    boundary.dispatch(fixture.action, permit),
+    /local_execution_permit_invalid/,
+  );
+  assert.equal(cloudCalls, 0);
+  assert.equal(dispatches, 0);
+});
+
 test("cloud configuration drift after Permit issuance blocks before cloud consumption and dispatch", async () => {
   const spec = executablePolicySpecSchema.parse(fixture.execSpec);
   const current = currentExecutionConfiguration();
