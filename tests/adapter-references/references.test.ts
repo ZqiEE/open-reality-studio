@@ -210,6 +210,27 @@ test('remaining integration references declare selected identity, volatile exclu
   ]);
   assert.equal(references.every(({ externalTestGate }) => externalTestGate.length > 20), true);
 
+  const craneX7 = references.find(({ integration }) =>
+    integration === 'crane-x7-selected-limits'
+  )!;
+  assert.equal(
+    craneX7.stableApprovedInputs.includes(
+      'selected MoveIt planning-constraints digest only when approved command semantics depend on planner output'
+    ),
+    true
+  );
+  assert.equal(
+    craneX7.excludedVolatileInputs.some((input) =>
+      input.startsWith('live encoder/controller posture')
+    ),
+    true
+  );
+  assert.equal(
+    craneX7.excludedVolatileInputs.includes('unselected MoveIt planning constraints'),
+    true
+  );
+  assert.match(craneX7.externalTestGate, /missing, stale or unknown selected posture fails closed/);
+
   const physicalIdentity = references.find(({ integration }) =>
     integration === 'physical-execution-identity'
   )!;
@@ -241,7 +262,8 @@ test('technical contributor attribution is opt-in, factual and does not imply en
     'Ruddrho Mollik',
     'Aditya Jindal',
     'Bartosz Burda',
-    'Dr. Denis Stogl'
+    'Dr. Denis Stogl',
+    'Atsushi Kuwagata'
   ]);
   assert.equal(contributors.every(({ optInConfirmed }) => optInConfirmed === true), true);
   assert.equal(contributors[0]?.preferredUrl, 'https://github.com/xiao-yang25');
@@ -256,12 +278,17 @@ test('technical contributor attribution is opt-in, factual and does not imply en
   assert.equal(contributors[4]?.preferredUrl, 'https://github.com/selfpatch/ros2_medkit');
   assert.equal(contributors[4]?.project, 'selfpatch.ai / ros2_medkit');
   assert.equal('preferredUrl' in contributors[5]!, false);
+  assert.equal(contributors[6]?.organization, 'RT Corporation');
+  assert.equal(contributors[6]?.preferredUrl, 'https://rt-net.jp');
   for (const contributor of contributors) {
-    assert.equal('organization' in contributor, false);
     assert.equal('title' in contributor, false);
     assert.equal('logo' in contributor, false);
     assert.equal('supportedIntegration' in contributor, false);
   }
+  assert.equal(
+    contributors.slice(0, 6).every((contributor) => !('organization' in contributor)),
+    true
+  );
   assert.equal(
     contributors.some(({ displayName }) => displayName === 'Max Conway'),
     false

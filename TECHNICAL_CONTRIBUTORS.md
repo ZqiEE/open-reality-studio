@@ -26,6 +26,10 @@ organization relationship. No logos are used.
 - Dr. Denis Stogl — Critiqued the earlier public explanation and later
   confirmed that the clarified execution boundary is understandable, cleanly
   separated from ros2_control, and resembles approaches seen previously.
+- [Atsushi Kuwagata](https://rt-net.jp) — RT Corporation. Clarified the
+  distinct roles of URDF hardware limits, MoveIt planning constraints,
+  ros2_control drive limits, and live encoder/controller posture, helping avoid
+  blindly binding all sources into one execution identity.
 
 The machine-readable source of truth is
 [`docs/technical-contributors.json`](docs/technical-contributors.json). Add a

@@ -43,11 +43,11 @@
     "schemaVersion": 1,
     "integration": "crane-x7-selected-limits",
     "status": "reference-contract",
-    "stableApprovedInputs": ["URDF hardware limits digest", "selected MoveIt constraints digest", "ros2_control drive-limits digest"],
+    "stableApprovedInputs": ["selected URDF hardware-level limits digest", "selected MoveIt planning-constraints digest only when approved command semantics depend on planner output", "selected ros2_control hardware-drive limits and configuration digest"],
     "runtimeCapabilities": ["crane_x7.motion_ready"],
-    "excludedVolatileInputs": ["current encoder posture", "unselected planning state"],
+    "excludedVolatileInputs": ["live encoder/controller posture (fresh runtime state or selected observed-state continuity, never static approval identity)", "unselected MoveIt planning constraints", "unrelated planning scene and state"],
     "mismatchBehavior": "block-before-dispatch",
-    "externalTestGate": "A CRANE-X7 simulator or owner must validate selected-source collection and posture freshness."
+    "externalTestGate": "A CRANE-X7 simulator or owner must prove that a selected static source change denies dispatch, an unselected MoveIt change does not globally invalidate, and missing, stale or unknown selected posture fails closed."
   },
   {
     "schemaVersion": 1,

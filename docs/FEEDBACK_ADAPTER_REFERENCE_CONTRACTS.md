@@ -108,6 +108,17 @@ device serial/calibration binding. Every fixture declares volatile exclusions,
 fail-closed mismatch behavior and the real external test still required. These
 contracts close the design ambiguity without fabricating vendor support.
 
+The CRANE-X7 fixture makes four source roles explicit without blindly hashing
+them together. Selected URDF hardware limits and selected ros2_control
+hardware-drive limits/configuration are static approval provenance. MoveIt
+planning constraints are selected only when the approved command or trajectory
+semantics depend on planner output; an unrelated MoveIt change is otherwise
+excluded. Live encoder/controller posture remains fresh runtime state, or an
+explicitly selected observed-state continuity input, and is never frozen into
+static approval identity. Missing, stale, or unknown selected live posture
+fails closed. This is a generic reference contract, not CRANE-X7 integration or
+support.
+
 The same file includes two generic, non-vendor contracts. The physical
 execution identity selects only the base robot description, actuator/sensor
 configuration, controller interfaces, command semantics, and execution-relevant
