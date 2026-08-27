@@ -35,6 +35,57 @@ import { operatorFailureReport } from "./operator-report";
 
 type Options = Record<string, string>;
 
+/**
+ * Serializes live proposal evaluation with one bounded pending slot.
+ *
+ * DDS/readline callbacks can arrive while an earlier Cloud/final-boundary
+ * evaluation is still running.  An unbounded Promise chain would make stale
+ * authority accumulate in memory; dropping every later callback would make
+ * `rlsok observe` silently stop after its first proposal.  This processor
+ * keeps at most one next proposal and reports explicit backpressure beyond it.
+ */
+export class BoundedProposalProcessor {
+  private active = false;
+  private pending: string | undefined;
+
+  constructor(
+    private readonly handle: (payload: string) => Promise<void>,
+    private readonly onError: (error: Error) => void,
+    private readonly onOverflow: () => void,
+  ) {}
+
+  async submit(payload: string): Promise<"processed" | "queued" | "rejected"> {
+    if (this.active) {
+      if (this.pending === undefined) {
+        this.pending = payload;
+        return "queued";
+      }
+      this.onOverflow();
+      return "rejected";
+    }
+    this.active = true;
+    let current: string | undefined = payload;
+    try {
+      while (current !== undefined) {
+        try {
+          await this.handle(current);
+        } catch (error) {
+          this.onError(
+            error instanceof Error
+              ? error
+              : new Error("cloud_ros2_workflow_failed"),
+          );
+        }
+        current = this.pending;
+        this.pending = undefined;
+      }
+      return "processed";
+    } finally {
+      this.active = false;
+    }
+  }
+}
+
 function reportPreDispatchBlock(result: {
   decision: string;
   reason: string;
@@ -332,10 +383,7 @@ async function runCloudConnectedGateway(
     resolveCompletion = resolveDone;
     rejectCompletion = rejectDone;
   });
-  await transport.subscribeProposals(async (payload) => {
-    if (completed) return;
-    completed = true;
-    try {
+  const evaluatePayload = async (payload: string) => {
       const parsed = JSON.parse(payload) as {
         deviceId?: unknown;
         proposerIdentity?: unknown;
@@ -350,6 +398,41 @@ async function runCloudConnectedGateway(
       process.stdout.write(`${JSON.stringify(result)}\n`);
       reportPreDispatchBlock(result);
       completionExitCode = result.decision === "allowed" ? 0 : 2;
+  };
+  const continuous = new BoundedProposalProcessor(
+    evaluatePayload,
+    (error) => {
+      process.stderr.write(
+        operatorFailureReport("BLOCKED", error.message, {
+          observed: error.message,
+          reason: error.message,
+          hardwareDispatch: mode === "shadow" ? "NO" : "UNKNOWN",
+          nextAction:
+            "Inspect the rejected proposal and verified Evidence; restore current authority before submitting another proposal.",
+        }),
+      );
+    },
+    () => {
+      process.stderr.write(
+        operatorFailureReport("BLOCKED", "proposal_backpressure", {
+          observed: "more than one proposal arrived during an active evaluation",
+          reason: "proposal_backpressure",
+          hardwareDispatch: "NO",
+          nextAction:
+            "Slow the proposal publisher and submit a fresh uniquely identified proposal after the active evaluation completes.",
+        }),
+      );
+    },
+  );
+  await transport.subscribeProposals(async (payload) => {
+    if (options.once !== "true") {
+      await continuous.submit(payload);
+      return;
+    }
+    if (completed) return;
+    completed = true;
+    try {
+      await evaluatePayload(payload);
       resolveCompletion();
     } catch (error) {
       rejectCompletion(
