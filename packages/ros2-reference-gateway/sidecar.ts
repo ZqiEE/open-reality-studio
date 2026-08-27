@@ -163,15 +163,20 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
         pending.reject(error);
       this.pending.clear();
     });
-    await Promise.race([
-      this.request("ping", {}),
-      new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error("ros2_sidecar_startup_timeout")),
-          this.discoveryTimeoutMs,
-        ),
-      ),
-    ]);
+    let startupTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.request("ping", {}),
+        new Promise((_, reject) => {
+          startupTimer = setTimeout(
+            () => reject(new Error("ros2_sidecar_startup_timeout")),
+            this.discoveryTimeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (startupTimer) clearTimeout(startupTimer);
+    }
   }
 
   private request(

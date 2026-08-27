@@ -436,6 +436,8 @@ async function testReferenceRun(): Promise<void> {
   assert.equal(failed.decision, "failed");
   assert.match(failed.reason, /controller_goal_rejected/);
   assert.equal(unavailable.transport.dispatches, 1);
+  assert.equal(failed.hardwareSignalSent, true);
+  assert.equal(failed.controllerGoalCount, 1);
 }
 
 async function testV2ObservationBoundary(): Promise<void> {
@@ -533,10 +535,16 @@ async function testEvidence(): Promise<void> {
 
   const timeout = setup("run");
   timeout.transport.dispatchError = "ros_action_request_timeout";
-  await timeout.gateway.handlePayload(proposal(timeout.spec));
+  const timeoutResult = await timeout.gateway.handlePayload(proposal(timeout.spec));
+  assert.equal(timeoutResult.hardwareSignalSent, true);
+  assert.equal(timeoutResult.controllerGoalCount, 1);
+  assert.equal(
+    timeoutResult.reason,
+    "controller_dispatch_unknown:ros_action_request_timeout",
+  );
   assert.equal(
     timeout.entries.at(-1)?.decisionReason,
-    "ros_action_request_timeout",
+    "controller_dispatch_unknown:ros_action_request_timeout",
   );
   assert.equal(
     timeout.entries.at(-1)?.hardwareSignalState,

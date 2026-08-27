@@ -136,6 +136,7 @@ assert_injected_rollback() {
   assert_selected_unchanged
   test ! -e "$RLSOK_INSTALL_ROOT/1.4.5.new"
   test ! -e "$RLSOK_INSTALL_ROOT/1.4.5.rollback"
+  test ! -e "$RLSOK_INSTALL_ROOT/1.4.5.activation-backup"
 }
 
 assert_injected_rollback directory-activation directory-activation
@@ -207,6 +208,7 @@ cat > "$proof" <<EOF
   "rollbackKeptPreviousRuntimeUsable": true,
   "rollbackRestoredCliAndUninstallLinks": true,
   "rollbackRestoredPythonRegistration": true,
+  "rollbackRemovedActivationBackupAfterRecovery": true,
   "rollbackPreservedUserState": true,
   "uninstallPreservedUserState": true,
   "uninstallIdempotent": true,

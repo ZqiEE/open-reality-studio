@@ -237,6 +237,7 @@ async function runCloudConnectedGateway(
     jointOrder: spec.actionContract.jointOrder,
     discoveryTimeoutMs: discoveryTimeout,
   });
+  try {
   let doctor = await transport.doctor();
   if (mode === "run" && !doctor.actionServerAvailable) {
     doctor = await waitForControllerDiscovery(transport, doctor, discoveryTimeout);
@@ -321,7 +322,6 @@ async function runCloudConnectedGateway(
     const result = await workflow.runProposal(payload);
     process.stdout.write(`${JSON.stringify(result)}\n`);
     reportPreDispatchBlock(result);
-    await transport.close();
     return result.decision === "allowed" ? 0 : 2;
   }
   let completed = false;
@@ -370,8 +370,10 @@ async function runCloudConnectedGateway(
       }),
     ]);
   }
-  await transport.close();
   return completionExitCode;
+  } finally {
+    await transport.close();
+  }
 }
 
 async function runGateway(
@@ -439,6 +441,7 @@ async function runGateway(
     executionConfiguration: () =>
       observeGenericRosExecutionConfiguration(spec, transport, deviceId),
   });
+  try {
   let report = await transport.doctor();
   if (mode === "run" && !report.actionServerAvailable) {
     report = await waitForControllerDiscovery(transport, report, discoveryTimeout);
@@ -468,8 +471,10 @@ async function runGateway(
     process.once("SIGINT", stop);
     process.once("SIGTERM", stop);
   });
-  await transport.close();
   return 0;
+  } finally {
+    await transport.close();
+  }
 }
 
 export function ros2Usage(): string {

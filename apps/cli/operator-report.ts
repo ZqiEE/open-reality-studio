@@ -17,6 +17,19 @@ export function operatorReasonCode(message: string): string {
   );
 }
 
+export function hardwareDispatchForCliFailure(
+  command: string | undefined,
+  operation: string,
+  message: string,
+): "NO" | "UNKNOWN" {
+  if (command !== "ros2" || operation !== "run") return "NO";
+  return /^controller_(?:dispatch_unknown|goal_rejected|result_unconfirmed|goal_failed):/.test(
+    message,
+  )
+    ? "UNKNOWN"
+    : "NO";
+}
+
 export function operatorFailureReport(
   status: "FAILED" | "BLOCKED",
   message: string,

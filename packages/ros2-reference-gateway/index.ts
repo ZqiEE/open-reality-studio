@@ -348,12 +348,19 @@ export class Ros2ReferenceGateway {
     const gate = new ReleaseExecutionGate(
       {
         dispatch: async (candidate) => {
-          const result = await this.options.transport.dispatchTrajectory(
-            candidate,
-            this.options.controllerIdentity
-          );
-          if (!result.accepted) throw new Error(`controller_goal_rejected:${result.detail}`);
           this.goalCount += 1;
+          let result;
+          try {
+            result = await this.options.transport.dispatchTrajectory(
+              candidate,
+              this.options.controllerIdentity
+            );
+          } catch (error) {
+            throw new Error(
+              `controller_dispatch_unknown:${error instanceof Error ? error.message : 'transport_failed'}`
+            );
+          }
+          if (!result.accepted) throw new Error(`controller_goal_rejected:${result.detail}`);
           if (result.completed === false) {
             throw new Error(`controller_result_unconfirmed:${result.detail}`);
           }

@@ -20,7 +20,11 @@ import { runSetupCommand } from './setup';
 import { runObserveCommand } from './observe';
 import { runUr5eValidationCommand } from './validate-ur5e';
 import { runCompatibilityCommand } from './compatibility';
-import { operatorFailureReport, operatorReasonCode } from './operator-report';
+import {
+  hardwareDispatchForCliFailure,
+  operatorFailureReport,
+  operatorReasonCode
+} from './operator-report';
 import packageMetadata from '../../package.json';
 
 function fail(
@@ -77,14 +81,22 @@ function verifyEvidence(path: string): void {
   if (!existsSync(bundlePath)) fail(`evidence bundle does not exist: ${bundlePath}`);
   const bundle = readStructured(bundlePath) as EvidenceBundle;
   const result = verifyEvidenceBundle(bundle);
-  if (!result.ok) fail(`evidence verification failed: ${result.reason}`);
+  if (!result.ok) {
+    fail(`evidence verification failed: ${result.reason}`, {
+      observed: result.reason,
+      reason: result.reason,
+      hardwareDispatch: 'NO',
+      nextAction:
+        'Restore the complete original Evidence bundle, then verify its source and transfer checksums before relying on it.'
+    });
+  }
   process.stdout.write('PASS\n');
 }
 
 function usage(exitCode = 1): never {
   process.stdout.write(
     'RLSOK ReleaseGate CLI\n' +
-    'Release control for executable robot policies.\n\n' +
+    'Robot Software Execution Authorization.\n\n' +
     'usage: rlsok setup | rlsok compatibility inspect ... | rlsok observe | rlsok validate-ur5e ... | rlsok pair | rlsok check <release> | rlsok diff <old> <new> | rlsok shadow <release> <proposal> <evidence> | rlsok verify-evidence <bundle> | rlsok ros2 ... | rlsok cloud ...\n'
   );
   process.exit(exitCode);
@@ -123,8 +135,11 @@ void main().catch((error) => {
   const ros2Operation = process.argv[3]?.startsWith('--')
     ? 'shadow'
     : (process.argv[3] ?? 'shadow');
-  const hardwareDispatch =
-    process.argv[2] === 'ros2' && ros2Operation === 'run' ? 'UNKNOWN' : 'NO';
+  const hardwareDispatch = hardwareDispatchForCliFailure(
+    process.argv[2],
+    ros2Operation,
+    message
+  );
   const guidance: Record<string, string> = {
     dds_discovery_timeout:
       "ROS 2 discovery timed out. Confirm this terminal sourced /opt/ros/jazzy/setup.bash, check ROS_DOMAIN_ID matches the robot graph, and run 'rlsok ros2 doctor'.",

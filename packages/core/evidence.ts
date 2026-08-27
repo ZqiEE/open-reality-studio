@@ -57,6 +57,99 @@ export interface EvidenceBundle {
   testReportSha256?: string;
 }
 
+function isSha256(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+}
+
+function isOptionalNullableHash(value: unknown): boolean {
+  return value === undefined || value === null || isSha256(value);
+}
+
+function isOptionalNullableString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'string';
+}
+
+function isOptionalTimestamp(value: unknown): boolean {
+  return value === undefined
+    || (typeof value === 'string' && Number.isFinite(Date.parse(value)));
+}
+
+function isOptionalNullableTimestamp(value: unknown): boolean {
+  return value === undefined
+    || value === null
+    || (typeof value === 'string' && Number.isFinite(Date.parse(value)));
+}
+
+function isExecutionEvidence(value: unknown): value is ExecutionEvidence {
+  if (!value || typeof value !== 'object') return false;
+  const evidence = value as Partial<ExecutionEvidence>;
+  return (
+    typeof evidence.releaseId === 'string'
+    && evidence.releaseId.length > 0
+    && isSha256(evidence.executablePolicyHash)
+    && isSha256(evidence.modelHash)
+    && isSha256(evidence.actionContractHash)
+    && isSha256(evidence.robotProfileHash)
+    && isSha256(evidence.controllerProfileHash)
+    && isOptionalNullableHash(evidence.expectedConfigurationDigest)
+    && isOptionalNullableHash(evidence.observedConfigurationDigest)
+    && (
+      evidence.expectedConfigurationSchemaVersion === undefined
+      || evidence.expectedConfigurationSchemaVersion === null
+      || evidence.expectedConfigurationSchemaVersion === 1
+      || evidence.expectedConfigurationSchemaVersion === 2
+    )
+    && (
+      evidence.observedConfigurationSchemaVersion === undefined
+      || evidence.observedConfigurationSchemaVersion === null
+      || evidence.observedConfigurationSchemaVersion === 1
+      || evidence.observedConfigurationSchemaVersion === 2
+    )
+    && isOptionalNullableString(evidence.attestationSourceIdentity)
+    && isOptionalNullableTimestamp(evidence.attestationObservedAt)
+    && (
+      evidence.expectedRequiredCapabilities === undefined
+      || (
+        Array.isArray(evidence.expectedRequiredCapabilities)
+        && evidence.expectedRequiredCapabilities.every((item) => typeof item === 'string')
+      )
+    )
+    && (
+      evidence.observedAvailableCapabilities === undefined
+      || evidence.observedAvailableCapabilities === null
+      || (
+        Array.isArray(evidence.observedAvailableCapabilities)
+        && evidence.observedAvailableCapabilities.every((item) => typeof item === 'string')
+      )
+    )
+    && isOptionalNullableHash(evidence.runtimeAttestationDigest)
+    && isOptionalNullableHash(evidence.runtimeContinuityTokenHash)
+    && isSha256(evidence.runtimePolicyHash)
+    && typeof evidence.deviceId === 'string'
+    && evidence.deviceId.length > 0
+    && typeof evidence.proposalId === 'string'
+    && evidence.proposalId.length > 0
+    && Object.prototype.hasOwnProperty.call(evidence, 'proposedAction')
+    && ['allowed', 'blocked', 'approval_required', 'failed'].includes(
+      evidence.decision ?? ''
+    )
+    && typeof evidence.decisionReason === 'string'
+    && evidence.decisionReason.length > 0
+    && Array.isArray(evidence.matchedRuleIds)
+    && evidence.matchedRuleIds.every((rule) => typeof rule === 'string')
+    && isOptionalTimestamp(evidence.stateObservedAt)
+    && typeof evidence.decisionMadeAt === 'string'
+    && Number.isFinite(Date.parse(evidence.decisionMadeAt))
+    && isOptionalTimestamp(evidence.dispatchedAt)
+    && typeof evidence.hardwareSignalSent === 'boolean'
+    && ['not_sent', 'attempted_unconfirmed'].includes(
+      evidence.hardwareSignalState ?? ''
+    )
+    && typeof evidence.executionEvidence === 'string'
+    && evidence.executionEvidence.length > 0
+  );
+}
+
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value && typeof value === 'object') {
@@ -108,10 +201,17 @@ export function verifyEvidenceBundle(
     bundle?.apiVersion !== 'realitywarden.io/v1alpha1'
     || bundle.kind !== 'EvidenceBundle'
     || typeof bundle.releaseId !== 'string'
-    || !/^[a-f0-9]{64}$/.test(bundle.executablePolicyHash)
+    || bundle.releaseId.length === 0
+    || !isSha256(bundle.executablePolicyHash)
+    || typeof bundle.createdAt !== 'string'
+    || !Number.isFinite(Date.parse(bundle.createdAt))
     || !Array.isArray(bundle.entries)
+    || (bundle.testReportSha256 !== undefined && !isSha256(bundle.testReportSha256))
   ) {
     return { ok: false, reason: 'bundle_missing_or_malformed' };
+  }
+  if (bundle.entries.length === 0) {
+    return { ok: false, reason: 'bundle_empty' };
   }
   if (bundle.releaseId !== options.expectedReleaseId && options.expectedReleaseId) {
     return { ok: false, reason: 'release_id_mismatch' };
@@ -132,6 +232,16 @@ export function verifyEvidenceBundle(
   let previousHash: string | null = null;
   for (let index = 0; index < bundle.entries.length; index += 1) {
     const entry = bundle.entries[index];
+    if (
+      !entry
+      || typeof entry !== 'object'
+      || !Number.isInteger(entry.sequence)
+      || (entry.previousHash !== null && !isSha256(entry.previousHash))
+      || !isSha256(entry.hash)
+      || !isExecutionEvidence(entry.evidence)
+    ) {
+      return { ok: false, reason: `entry_missing_or_malformed:${index}` };
+    }
     if (entry.sequence !== index || entry.previousHash !== previousHash) {
       return { ok: false, reason: `chain_link_invalid:${index}` };
     }
