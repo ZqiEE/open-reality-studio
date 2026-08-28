@@ -229,22 +229,20 @@ export class HusarionRosbotGazeboGateway {
     const record = await this.options.releaseRecord();
     const configuration = await this.observeConfiguration();
     const runtimeAttestation = await this.observeAttestation();
-    if (this.options.mode === 'run') {
-      let commandPathReady = false;
-      try {
-        commandPathReady = await this.options.transport.waitForCommandPathReady();
-      } catch {
-        commandPathReady = false;
-      }
-      if (!commandPathReady) {
-        return { result: {
-          proposalId: proposal.proposalId,
-          decision: 'failed',
-          reason: 'command_path_unavailable',
-          hardwareSignalSent: false,
-          publicationCount: this.publicationCount
-        } };
-      }
+    let commandPathReady = false;
+    try {
+      commandPathReady = await this.options.transport.waitForCommandPathReady();
+    } catch {
+      commandPathReady = false;
+    }
+    if (!commandPathReady) {
+      return { result: {
+        proposalId: proposal.proposalId,
+        decision: 'failed',
+        reason: 'command_path_unavailable',
+        hardwareSignalSent: false,
+        publicationCount: this.publicationCount
+      } };
     }
     let state: RosbotOdometryObservation | undefined;
     try {

@@ -508,9 +508,22 @@ test('allowed Shadow evaluates the contract but publishes exactly zero commands'
   assert.equal(result.hardwareSignalSent, false);
   assert.equal(result.publicationCount, 0);
   assert.equal(current.transport.publications.length, 0);
-  assert.equal(current.transport.readinessChecks, 0);
+  assert.equal(current.transport.readinessChecks, 1);
   assert.equal(current.entries.at(-1)?.hardwareSignalSent, false);
   assert.equal(current.entries.at(-1)?.executionEvidence, 'shadow_not_dispatched');
+});
+
+test('Shadow fails closed when its independent command-path observer is not ready', async () => {
+  const current = setup('shadow');
+  current.transport.commandPathReady = false;
+  const result = await current.gateway.handleProposal(proposal(current.spec));
+  assert.equal(result.decision, 'failed');
+  assert.equal(result.reason, 'command_path_unavailable');
+  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(result.publicationCount, 0);
+  assert.equal(current.transport.readinessChecks, 1);
+  assert.equal(current.transport.publications.length, 0);
+  assert.equal(current.entries.length, 0);
 });
 
 test('missing command-path subscriber fails closed before publication', async () => {
