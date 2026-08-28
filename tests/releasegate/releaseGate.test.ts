@@ -607,11 +607,70 @@ async function testGateAndShadow(): Promise<void> {
   assert.equal(dispatches, 2);
 }
 
+async function testDispatchEvidenceFreezesDecisionTimeBeforeAsyncDispatch(): Promise<void> {
+  const observedAt = new Date();
+  const initial = spec();
+  const executionConfiguration = executionConfigurationSchema.parse({
+    ...initial.executionConfiguration,
+    observedAt: observedAt.toISOString()
+  });
+  const release = spec({
+    executionConfiguration,
+    approvedConfigurationDigest: configurationDigest(executionConfiguration)
+  });
+  const action = { safe: true };
+  const hashAction = (candidate: unknown) => sha256(canonicalJson(candidate));
+  const entries: ExecutionEvidence[] = [];
+  const gate = new ReleaseExecutionGate(
+    {
+      async dispatch() {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return { accepted: true };
+      }
+    },
+    { append(entry) { entries.push(entry); } },
+    async () => ({
+      allowed: true,
+      reason: 'policy_allowed',
+      matchedRuleIds: ['safe-only']
+    }),
+    hashAction
+  );
+  const decision = await gate.evaluate({
+    release,
+    releaseRecord: releasedRecord(release),
+    executionConfiguration,
+    deviceId: 'arm-03',
+    proposalId: 'proposal-async-dispatch-timing',
+    action,
+    actionHash: hashAction(action),
+    state: { ready: true },
+    stateObservedAt: observedAt.toISOString()
+  });
+  assert.equal(decision.status, 'allowed');
+  if (decision.status !== 'allowed') throw new Error('expected allowed');
+  await gate.execute(decision.authorizedRequest);
+
+  const dispatched = entries.at(-1);
+  assert.ok(dispatched?.dispatchedAt);
+  assert.equal(dispatched.decisionMadeAt, dispatched.dispatchedAt);
+  const entry = appendEvidence([], dispatched);
+  assert.deepEqual(verifyEvidenceBundle({
+    apiVersion: 'realitywarden.io/v1alpha1',
+    kind: 'EvidenceBundle',
+    releaseId: release.metadata.releaseId,
+    executablePolicyHash: executablePolicyHash(release),
+    createdAt: dispatched.decisionMadeAt,
+    entries: [entry]
+  }), { ok: true });
+}
+
 const suites: Record<string, () => Promise<void>> = {
   'exec-spec': testExecSpec,
   'release-policy': testReleasePolicyAndDiff,
   evidence: testEvidence,
-  'execution-gate': testGateAndShadow
+  'execution-gate': testGateAndShadow,
+  'dispatch-evidence-time': testDispatchEvidenceFreezesDecisionTimeBeforeAsyncDispatch
 };
 
 async function main(): Promise<void> {

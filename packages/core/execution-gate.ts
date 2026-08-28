@@ -334,7 +334,10 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       ...request,
       action: preparedAction,
       executionConfiguration: currentExecutionConfiguration,
-      runtimeAttestation: currentRuntimeAttestation
+      runtimeAttestation: currentRuntimeAttestation,
+      // Freeze the final authorization time before dispatch. Evidence must not
+      // acquire a later decision time after an asynchronous dispatch returns.
+      now
     };
     const configuration = evaluateConfigurationBinding({
       approvedConfigurationDigest: request.release.approvedConfigurationDigest,
