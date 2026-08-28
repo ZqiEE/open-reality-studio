@@ -340,6 +340,7 @@ test("physical UR5e record binds setup, release, environment, and Cloud Evidence
       expectedConfigurationDigest: release.approvedConfigurationDigest,
       observedConfigurationDigest: release.approvedConfigurationDigest,
       localPermitConsumed: true,
+      cloudPermitConsumptionState: "consumed",
       controllerGoalsAttempted: 0,
       reason: "shadow_permit_evaluated_no_controller_call",
     },

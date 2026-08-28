@@ -2,9 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   BoundedProposalProcessor,
+  parseProposalIdentity,
   proposalTimeoutMs,
   waitForFirstProposal,
+  waitForOneShotProposal,
 } from "../../apps/cli/ros2";
+
+test("malformed proposal input has one stable fail-closed reason", () => {
+  for (const payload of ["{", "null", "{}", '{"deviceId":"only"}']) {
+    assert.throws(() => parseProposalIdentity(payload), /proposal_invalid/);
+  }
+  assert.throws(
+    () => parseProposalIdentity("x".repeat(65_537)),
+    /proposal_invalid/,
+  );
+});
 
 test("one-shot proposal timeout is bounded and validates every configured source", async () => {
   assert.equal(proposalTimeoutMs({}), 30_000);
@@ -31,6 +43,15 @@ test("one-shot proposal timeout is bounded and validates every configured source
     /proposal_timeout/,
   );
   await waitForFirstProposal(Promise.resolve(), 60_000);
+
+  let finishEvaluation: () => void = () => undefined;
+  const evaluation = new Promise<void>((resolve) => {
+    finishEvaluation = resolve;
+  });
+  const waiting = waitForOneShotProposal(Promise.resolve(), evaluation, 5);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  finishEvaluation();
+  await waiting;
 });
 
 test("bounded proposal processor evaluates later proposals without an unbounded queue", async () => {
@@ -66,6 +87,9 @@ test("bounded proposal processor evaluates later proposals without an unbounded 
   assert.deepEqual(errors, ["overflow"]);
 
   assert.equal(await processor.submit("fourth"), "processed");
+  assert.deepEqual(handled, ["first", "second", "fourth"]);
+  assert.equal(await processor.submit("x".repeat(65_537)), "rejected");
+  assert.deepEqual(errors, ["overflow", "proposal_payload_too_large"]);
   assert.deepEqual(handled, ["first", "second", "fourth"]);
 });
 

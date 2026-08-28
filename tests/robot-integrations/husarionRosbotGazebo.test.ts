@@ -635,9 +635,35 @@ test('Husarion sidecar readiness requires the intended mux rather than an observ
   ), 'utf8');
   assert.match(
     acceptance,
-    /run_monitor run 30/,
-    'independent Run observation must outlive the 2 s arm and 15 s bounded readiness window'
+    /--duration 180/,
+    'every independent observer must outlive the full bounded runtime window'
   );
+  assert.match(acceptance, /stop_monitor shadow/);
+  assert.match(acceptance, /stop_monitor run/);
+  assert.match(acceptance, /stop_monitor mismatch/);
+  assert.match(acceptance, /observer_ended_before_command/);
+  assert.match(acceptance, /observer_ended_before_settle/);
+  assert.match(acceptance, /--stop-file/);
+  assert.match(acceptance, /RLSOK_HUSARION_RUN_ID/);
+  assert.match(acceptance, /proof directory must not already exist/);
+  assert.match(acceptance, /RLSOK_HUSARION_NAMESPACE/);
+  assert.match(acceptance, /rlsok\.io\/husarion-gazebo-artifact-manifest\/v1/);
+  assert.match(acceptance, /sha256sum -c SHA256SUMS/);
+  assert.match(acceptance, /kill -KILL -- "-\$process_group"/);
+  assert.match(acceptance, /setsid ros2 launch/);
+  assert.match(acceptance, /setsid python3/);
+  assert.match(acceptance, /wait_for_process_group/);
+  assert.match(acceptance, /background_process_group_cleanup_failed/);
+  assert.match(acceptance, /observer_did_not_stop_after_request/);
+  const monitor = readFileSync(join(
+    process.cwd(),
+    'scripts/husarion-gazebo-monitor.py'
+  ), 'utf8');
+  assert.match(monitor, /termination_reason = "timeout"/);
+  assert.match(monitor, /termination_reason = "stop_requested"/);
+  assert.match(monitor, /"observerCompleted": termination_reason == "stop_requested"/);
+  assert.match(monitor, /"resolvedTopics"/);
+  assert.match(monitor, /def normalized_namespace/);
 });
 
 test('checked-in example fixtures retain their strict v2 approval binding', () => {

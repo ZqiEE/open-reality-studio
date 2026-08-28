@@ -83,3 +83,49 @@ controlled-stop or safety-rated responsibility belongs outside RLSOK.
 Blocked and failed cloud-connected executions return a nonzero process status;
 when the cloud release identity is known, revocation and other eligibility
 denials are written as zero-dispatch Evidence without issuing a Permit.
+
+The embedded TypeScript gateway defaults to a bounded live-process replay set
+only in Shadow; Run construction fails unless the embedder explicitly injects
+a replay registry. Production-like Run use must inject a durable registry. The `rlsok
+ros2` CLI and Cloud-connected ROS 2 both claim each proposal in a private
+crash-persistent registry under the RLSOK configuration directory before Cloud
+or controller access. A fixed-capacity slot table uses
+fully synchronized staging files plus atomic no-replace hard-link publication,
+so concurrent distinct claims cannot overrun its persisted capacity; a replay
+after restart blocks, and torn/corrupt authoritative registry state fails
+closed. Per-process staging files live in a separate private directory, are
+non-authoritative, and are ignored after an interrupted publication without
+one process deleting another process's live stage.
+`--replay-registry <path>` may select an explicit local durable path for
+validation.
+Before reporting the ROS path active, the CLI initializes and scans the
+registry, verifies its configured capacity and no-replace hard-link mechanism,
+and fails closed on corruption, exhaustion, or unsupported storage.
+
+The proven durability envelope is a private local POSIX filesystem with
+working hard links plus file and directory `fsync`. Windows directory-entry
+power-loss durability, ACL equivalence, and shared/network filesystems remain
+external validation gates; do not treat them as verified crash-safe storage.
+Interrupted publishers may leave files under `.staging`; they are ignored and
+fail closed on disk exhaustion. Remove such files only during explicit offline
+maintenance when no RLSOK process is active.
+
+Standalone CLI Evidence is written to a newly reserved per-run bundle and an
+existing path is never overwritten. The default name includes a random run ID;
+an explicit `--evidence` path must not already exist. This preserves prior run
+bytes without pretending concurrent processes share one atomically appended
+Evidence chain.
+
+Cloud-connected local result files follow the same per-run ownership rule.
+They report Permit consumption as `not_consumed`, `consumed`, or `unknown`;
+`unknown` means the consume request may have committed but its response was not
+observed, and it never permits controller dispatch. The compatibility boolean
+is true only for a confirmed `consumed` response.
+
+That persistent proposal claim proves restart-safe replay rejection, not a
+known controller outcome after an ambiguous transport failure and not complete
+exactly-once execution. The durable experimental Rust admission/outcome
+boundary remains disabled pending its own CI and external validation. Use the
+[external Shadow validation
+matrix](EXTERNAL_ROS2_SHADOW_VALIDATION.md) for restart, replay, stale-state,
+drift, revocation, Evidence, and independent zero-dispatch checks.

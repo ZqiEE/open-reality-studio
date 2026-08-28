@@ -5,6 +5,7 @@ import { load } from 'js-yaml';
 import {
   checkExecutablePolicySpec,
   diffExecutablePolicies,
+  executablePolicyHash,
   executablePolicySpecSchema,
   type ExecutablePolicySpec
 } from '../../packages/core/exec-spec';
@@ -19,6 +20,7 @@ import { runPairCommand } from './pair';
 import { runSetupCommand } from './setup';
 import { runObserveCommand } from './observe';
 import { runUr5eValidationCommand } from './validate-ur5e';
+import { runExternalRos2ValidationCommand } from './validate-external-ros2';
 import { runCompatibilityCommand } from './compatibility';
 import {
   hardwareDispatchForCliFailure,
@@ -74,13 +76,23 @@ function diff(left: string, right: string): void {
   process.stdout.write(`APPROVAL_INVALIDATED: ${result.invalidatesApproval ? 'yes' : 'no'}\n`);
 }
 
-function verifyEvidence(path: string): void {
+function verifyEvidence(path: string, releasePath?: string): void {
   const resolved = resolve(path);
   if (!existsSync(resolved)) fail(`evidence input does not exist: ${path}`);
   const bundlePath = statSync(resolved).isDirectory() ? join(resolved, 'evidence.json') : resolved;
   if (!existsSync(bundlePath)) fail(`evidence bundle does not exist: ${bundlePath}`);
   const bundle = readStructured(bundlePath) as EvidenceBundle;
-  const result = verifyEvidenceBundle(bundle);
+  const release = releasePath ? readSpec(releasePath) : undefined;
+  const result = verifyEvidenceBundle(bundle, release
+    ? {
+        expectedReleaseId: release.metadata.releaseId,
+        expectedExecutablePolicyHash: executablePolicyHash(release),
+        revokedReleaseIds: release.evidence.status === 'revoked'
+          ? new Set([release.metadata.releaseId])
+          : undefined,
+        expiresAt: release.deployment.expiresAt,
+      }
+    : undefined);
   if (!result.ok) {
     fail(`evidence verification failed: ${result.reason}`, {
       observed: result.reason,
@@ -90,14 +102,18 @@ function verifyEvidence(path: string): void {
         'Restore the complete original Evidence bundle, then verify its source and transfer checksums before relying on it.'
     });
   }
-  process.stdout.write('PASS\n');
+  process.stdout.write(
+    release
+      ? 'PASS_BOUND_TO_RELEASE (self-consistency and supplied release identity only; authenticate provenance with a trusted Cloud checkpoint)\n'
+      : 'SELF_CONSISTENT_ONLY (not authenticated; supply --release <ExecSpec> and verify provenance with a trusted Cloud checkpoint)\n',
+  );
 }
 
 function usage(exitCode = 1): never {
   process.stdout.write(
     'RLSOK ReleaseGate CLI\n' +
     'Robot Software Execution Authorization.\n\n' +
-    'usage: rlsok setup | rlsok compatibility inspect ... | rlsok observe | rlsok validate-ur5e ... | rlsok pair | rlsok check <release> | rlsok diff <old> <new> | rlsok shadow <release> <proposal> <evidence> | rlsok verify-evidence <bundle> | rlsok ros2 ... | rlsok cloud ...\n'
+    'usage: rlsok setup | rlsok compatibility inspect ... | rlsok observe | rlsok validate-ur5e ... | rlsok validate-external-ros2 ... | rlsok pair | rlsok check <release> | rlsok diff <old> <new> | rlsok shadow <release> <proposal> <evidence> | rlsok verify-evidence <bundle> [--release <ExecSpec>] | rlsok ros2 ... | rlsok cloud ...\n'
   );
   process.exit(exitCode);
 }
@@ -113,11 +129,15 @@ async function main(): Promise<void> {
   else if (command === 'shadow' && args.length === 3) {
     process.exitCode = await runStandaloneShadow(args[0], args[1], args[2]);
   }
-  else if (command === 'verify-evidence' && args.length === 1) verifyEvidence(args[0]);
+  else if (
+    command === 'verify-evidence'
+    && (args.length === 1 || (args.length === 3 && args[1] === '--release'))
+  ) verifyEvidence(args[0], args[2]);
   else if (command === 'pair') process.exitCode = await runPairCommand(args);
   else if (command === 'setup') process.exitCode = await runSetupCommand(args);
   else if (command === 'observe') process.exitCode = await runObserveCommand(args);
   else if (command === 'validate-ur5e') process.exitCode = await runUr5eValidationCommand(args);
+  else if (command === 'validate-external-ros2') process.exitCode = await runExternalRos2ValidationCommand(args);
   else if (command === 'compatibility') process.exitCode = await runCompatibilityCommand(args);
   else if (command === 'ros2') process.exitCode = await runRos2Command(args);
   else if (command === 'cloud') process.exitCode = await runCloudCommand(args);

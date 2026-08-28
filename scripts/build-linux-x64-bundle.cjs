@@ -50,6 +50,42 @@ try {
     join(root, "sdk", "python", "rlsok"),
     join(stage, "lib", "rlsok", "sdk", "python", "rlsok"),
   );
+  copy(
+    join(root, "examples", "external-validation"),
+    join(stage, "examples", "external-validation"),
+  );
+  copyFileSync(
+    join(root, "docs", "EXTERNAL_ROS2_SHADOW_VALIDATION.md"),
+    join(stage, "EXTERNAL_ROS2_SHADOW_VALIDATION.md"),
+  );
+  copyFileSync(
+    join(root, "docs", "PHYSICAL_UR5E_VALIDATION.md"),
+    join(stage, "PHYSICAL_UR5E_VALIDATION.md"),
+  );
+  copy(
+    join(root, "examples", "husarion-rosbot-gazebo"),
+    join(stage, "examples", "husarion-rosbot-gazebo"),
+  );
+  for (const script of [
+    "husarion-gazebo-acceptance.sh",
+    "husarion-gazebo-monitor.py",
+  ]) {
+    copyFileSync(join(root, "scripts", script), join(stage, "scripts", script));
+    chmodSync(join(stage, "scripts", script), 0o755);
+  }
+  for (const helper of [
+    "capture-invocation.sh",
+    "duplicate-replay-from-setup.sh",
+    "generic_ros2_observer.py",
+    "run_command_group.py",
+    "run-isolated-case.sh",
+    "run-recorded-command.sh",
+    "setup-zero-to-shadow.sh",
+    "shadow-once-from-setup.sh",
+    "stale-state-from-setup.sh",
+  ]) {
+    chmodSync(join(stage, "examples", "external-validation", helper), 0o755);
+  }
   for (const dependency of ["js-yaml", "argparse", "zod"]) {
     copy(
       join(root, "node_modules", dependency),

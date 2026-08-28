@@ -127,10 +127,13 @@ proposal causes one publish attempt. Shadow causes none.
 
 ```bash
 npm run rlsok -- verify-evidence \
-  examples/husarion-rosbot-gazebo/evidence.shadow.json
+  examples/husarion-rosbot-gazebo/evidence.shadow.json \
+  --release examples/husarion-rosbot-gazebo/release.shadow.json
 ```
 
-Evidence binds the release and action identities, expected/observed
+This verifies internal chain consistency and binds the bundle to the supplied
+release identity; authenticity still requires a trusted Cloud checkpoint or
+equivalent provenance record. Evidence binds the release and action identities, expected/observed
 configuration digest and schema version, decision/reason, state observation,
 and publication attempt state. For Shadow it records
 `hardwareSignalSent=false`, `hardwareSignalState=not_sent`, and
@@ -172,6 +175,12 @@ exactly one `TwistStamped` to `cmd_vel`. Release revocation/ineligibility,
 configuration drift or refresh failure, missing/stale/future odometry, action
 contract failure, and permit reuse all block before another publication.
 
+That replay registry and Permit are single-use only within one live TypeScript
+gateway process. They are not persisted across a crash or restart. This Gazebo
+example therefore does not prove durable exactly-once dispatch, crash recovery,
+or restart-safe replay rejection. Do not use it for those claims and do not
+silently retry an unknown publication outcome.
+
 Do not run this reference command against a physical ROSbot. Physical ROSbot
 validation was not performed and is outside this example's evidence boundary.
 
@@ -188,6 +197,12 @@ workspace, launches its headless Gazebo simulation, and runs the live Shadow,
 Run, and configuration-mismatch acceptance cases. The workflow uploads its ROS
 graph, controller state, command/odometry observations, logs, and Evidence on
 both success and failure.
+
+The acceptance runner creates a new private proof directory per run, keeps its
+independent command observer alive through each command plus a settle interval,
+records resolved namespaced topics and environment/source identities, cleans up
+every background process, and writes a machine-readable manifest with
+`SHA256SUMS`.
 
 Out of scope: Nav2, Open-RMF, joystick/mux priority changes, new velocity
 limits, collision or obstacle semantics, E-stop behavior, Webots, physical

@@ -270,7 +270,159 @@ async function testEvidence(): Promise<void> {
     createdAt: NOW.toISOString(),
     entries: [first, second]
   };
+  assert.throws(
+    () => canonicalJson({ value: '\ud800' }),
+    /canonical_json_rejects_unpaired_surrogate/
+  );
+  assert.throws(
+    () => canonicalJson({ ['\udfff']: 'value' }),
+    /canonical_json_rejects_unpaired_surrogate/
+  );
+  for (const unsupported of [undefined, () => undefined, Symbol('unsupported')]) {
+    assert.throws(
+      () => canonicalJson(unsupported),
+      /canonical_json_rejects_unsupported_value/
+    );
+  }
+  for (const unsupported of [
+    { nested: () => undefined },
+    { nested: Symbol('unsupported') },
+    [() => undefined],
+    [Symbol('unsupported')],
+    [undefined],
+    new Date('2026-01-01T00:00:00.000Z'),
+  ]) {
+    assert.throws(
+      () => canonicalJson(unsupported),
+      /canonical_json_rejects_unsupported_value/
+    );
+  }
+  const sparse = new Array(1);
+  assert.throws(
+    () => canonicalJson(sparse),
+    /canonical_json_rejects_unsupported_value/
+  );
+  assert.equal(
+    canonicalJson({ 'é': 5, e: 4, aa: 3, aA: 2, _: 1 }),
+    '{"_":1,"aA":2,"aa":3,"e":4,"é":5}'
+  );
+  let tooDeep: unknown = 'leaf';
+  for (let depth = 0; depth < 130; depth += 1) {
+    tooDeep = { value: tooDeep };
+  }
+  assert.throws(() => canonicalJson(tooDeep), /canonical_json_depth_exceeded/);
+  assert.deepEqual(
+    verifyEvidenceBundle({ ...bundle, entries: Array(10_001).fill(first) }),
+    { ok: false, reason: 'bundle_missing_or_malformed' }
+  );
   assert.deepEqual(verifyEvidenceBundle(bundle), { ok: true });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expectedReleaseId: ''
+  }), { ok: false, reason: 'release_id_mismatch' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expectedExecutablePolicyHash: ''
+  }), { ok: false, reason: 'executable_policy_hash_mismatch' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: new Date(NOW.getTime() + 1).toISOString(),
+    now: new Date(Number.NaN)
+  }), { ok: false, reason: 'verification_time_invalid' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: 'not-a-timestamp',
+    now: NOW
+  }), { ok: false, reason: 'release_expiry_invalid' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: '2026-02-30T00:00:00.000Z',
+    now: NOW
+  }), { ok: false, reason: 'release_expiry_invalid' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: '',
+    now: NOW
+  }), { ok: false, reason: 'release_expiry_invalid' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: NOW.toISOString(),
+    now: NOW
+  }), { ok: false, reason: 'release_expired' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: new Date(NOW.getTime() + 1).toISOString(),
+    now: NOW
+  }), { ok: true });
+  assert.deepEqual(verifyEvidenceBundle({
+    ...bundle,
+    createdAt: '2026-02-30T00:00:00.000Z'
+  }), { ok: false, reason: 'bundle_missing_or_malformed' });
+  const invalidCalendarEvidence = appendEvidence([], {
+    ...evidenceFor(release),
+    decisionMadeAt: '2026-02-30T00:00:00.000Z'
+  });
+  assert.deepEqual(verifyEvidenceBundle({
+    ...bundle,
+    entries: [invalidCalendarEvidence]
+  }), { ok: false, reason: 'entry_missing_or_malformed:0' });
+  for (const proposedAction of [undefined, () => undefined, Symbol('action'), 1n]) {
+    assert.deepEqual(verifyEvidenceBundle({
+      ...bundle,
+      entries: [{
+        ...first,
+        evidence: { ...first.evidence, proposedAction }
+      }]
+    }), { ok: false, reason: 'entry_missing_or_malformed:0' });
+  }
+  const cyclicAction: { self?: unknown } = {};
+  cyclicAction.self = cyclicAction;
+  for (const proposedAction of [
+    { nested: 1n },
+    { nonFinite: Number.POSITIVE_INFINITY },
+    cyclicAction
+  ]) {
+    assert.deepEqual(verifyEvidenceBundle({
+      ...bundle,
+      entries: [{
+        ...first,
+        evidence: { ...first.evidence, proposedAction }
+      }]
+    }), { ok: false, reason: 'entry_missing_or_malformed:0' });
+  }
+  const inconsistentHardwareEntries: ExecutionEvidence[] = [
+    {
+      ...evidenceFor(release),
+      decision: 'blocked',
+      hardwareSignalSent: true,
+      hardwareSignalState: 'attempted_unconfirmed',
+      dispatchedAt: NOW.toISOString()
+    },
+    {
+      ...evidenceFor(release),
+      decision: 'allowed',
+      hardwareSignalSent: true,
+      hardwareSignalState: 'attempted_unconfirmed'
+    },
+    {
+      ...evidenceFor(release),
+      hardwareSignalSent: false,
+      hardwareSignalState: 'not_sent',
+      dispatchedAt: NOW.toISOString()
+    },
+    {
+      ...evidenceFor(release),
+      hardwareSignalSent: false,
+      hardwareSignalState: 'not_sent',
+      controllerResult: { completed: true }
+    },
+    {
+      ...evidenceFor(release),
+      decision: 'failed',
+      decisionMadeAt: new Date(NOW.getTime() + 1).toISOString(),
+      hardwareSignalSent: true,
+      hardwareSignalState: 'attempted_unconfirmed',
+      dispatchedAt: NOW.toISOString()
+    }
+  ];
+  for (const inconsistent of inconsistentHardwareEntries) {
+    assert.deepEqual(verifyEvidenceBundle({
+      ...bundle,
+      entries: [appendEvidence([], inconsistent)]
+    }), { ok: false, reason: 'hardware_evidence_inconsistent:0' });
+  }
   const tampered = structuredClone(bundle);
   tampered.entries[0].evidence.decisionReason = 'edited';
   assert.match((verifyEvidenceBundle(tampered) as { ok: false; reason: string }).reason, /content_hash_mismatch/);
@@ -280,12 +432,14 @@ async function testGateAndShadow(): Promise<void> {
   const release = spec();
   const entries: ExecutionEvidence[] = [];
   let dispatches = 0;
+  const dispatchedActions: unknown[] = [];
   let currentRecord = releasedRecord(release);
   const hashAction = (action: unknown) => sha256(canonicalJson(action));
   const gate = new ReleaseExecutionGate(
     {
-      async dispatch() {
+      async dispatch(action) {
         dispatches += 1;
+        dispatchedActions.push(action);
         return { accepted: true };
       }
     },
@@ -436,6 +590,21 @@ async function testGateAndShadow(): Promise<void> {
   assert.equal(dispatches, 1);
   assert.equal(shadowEntries[0].hardwareSignalSent, false);
   assert.equal(shadowEntries[0].hardwareSignalState, 'not_sent');
+
+  const callerOwnedAction = { safe: true };
+  const mutationSafe = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-action-toctou',
+    action: callerOwnedAction,
+    actionHash: hashAction(callerOwnedAction)
+  });
+  if (mutationSafe.status !== 'allowed') throw new Error('expected allowed');
+  const execution = gate.execute(mutationSafe.authorizedRequest);
+  callerOwnedAction.safe = false;
+  await execution;
+  assert.deepEqual(dispatchedActions.at(-1), { safe: true });
+  assert.deepEqual(entries.at(-1)?.proposedAction, { safe: true });
+  assert.equal(dispatches, 2);
 }
 
 const suites: Record<string, () => Promise<void>> = {

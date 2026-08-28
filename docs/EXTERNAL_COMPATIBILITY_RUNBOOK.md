@@ -59,3 +59,7 @@ Start with Shadow and confirm `hardwareSignalSent=false`. Reference Run remains
 fail closed unless the approved configuration and current observed configuration
 match and all existing release-authority checks pass. Independent functional
 safety and site validation remain required.
+
+For the executable clean-install, pairing/approval, restart, replay,
+stale-state, drift, revocation, Evidence, and independent zero-dispatch matrix,
+continue with [External ROS 2 Shadow validation](EXTERNAL_ROS2_SHADOW_VALIDATION.md).

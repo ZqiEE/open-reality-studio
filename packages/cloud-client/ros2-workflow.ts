@@ -12,6 +12,7 @@ import {
   type RuntimeAttestation,
 } from "../core/runtime-attestation";
 import {
+  jointStateSnapshotSchema,
   ros2ProposalEnvelopeSchema,
   type JointTrajectoryAction,
   type Ros2ReferenceTransport,
@@ -19,6 +20,10 @@ import {
 import { RlsokCloudClient, verifyCloudEvidence } from "./client";
 import { cloudContractVersion, type SubmitEvidence } from "./contract";
 import { CloudConnectedDispatchBoundary } from "./gate";
+import {
+  InMemoryProposalReplayRegistry,
+  type ProposalReplayRegistry,
+} from "./replay-registry";
 
 export interface CloudConnectedRos2Result {
   executionMode: "cloud-connected";
@@ -29,6 +34,7 @@ export interface CloudConnectedRos2Result {
   reason: string;
   cloudPermitId: string | null;
   cloudPermitConsumed: boolean;
+  cloudPermitConsumptionState: "not_consumed" | "consumed" | "unknown";
   localPermitConsumed: boolean;
   controllerGoalsAttempted: number;
   hardwareSignalSent: boolean;
@@ -57,6 +63,9 @@ interface WorkflowOptions {
   localEvidence: (result: CloudConnectedRos2Result) => void | Promise<void>;
   /** Bounded in-memory replay registry; exhaustion fails closed. */
   maximumProposalIds?: number;
+  /** Durable callers must inject a crash-persistent registry. */
+  proposalReplayRegistry?: ProposalReplayRegistry;
+  now?: () => Date;
 }
 
 interface EvidenceContext {
@@ -66,6 +75,162 @@ interface EvidenceContext {
   controllerId: string;
   expectedConfigurationDigest: string;
   observedConfigurationDigest: string | null;
+}
+
+const MAX_EVIDENCE_TEXT_LENGTH = 500;
+const TRUNCATION_SUFFIX = ":truncated";
+
+function isUnicodeScalarString(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function boundEvidenceText(value: string): string {
+  const truncated = value.length > MAX_EVIDENCE_TEXT_LENGTH;
+  const maximum = truncated
+    ? MAX_EVIDENCE_TEXT_LENGTH - TRUNCATION_SUFFIX.length
+    : MAX_EVIDENCE_TEXT_LENGTH;
+  let result = "";
+  for (let index = 0; index < value.length && result.length < maximum; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        if (result.length + 2 > maximum) break;
+        result += value[index] + value[index + 1];
+        index += 1;
+      } else {
+        result += "\ufffd";
+      }
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      result += "\ufffd";
+    } else {
+      result += value[index];
+    }
+  }
+  return truncated ? `${result}${TRUNCATION_SUFFIX}` : result;
+}
+
+function boundEvidenceReason(reason: unknown): string {
+  const value = typeof reason === "string" && reason.length > 0
+    ? reason
+    : "cloud_workflow_failed";
+  return boundEvidenceText(value);
+}
+
+function normalizeControllerResult(response: unknown): {
+  result: NonNullable<CloudConnectedRos2Result["controllerResult"]>;
+  invalidReason: string | null;
+} {
+  if (typeof response !== "object" || response === null || Array.isArray(response)) {
+    return {
+      result: {
+        accepted: false,
+        completed: false,
+        succeeded: false,
+        detail: "controller_response_not_object",
+      },
+      invalidReason: "controller_result_invalid:response_not_object",
+    };
+  }
+
+  const record = response as Record<string, unknown>;
+  const violations: string[] = [];
+  let accepted = false;
+  if (typeof record.accepted === "boolean") {
+    accepted = record.accepted;
+  } else {
+    violations.push("accepted_not_boolean");
+  }
+  let completed = false;
+  if (typeof record.completed === "boolean") {
+    completed = record.completed;
+  } else if (record.completed !== undefined) {
+    violations.push("completed_not_boolean");
+  }
+  let succeeded = false;
+  if (typeof record.succeeded === "boolean") {
+    succeeded = record.succeeded;
+  } else if (record.succeeded !== undefined) {
+    violations.push("succeeded_not_boolean");
+  }
+
+  let detail: string;
+  if (typeof record.detail !== "string") {
+    violations.push("detail_not_string");
+    detail = "controller_response_detail_not_string";
+  } else if (record.detail.length === 0) {
+    violations.push("detail_empty");
+    detail = "controller_response_detail_empty";
+  } else if (!isUnicodeScalarString(record.detail)) {
+    violations.push("detail_invalid_unicode");
+    detail = boundEvidenceText(record.detail);
+  } else if (record.detail.length > MAX_EVIDENCE_TEXT_LENGTH) {
+    violations.push("detail_too_long");
+    detail = boundEvidenceText(record.detail);
+  } else {
+    detail = record.detail;
+  }
+
+  let status: number | undefined;
+  if (record.status !== undefined) {
+    if (typeof record.status === "number" && Number.isSafeInteger(record.status)) {
+      status = record.status;
+    } else {
+      violations.push("status_not_integer");
+    }
+  }
+
+  let errorCode: number | undefined;
+  if (record.errorCode !== undefined) {
+    if (
+      typeof record.errorCode === "number"
+      && Number.isSafeInteger(record.errorCode)
+    ) {
+      errorCode = record.errorCode;
+    } else {
+      violations.push("error_code_not_integer");
+    }
+  }
+
+  let errorString: string | undefined;
+  if (record.errorString !== undefined) {
+    if (typeof record.errorString !== "string") {
+      violations.push("error_string_not_string");
+    } else if (!isUnicodeScalarString(record.errorString)) {
+      violations.push("error_string_invalid_unicode");
+      errorString = boundEvidenceText(record.errorString);
+    } else if (record.errorString.length > MAX_EVIDENCE_TEXT_LENGTH) {
+      violations.push("error_string_too_long");
+      errorString = boundEvidenceText(record.errorString);
+    } else {
+      errorString = record.errorString;
+    }
+  }
+
+  return {
+    result: {
+      accepted,
+      completed,
+      succeeded,
+      status,
+      errorCode,
+      errorString,
+      detail,
+    },
+    invalidReason: violations.length > 0
+      ? `controller_result_invalid:${violations.join(",")}`
+      : null,
+  };
 }
 
 export function assertLocalRos2Eligibility(
@@ -82,7 +247,12 @@ export function assertLocalRos2Eligibility(
         : "release_not_approved",
     );
   }
-  if (Date.parse(release.deployment.expiresAt) <= now.getTime()) {
+  const nowMs = now.getTime();
+  const expiresAtMs = Date.parse(release.deployment.expiresAt);
+  if (!Number.isFinite(nowMs) || !Number.isFinite(expiresAtMs)) {
+    throw new Error("release_time_invalid");
+  }
+  if (expiresAtMs <= nowMs) {
     throw new Error("release_expired");
   }
   if (
@@ -128,26 +298,44 @@ export function assertFreshStateTimestamp(
   }
 }
 
+async function observeFreshJointState(
+  transport: Ros2ReferenceTransport,
+  release: ExecutablePolicySpec,
+) {
+  const state = jointStateSnapshotSchema.parse(
+    await transport.getFreshJointState(release.runtimePolicy.maxStateAgeMs),
+  );
+  assertFreshStateTimestamp(
+    state.observedAt,
+    release.runtimePolicy.maxStateAgeMs,
+  );
+  if (
+    !release.actionContract.jointOrder.every((name) => state.names.includes(name))
+  ) {
+    throw new Error("joint_state_order_mismatch");
+  }
+  return state;
+}
+
 export class CloudConnectedRos2Workflow {
-  private readonly seenProposalIds = new Set<string>();
-  private readonly maximumProposalIds: number;
+  private readonly proposalReplayRegistry: ProposalReplayRegistry;
 
   constructor(private readonly options: WorkflowOptions) {
-    this.maximumProposalIds = options.maximumProposalIds ?? 65_536;
-    if (
-      !Number.isInteger(this.maximumProposalIds) ||
-      this.maximumProposalIds < 1 ||
-      this.maximumProposalIds > 1_000_000
-    ) {
-      throw new Error("proposal_replay_registry_capacity_invalid");
+    if (options.mode === "run" && !options.proposalReplayRegistry) {
+      throw new Error("proposal_replay_registry_required");
     }
+    this.proposalReplayRegistry = options.proposalReplayRegistry
+      ?? new InMemoryProposalReplayRegistry(options.maximumProposalIds ?? 65_536);
   }
 
   private async persistEvidence(
     result: CloudConnectedRos2Result,
     context: EvidenceContext,
+    writeLocalEvidence: (
+      result: CloudConnectedRos2Result,
+    ) => void | Promise<void> = this.options.localEvidence,
   ): Promise<CloudConnectedRos2Result> {
-    await this.options.localEvidence(result);
+    await writeLocalEvidence(result);
     const evidence: SubmitEvidence = {
       releaseId: result.releaseId,
       permitId: result.cloudPermitId,
@@ -168,6 +356,7 @@ export class CloudConnectedRos2Workflow {
         expectedConfigurationDigest: context.expectedConfigurationDigest,
         observedConfigurationDigest: context.observedConfigurationDigest,
         localPermitConsumed: result.localPermitConsumed,
+        cloudPermitConsumptionState: result.cloudPermitConsumptionState,
         controllerGoalsAttempted: result.controllerGoalsAttempted,
         reason: result.reason,
         controllerResult: result.controllerResult,
@@ -177,19 +366,37 @@ export class CloudConnectedRos2Workflow {
     const retrieved = await this.options.cloud.getEvidence(stored.evidenceId);
     const verified = verifyCloudEvidence(retrieved);
     if (!verified.ok) throw new Error(verified.reason);
+    if (
+      retrieved.id !== stored.evidenceId
+      || retrieved.sequence !== stored.sequence
+      || retrieved.previousHash !== stored.previousHash
+      || retrieved.evidenceHash !== stored.evidenceHash
+      || retrieved.createdAt !== stored.createdAt
+      || retrieved.releaseId !== evidence.releaseId
+      || retrieved.permitId !== (evidence.permitId ?? null)
+      || retrieved.decision !== evidence.decision
+      || retrieved.hardwareSignalSent !== evidence.hardwareSignalSent
+      || canonicalJson(retrieved.payload) !== canonicalJson(evidence.payload)
+    ) {
+      throw new Error("evidence_receipt_mismatch");
+    }
     result.cloudEvidenceId = stored.evidenceId;
     result.evidenceVerified = true;
-    await this.options.localEvidence(result);
+    await writeLocalEvidence(result);
     return result;
   }
 
   async runProposal(payload: string): Promise<CloudConnectedRos2Result> {
+    if (Buffer.byteLength(payload, "utf8") > 65_536) {
+      throw new Error("proposal_payload_too_large");
+    }
     const proposal = ros2ProposalEnvelopeSchema.parse(JSON.parse(payload));
     const action = assertLocalRos2Eligibility(
       this.options.release,
       proposal,
       this.options.controllerIdentity,
       this.options.mode,
+      this.options.now?.() ?? new Date(),
     );
     const contentHash = executablePolicyHash(this.options.release);
     const actionHash = sha256(canonicalJson(action));
@@ -198,16 +405,39 @@ export class CloudConnectedRos2Workflow {
     if (!expectedConfigurationDigest) {
       throw new Error("configuration_unbound");
     }
-    let replayDenial: string | null = null;
-    if (this.seenProposalIds.has(proposal.proposalId)) {
-      replayDenial = "proposal_id_duplicate";
-    } else if (this.seenProposalIds.size >= this.maximumProposalIds) {
-      replayDenial = "proposal_replay_registry_capacity_exceeded";
-    } else {
-      this.seenProposalIds.add(proposal.proposalId);
-    }
+    let localEvidenceWritten = false;
+    const writeLocalEvidence = async (result: CloudConnectedRos2Result) => {
+      await this.options.localEvidence(result);
+      localEvidenceWritten = true;
+    };
+    let latestResult: CloudConnectedRos2Result | undefined;
+    const persistAttemptEvidence = (
+      result: CloudConnectedRos2Result,
+      context: EvidenceContext,
+    ) => {
+      const boundedResult = {
+        ...result,
+        reason: boundEvidenceReason(result.reason),
+      };
+      latestResult = boundedResult;
+      return this.persistEvidence(boundedResult, context, writeLocalEvidence);
+    };
+    const replayClaim = this.proposalReplayRegistry.claim({
+      releaseId: proposal.releaseId,
+      executablePolicyHash: contentHash,
+      deviceId: proposal.deviceId,
+      proposerIdentity: proposal.proposerIdentity,
+      proposalId: proposal.proposalId,
+    });
+    const replayDenial = replayClaim === "claimed"
+      ? null
+      : replayClaim === "duplicate"
+        ? "proposal_id_duplicate"
+        : replayClaim === "capacity_exceeded"
+          ? "proposal_replay_registry_capacity_exceeded"
+          : "proposal_replay_registry_unavailable";
     if (replayDenial) {
-      return this.persistEvidence(
+      return await persistAttemptEvidence(
         {
           executionMode: "cloud-connected",
           mode: this.options.mode,
@@ -217,6 +447,7 @@ export class CloudConnectedRos2Workflow {
           reason: replayDenial,
           cloudPermitId: null,
           cloudPermitConsumed: false,
+          cloudPermitConsumptionState: "not_consumed",
           localPermitConsumed: false,
           controllerGoalsAttempted: 0,
           hardwareSignalSent: false,
@@ -233,6 +464,10 @@ export class CloudConnectedRos2Workflow {
         },
       );
     }
+    let cloudPermitId: string | null = null;
+    let controllerGoalsAttempted = 0;
+    let controllerResult: CloudConnectedRos2Result["controllerResult"];
+    try {
     const observeConfiguration = async () => {
       const observed = await this.options.executionConfiguration();
       return evaluateConfigurationBinding({
@@ -286,7 +521,7 @@ export class CloudConnectedRos2Workflow {
       denialReason = attestation.reason;
     }
     if (denialReason) {
-      return this.persistEvidence(
+      return await persistAttemptEvidence(
         {
           executionMode: "cloud-connected",
           mode: this.options.mode,
@@ -296,6 +531,7 @@ export class CloudConnectedRos2Workflow {
           reason: denialReason,
           cloudPermitId: null,
           cloudPermitConsumed: false,
+          cloudPermitConsumptionState: "not_consumed",
           localPermitConsumed: false,
           controllerGoalsAttempted: 0,
           hardwareSignalSent: false,
@@ -312,13 +548,7 @@ export class CloudConnectedRos2Workflow {
         },
       );
     }
-    const state = await this.options.transport.getFreshJointState(
-      this.options.release.runtimePolicy.maxStateAgeMs,
-    );
-    assertFreshStateTimestamp(
-      state.observedAt,
-      this.options.release.runtimePolicy.maxStateAgeMs,
-    );
+    await observeFreshJointState(this.options.transport, this.options.release);
     const binding = {
       evaluationMode:
         this.options.mode === "shadow"
@@ -335,8 +565,7 @@ export class CloudConnectedRos2Workflow {
       ...binding,
       expiresInSeconds: 30,
     });
-    let controllerGoalsAttempted = 0;
-    let controllerResult: CloudConnectedRos2Result["controllerResult"];
+    cloudPermitId = cloudPermit.permitId;
     const boundary = new CloudConnectedDispatchBoundary(
       this.options.cloud,
       cloudPermit.permitId,
@@ -348,23 +577,25 @@ export class CloudConnectedRos2Workflow {
             candidate,
             this.options.controllerIdentity,
           );
-          if (!response.accepted) {
-            throw new Error(`controller_goal_rejected:${response.detail}`);
+          const normalized = normalizeControllerResult(response);
+          controllerResult = normalized.result;
+          if (normalized.invalidReason) {
+            throw new Error(normalized.invalidReason);
           }
-          controllerResult = {
-            accepted: response.accepted,
-            completed: response.completed === true,
-            succeeded: response.succeeded === true,
-            status: response.status,
-            errorCode: response.errorCode,
-            errorString: response.errorString,
-            detail: response.detail,
-          };
-          if (response.completed !== true) {
-            throw new Error(`controller_result_unconfirmed:${response.detail}`);
+          if (!controllerResult.accepted) {
+            throw new Error(`controller_goal_rejected:${controllerResult.detail}`);
           }
-          if (response.succeeded !== true) {
-            throw new Error(`controller_goal_failed:${response.errorCode ?? "unknown"}:${response.detail}`);
+          if (!controllerResult.completed) {
+            throw new Error(
+              `controller_result_unconfirmed:${controllerResult.detail}`,
+            );
+          }
+          if (!controllerResult.succeeded) {
+            throw new Error(
+              `controller_goal_failed:${
+                controllerResult.errorCode ?? "unknown"
+              }:${controllerResult.detail}`,
+            );
           }
           return response;
         },
@@ -377,6 +608,7 @@ export class CloudConnectedRos2Workflow {
         const current = await observeConfiguration();
         latestConfiguration = current;
         if (!current.allowed) throw new Error(current.reason!);
+        await observeFreshJointState(this.options.transport, this.options.release);
         if (requiredCapabilities.length > 0) {
           const currentAttestation = await observeAttestation();
           if (!currentAttestation.allowed) {
@@ -397,6 +629,15 @@ export class CloudConnectedRos2Workflow {
         }
         return current.observedDigest;
       },
+      () => {
+        assertLocalRos2Eligibility(
+          this.options.release,
+          proposal,
+          this.options.controllerIdentity,
+          this.options.mode,
+          this.options.now?.() ?? new Date(),
+        );
+      },
     );
     const localPermit = boundary.issueLocalPermit(action);
     await this.options.beforeFinalBoundary?.();
@@ -407,6 +648,8 @@ export class CloudConnectedRos2Workflow {
         ? "shadow_permit_evaluated_no_controller_call"
         : "controller_result_succeeded";
     let cloudPermitConsumed = false;
+    let cloudPermitConsumptionState: CloudConnectedRos2Result["cloudPermitConsumptionState"] =
+      "not_consumed";
     let localPermitConsumed = false;
     try {
       if (this.options.mode === "shadow") {
@@ -419,6 +662,7 @@ export class CloudConnectedRos2Workflow {
       reason = error instanceof Error ? error.message : "cloud_boundary_failed";
     }
     cloudPermitConsumed = boundary.cloudPermitWasConsumed;
+    cloudPermitConsumptionState = boundary.cloudPermitConsumptionState;
     localPermitConsumed = boundary.localPermitWasConsumed;
     const hardwareSignalSent = controllerGoalsAttempted > 0;
     const result: CloudConnectedRos2Result = {
@@ -430,6 +674,7 @@ export class CloudConnectedRos2Workflow {
       reason,
       cloudPermitId: cloudPermit.permitId,
       cloudPermitConsumed,
+      cloudPermitConsumptionState,
       localPermitConsumed,
       controllerGoalsAttempted,
       hardwareSignalSent,
@@ -437,7 +682,7 @@ export class CloudConnectedRos2Workflow {
       evidenceVerified: false,
       controllerResult,
     };
-    return this.persistEvidence(result, {
+    return await persistAttemptEvidence(result, {
       contentHash,
       actionHash,
       deviceId: binding.deviceId,
@@ -445,5 +690,33 @@ export class CloudConnectedRos2Workflow {
       expectedConfigurationDigest,
       observedConfigurationDigest: latestConfiguration.observedDigest,
     });
+    } catch (error) {
+      if (localEvidenceWritten) throw error;
+      if (latestResult) {
+        await writeLocalEvidence(latestResult);
+        throw error;
+      }
+      const reason = error instanceof Error
+        ? boundEvidenceReason(error.message)
+        : "cloud_workflow_failed";
+      await writeLocalEvidence({
+        executionMode: "cloud-connected",
+        mode: this.options.mode,
+        releaseId: this.options.release.metadata.releaseId,
+        proposalId: proposal.proposalId,
+        decision: controllerGoalsAttempted > 0 ? "failed" : "blocked",
+        reason,
+        cloudPermitId,
+        cloudPermitConsumed: false,
+        cloudPermitConsumptionState: "not_consumed",
+        localPermitConsumed: false,
+        controllerGoalsAttempted,
+        hardwareSignalSent: controllerGoalsAttempted > 0,
+        cloudEvidenceId: null,
+        evidenceVerified: false,
+        controllerResult,
+      });
+      throw error;
+    }
   }
 }

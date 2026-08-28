@@ -26,6 +26,9 @@ import type { CloudClientConfig } from "./config";
 import type { ExecutablePolicySpec } from "../core/exec-spec";
 
 const encoder = new TextEncoder();
+const MAX_EVIDENCE_EXPORT_PAGES = 64;
+const MAX_EVIDENCE_EXPORT_RECORDS = 10_000;
+const MAX_EVIDENCE_EXPORT_DURATION_MS = 60_000;
 
 export class CloudClientError extends Error {
   constructor(
@@ -294,8 +297,17 @@ export class RlsokCloudClient {
     let organizationFingerprint: string | undefined;
     let firstSequence: number | null = null;
     let lastSequence: number | null = null;
+    let pageCount = 0;
+    const startedAt = Date.now();
     const records: ExportedCloudEvidence[] = [];
     do {
+      pageCount += 1;
+      if (pageCount > MAX_EVIDENCE_EXPORT_PAGES) {
+        throw new CloudClientError("evidence_export_page_limit_exceeded");
+      }
+      if (Date.now() - startedAt > MAX_EVIDENCE_EXPORT_DURATION_MS) {
+        throw new CloudClientError("evidence_export_deadline_exceeded");
+      }
       const query = new URLSearchParams({
         afterSequence: String(afterSequence),
         pageSize: "200",
@@ -304,6 +316,12 @@ export class RlsokCloudClient {
       const page = evidenceExportPageSchema.parse(
         await this.request("GET", `evidence/export?${query}`),
       );
+      if (page.releaseFilter !== (releaseId ?? null)) {
+        throw new CloudClientError("evidence_export_release_filter_changed");
+      }
+      if (page.records.length > 200) {
+        throw new CloudClientError("evidence_export_page_size_exceeded");
+      }
       if (
         organizationFingerprint &&
         page.organizationFingerprint !== organizationFingerprint
@@ -311,8 +329,18 @@ export class RlsokCloudClient {
         throw new CloudClientError("evidence_export_organization_changed");
       }
       organizationFingerprint = page.organizationFingerprint;
-      firstSequence = page.firstSequence;
-      lastSequence = page.lastSequence;
+      if (pageCount === 1) {
+        firstSequence = page.firstSequence;
+        lastSequence = page.lastSequence;
+      } else if (
+        page.firstSequence !== firstSequence ||
+        page.lastSequence !== lastSequence
+      ) {
+        throw new CloudClientError("evidence_export_bounds_changed");
+      }
+      if (records.length + page.records.length > MAX_EVIDENCE_EXPORT_RECORDS) {
+        throw new CloudClientError("evidence_export_record_limit_exceeded");
+      }
       for (const record of page.records) {
         if (record.organizationFingerprint !== page.organizationFingerprint) {
           throw new CloudClientError(

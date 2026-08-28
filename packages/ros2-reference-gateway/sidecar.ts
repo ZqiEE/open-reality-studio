@@ -1,13 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import {
-  createInterface,
-  type Interface as ReadlineInterface,
-} from "node:readline";
-import type {
-  JointStateSnapshot,
-  JointTrajectoryAction,
-  Ros2DoctorReport,
-  Ros2ReferenceTransport,
+  jointStateSnapshotSchema,
+  ros2ControllerResultSchema,
+  type JointStateSnapshot,
+  type JointTrajectoryAction,
+  type Ros2DoctorReport,
+  type Ros2ReferenceTransport,
 } from ".";
 
 interface SidecarReply {
@@ -27,13 +25,16 @@ interface PythonRos2SidecarOptions {
   discoveryTimeoutMs?: number;
 }
 
+const MAXIMUM_PENDING_REQUESTS = 16;
+const MAXIMUM_SIDECAR_FRAME_BYTES = 256 * 1024;
+
 /**
  * JSONL IPC client for the rclpy transport sidecar. It deliberately exposes no
  * policy, release, evidence, or permit operation to Python.
  */
 export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
   private child?: ChildProcessWithoutNullStreams;
-  private lines?: ReadlineInterface;
+  private stdoutBuffer = Buffer.alloc(0);
   private handler?: (payload: string) => Promise<void>;
   private state?: JointStateSnapshot;
   private nextId = 1;
@@ -42,10 +43,12 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
     {
       resolve(value: unknown): void;
       reject(error: Error): void;
+      timeout: ReturnType<typeof setTimeout>;
     }
   >();
 
   private readonly discoveryTimeoutMs: number;
+  private terminalError?: Error;
 
   constructor(private readonly options: PythonRos2SidecarOptions) {
     const timeout = options.discoveryTimeoutMs ?? 15_000;
@@ -87,9 +90,11 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
     action: JointTrajectoryAction,
     controllerIdentity: string,
   ): ReturnType<Ros2ReferenceTransport["dispatchTrajectory"]> {
-    return this.request("dispatch", { action, controllerIdentity }) as ReturnType<
-      Ros2ReferenceTransport["dispatchTrajectory"]
-    >;
+    const parsed = ros2ControllerResultSchema.safeParse(
+      await this.request("dispatch", { action, controllerIdentity }),
+    );
+    if (!parsed.success) throw new Error("ros2_sidecar_controller_result_invalid");
+    return parsed.data;
   }
 
   async doctor(): Promise<Ros2DoctorReport> {
@@ -97,22 +102,19 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
   }
 
   async close(): Promise<void> {
-    const child = this.child;
-    if (!child) return;
+    if (!this.child) return;
     try {
-      await this.request("shutdown", {});
+      await this.request("shutdown", {}, Math.min(this.discoveryTimeoutMs, 5_000));
     } catch {
-      child.kill();
+      // The request path already poisoned and terminated an uncertain channel.
+      // Cleanup must not mask the operation error that led callers here.
+    } finally {
+      this.failChannel(new Error("ros2_sidecar_closed"));
     }
-    this.lines?.close();
-    this.child = undefined;
-    for (const pending of Array.from(this.pending.values())) {
-      pending.reject(new Error("ros2_sidecar_closed"));
-    }
-    this.pending.clear();
   }
 
   private async ensureStarted(): Promise<void> {
+    if (this.terminalError) throw this.terminalError;
     if (this.child) return;
     const args = [
       this.options.sidecarPath,
@@ -134,8 +136,7 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
       windowsHide: true,
     });
     this.child = child;
-    this.lines = createInterface({ input: child.stdout });
-    this.lines.on("line", (line) => void this.handleLine(line));
+    child.stdout.on("data", (chunk: Buffer) => this.handleStdoutChunk(chunk));
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => {
       stderr = `${stderr}${chunk.toString("utf8")}`.slice(-8_192);
@@ -144,53 +145,94 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
       const error = new Error(
         `ros2_sidecar_exited:${code ?? "signal"}${stderr.trim() ? `:${stderr.trim()}` : ""}`,
       );
-      for (const pending of Array.from(this.pending.values()))
-        pending.reject(error);
-      this.pending.clear();
-      this.child = undefined;
+      this.failChannel(error, false);
     });
     child.on("error", (error) => {
-      for (const pending of Array.from(this.pending.values()))
-        pending.reject(error);
-      this.pending.clear();
+      this.failChannel(error);
     });
-    let startupTimer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        this.request("ping", {}),
-        new Promise((_, reject) => {
-          startupTimer = setTimeout(
-            () => reject(new Error("ros2_sidecar_startup_timeout")),
-            this.discoveryTimeoutMs,
-          );
-        }),
-      ]);
-    } finally {
-      if (startupTimer) clearTimeout(startupTimer);
-    }
+    await this.request("ping", {}, this.discoveryTimeoutMs);
   }
 
   private request(
     operation: string,
     params: Record<string, unknown>,
+    timeoutMs = operation === "dispatch"
+      ? Math.min(300_000, this.discoveryTimeoutMs + 35_000)
+      : this.discoveryTimeoutMs,
   ): Promise<unknown> {
+    if (this.terminalError) return Promise.reject(this.terminalError);
     if (!this.child && operation !== "ping") {
-      return this.ensureStarted().then(() => this.request(operation, params));
+      return this.ensureStarted().then(() => this.request(operation, params, timeoutMs));
     }
     const child = this.child;
     if (!child) return Promise.reject(new Error("ros2_sidecar_not_started"));
+    if (this.pending.size >= MAXIMUM_PENDING_REQUESTS) {
+      return Promise.reject(new Error("ros2_sidecar_request_capacity_exceeded"));
+    }
     const id = this.nextId++;
+    const frame = `${JSON.stringify({ id, operation, params })}\n`;
+    if (Buffer.byteLength(frame, "utf8") > MAXIMUM_SIDECAR_FRAME_BYTES) {
+      return Promise.reject(new Error("ros2_sidecar_request_too_large"));
+    }
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        const pending = this.pending.get(id);
+        if (!pending) return;
+        this.pending.delete(id);
+        const error = new Error(`ros2_sidecar_${operation}_timeout`);
+        pending.reject(error);
+        this.failChannel(error);
+      }, timeoutMs);
+      this.pending.set(id, { resolve, reject, timeout });
       child.stdin.write(
-        `${JSON.stringify({ id, operation, params })}\n`,
+        frame,
         (error) => {
           if (!error) return;
+          const pending = this.pending.get(id);
+          if (!pending) return;
+          clearTimeout(pending.timeout);
           this.pending.delete(id);
-          reject(error);
+          pending.reject(error);
+          this.failChannel(error);
         },
       );
     });
+  }
+
+  private failChannel(error: Error, kill = true): void {
+    this.terminalError ??= error;
+    const child = this.child;
+    this.child = undefined;
+    this.stdoutBuffer = Buffer.alloc(0);
+    for (const pending of Array.from(this.pending.values())) {
+      clearTimeout(pending.timeout);
+      pending.reject(this.terminalError);
+    }
+    this.pending.clear();
+    if (kill) child?.kill();
+  }
+
+  private handleStdoutChunk(chunk: Buffer): void {
+    let offset = 0;
+    while (offset < chunk.length) {
+      const newline = chunk.indexOf(0x0a, offset);
+      const end = newline === -1 ? chunk.length : newline;
+      const fragment = chunk.subarray(offset, end);
+      if (this.stdoutBuffer.length + fragment.length > MAXIMUM_SIDECAR_FRAME_BYTES) {
+        this.failChannel(new Error("ros2_sidecar_response_too_large"));
+        return;
+      }
+      if (fragment.length > 0) {
+        this.stdoutBuffer = this.stdoutBuffer.length === 0
+          ? Buffer.from(fragment)
+          : Buffer.concat([this.stdoutBuffer, fragment]);
+      }
+      if (newline === -1) return;
+      const line = this.stdoutBuffer.toString("utf8");
+      this.stdoutBuffer = Buffer.alloc(0);
+      void this.handleLine(line);
+      offset = newline + 1;
+    }
   }
 
   private async handleLine(line: string): Promise<void> {
@@ -198,10 +240,16 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
     try {
       message = JSON.parse(line) as Record<string, unknown>;
     } catch {
+      this.failChannel(new Error("ros2_sidecar_response_malformed"));
       return;
     }
     if (message.event === "joint_state") {
-      this.state = message.state as JointStateSnapshot;
+      const state = jointStateSnapshotSchema.safeParse(message.state);
+      if (!state.success) {
+        this.failChannel(new Error("ros2_sidecar_joint_state_invalid"));
+        return;
+      }
+      this.state = state.data;
       return;
     }
     if (message.event === "proposal" && typeof message.payload === "string") {
@@ -212,10 +260,22 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
       }
       return;
     }
-    if (typeof message.id !== "number") return;
-    const pending = this.pending.get(message.id);
-    if (!pending) return;
-    this.pending.delete(message.id);
+    const responseId = message.id;
+    if (
+      typeof responseId !== "number" ||
+      !Number.isSafeInteger(responseId) ||
+      typeof message.ok !== "boolean"
+    ) {
+      this.failChannel(new Error("ros2_sidecar_response_invalid"));
+      return;
+    }
+    const pending = this.pending.get(responseId);
+    if (!pending) {
+      this.failChannel(new Error("ros2_sidecar_unsolicited_response"));
+      return;
+    }
+    clearTimeout(pending.timeout);
+    this.pending.delete(responseId);
     const reply = message as unknown as SidecarReply;
     if (reply.ok) pending.resolve(reply.result);
     else

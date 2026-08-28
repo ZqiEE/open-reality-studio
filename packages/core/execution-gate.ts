@@ -57,6 +57,8 @@ type ExecutionDecision<TAction, TState> =
 
 export interface EvidenceSink {
   append(evidence: ExecutionEvidence): void | Promise<void>;
+  /** Fail closed before a Run dispatch when durable Evidence cannot accept it. */
+  assertWritableBeforeDispatch?(): void | Promise<void>;
 }
 
 interface ActionDispatcher<TAction, TResult> {
@@ -286,9 +288,14 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
   }
 
   async execute(request: AuthorizedExecutionRequest<TAction, TState>): Promise<TResult> {
+    // Capture the exact JSON value synchronously, before the first await. A
+    // caller-owned object must not be able to change adapter-visible bytes
+    // while Evidence preflight or final authority refreshes are in progress.
+    const preparedAction = JSON.parse(canonicalJson(request.action)) as TAction;
     const permit = request.permit as object;
     const record = this.permits.get(permit);
     this.permits.delete(permit);
+    await this.evidence.assertWritableBeforeDispatch?.();
     let currentReleaseRecord = request.releaseRecord;
     let currentExecutionConfiguration = request.executionConfiguration;
     let currentRuntimeAttestation = request.runtimeAttestation;
@@ -325,6 +332,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     const now = request.now ?? new Date();
     const currentRequest = {
       ...request,
+      action: preparedAction,
       executionConfiguration: currentExecutionConfiguration,
       runtimeAttestation: currentRuntimeAttestation
     };
@@ -373,7 +381,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     } else if (record.configurationDigest !== configuration.observedDigest) {
       invalidReason = 'configuration_mismatch';
     }
-    else if (this.hashAction(request.action) !== request.actionHash) invalidReason = 'action_hash_mismatch';
+    else if (this.hashAction(preparedAction) !== request.actionHash) invalidReason = 'action_hash_mismatch';
     else if (!eligible.allowed) invalidReason = eligible.reason;
     else if (!attestation.allowed) {
       invalidReason = attestation.reason ?? 'runtime_attestation_stale';
@@ -406,30 +414,10 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       ));
       throw new Error(`execution_permit_invalid:${invalidReason}`);
     }
+    const dispatchedAt = now.toISOString();
+    let result: TResult;
     try {
-      const dispatchedAt = now.toISOString();
-      const result = await this.dispatcher.dispatch(request.action, request.permit);
-      const terminal = result && typeof result === 'object'
-        && 'completed' in result
-        && (result as { completed?: unknown }).completed === true;
-      await this.evidence.append(this.evidenceFor(
-        currentRequest,
-        'allowed',
-        'dispatched',
-        [
-          'release_eligibility',
-          ...(request.release.runtimePolicy.requiredCapabilities?.length
-            ? ['runtime_attestation']
-            : []),
-          'state_freshness',
-          'action_identity'
-        ],
-        'attempted_unconfirmed',
-        terminal ? 'controller_result_recorded' : 'dispatch_attempted',
-        dispatchedAt,
-        result
-      ));
-      return result;
+      result = await this.dispatcher.dispatch(preparedAction, request.permit);
     } catch (error) {
       await this.evidence.append(this.evidenceFor(
         currentRequest,
@@ -442,6 +430,27 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       ));
       throw error;
     }
+    const terminal = result && typeof result === 'object'
+      && 'completed' in result
+      && (result as { completed?: unknown }).completed === true;
+    await this.evidence.append(this.evidenceFor(
+      currentRequest,
+      'allowed',
+      'dispatched',
+      [
+        'release_eligibility',
+        ...(request.release.runtimePolicy.requiredCapabilities?.length
+          ? ['runtime_attestation']
+          : []),
+        'state_freshness',
+        'action_identity'
+      ],
+      'attempted_unconfirmed',
+      terminal ? 'controller_result_recorded' : 'dispatch_attempted',
+      dispatchedAt,
+      result
+    ));
+    return result;
   }
 }
 

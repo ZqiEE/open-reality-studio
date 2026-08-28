@@ -10,6 +10,7 @@ import {
   sha256
 } from '../core/evidence';
 import {
+  executablePolicyHash,
   type ExecutablePolicySpec
 } from '../core/exec-spec';
 import type { ReleaseRecord } from '../core/release-policy';
@@ -17,6 +18,20 @@ import type { ExecutionConfiguration } from '../core/execution-configuration';
 import type { RuntimeAttestation } from '../core/runtime-attestation';
 
 const isoTimestamp = z.string().datetime({ offset: true });
+function isUnicodeScalarText(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+const safeInteger = z.number().int().refine(Number.isSafeInteger, 'integer must be safe');
 
 const jointTrajectoryActionSchema = z.object({
   representation: z.literal('trajectory'),
@@ -46,7 +61,23 @@ export const ros2ProposalEnvelopeSchema = z.object({
 
 type Ros2ProposalEnvelope = z.infer<typeof ros2ProposalEnvelopeSchema>;
 
-const jointStateSnapshotSchema = z.object({
+export interface Ros2ProposalReplayIdentity {
+  releaseId: string;
+  executablePolicyHash: string;
+  deviceId: string;
+  proposerIdentity: string;
+  proposalId: string;
+}
+
+export interface Ros2ProposalReplayRegistry {
+  claim(identity: Ros2ProposalReplayIdentity):
+    | 'claimed'
+    | 'duplicate'
+    | 'capacity_exceeded'
+    | 'unavailable';
+}
+
+export const jointStateSnapshotSchema = z.object({
   names: z.array(z.string().min(1)).min(1).max(256),
   positions: z.array(z.number().finite()).min(1).max(256),
   observedAt: isoTimestamp,
@@ -70,6 +101,24 @@ const jointStateSnapshotSchema = z.object({
 
 export type JointStateSnapshot = z.infer<typeof jointStateSnapshotSchema>;
 
+export const ros2ControllerResultSchema = z.object({
+  accepted: z.boolean(),
+  detail: z.string().min(1).max(500).refine(
+    isUnicodeScalarText,
+    'detail must contain only Unicode scalar values'
+  ),
+  completed: z.boolean().optional(),
+  succeeded: z.boolean().optional(),
+  status: safeInteger.optional(),
+  errorCode: safeInteger.optional(),
+  errorString: z.string().max(500).refine(
+    isUnicodeScalarText,
+    'errorString must contain only Unicode scalar values'
+  ).optional()
+}).strict();
+
+export type Ros2ControllerResult = z.infer<typeof ros2ControllerResultSchema>;
+
 export interface Ros2DoctorReport {
   rosAvailable: boolean;
   rosDistro: string | null;
@@ -92,15 +141,7 @@ export interface Ros2ReferenceTransport {
   dispatchTrajectory(
     action: JointTrajectoryAction,
     controllerIdentity: string
-  ): Promise<{
-    accepted: boolean;
-    detail: string;
-    completed?: boolean;
-    succeeded?: boolean;
-    status?: number;
-    errorCode?: number;
-    errorString?: string;
-  }>;
+  ): Promise<Ros2ControllerResult>;
   doctor(): Promise<Ros2DoctorReport>;
   close(): Promise<void>;
 }
@@ -144,7 +185,7 @@ export class InMemoryReleaseRecordStore {
   }
 }
 
-interface Ros2GatewayResult {
+export interface Ros2GatewayResult {
   proposalId: string;
   decision: 'allowed' | 'blocked' | 'failed';
   reason: string;
@@ -163,6 +204,8 @@ interface Ros2GatewayOptions {
   executionConfiguration?: () => Promise<ExecutionConfiguration | undefined>;
   /** Read-only facts supplied by a trusted runtime adapter or monitor. */
   runtimeAttestation?: () => Promise<RuntimeAttestation | undefined>;
+  /** Inject a crash-persistent implementation for restart-safe Run use. */
+  proposalReplayRegistry?: Ros2ProposalReplayRegistry;
   now?: () => Date;
 }
 
@@ -181,6 +224,9 @@ export class Ros2ReferenceGateway {
 
   constructor(private readonly options: Ros2GatewayOptions) {
     this.mode = options.mode ?? 'shadow';
+    if (this.mode === 'run' && !options.proposalReplayRegistry) {
+      throw new Error('proposal_replay_registry_required');
+    }
   }
 
   private async observeExecutionConfiguration(): Promise<ExecutionConfiguration | undefined> {
@@ -221,13 +267,67 @@ export class Ros2ReferenceGateway {
     const parsed = ros2ProposalEnvelopeSchema.safeParse(raw);
     if (!parsed.success) throw new Error(`proposal_schema_invalid:${parsed.error.issues[0]?.message ?? 'unknown'}`);
     const proposal = parsed.data;
-    if (this.seenProposalIds.has(proposal.proposalId)) throw new Error('proposal_id_duplicate');
-    this.seenProposalIds.add(proposal.proposalId);
-
     const release = await this.options.releaseResolver.resolveActiveRelease(
       proposal.deviceId,
       proposal.proposerIdentity
     );
+    const replayIdentity = {
+      releaseId: proposal.releaseId,
+      executablePolicyHash: executablePolicyHash(release),
+      deviceId: proposal.deviceId,
+      proposerIdentity: proposal.proposerIdentity,
+      proposalId: proposal.proposalId
+    };
+    const replayClaim = this.options.proposalReplayRegistry
+      ? this.options.proposalReplayRegistry.claim(replayIdentity)
+      : this.seenProposalIds.has(proposal.proposalId)
+        ? 'duplicate'
+        : (() => {
+            this.seenProposalIds.add(proposal.proposalId);
+            return 'claimed' as const;
+          })();
+    if (replayClaim !== 'claimed') {
+      const reason = replayClaim === 'duplicate'
+        ? 'proposal_id_duplicate'
+        : replayClaim === 'capacity_exceeded'
+          ? 'proposal_replay_registry_capacity_exceeded'
+          : 'proposal_replay_registry_unavailable';
+      await this.options.evidence.append({
+        releaseId: release.metadata.releaseId,
+        executablePolicyHash: replayIdentity.executablePolicyHash,
+        modelHash: release.model.sha256,
+        actionContractHash: sha256(canonicalJson(release.actionContract)),
+        robotProfileHash: release.robot.profileSha256,
+        controllerProfileHash: release.robot.controllerConfigSha256,
+        expectedConfigurationDigest: release.approvedConfigurationDigest ?? null,
+        observedConfigurationDigest: null,
+        expectedConfigurationSchemaVersion:
+          release.executionConfiguration?.schemaVersion ?? null,
+        observedConfigurationSchemaVersion: null,
+        expectedRequiredCapabilities: [
+          ...(release.runtimePolicy.requiredCapabilities ?? []),
+        ],
+        observedAvailableCapabilities: null,
+        runtimePolicyHash: release.runtimePolicy.policySha256,
+        deviceId: proposal.deviceId,
+        proposalId: proposal.proposalId,
+        proposedAction: proposal.actionPayload,
+        decision: 'blocked',
+        decisionReason: reason,
+        matchedRuleIds: ['proposal_replay'],
+        decisionMadeAt: (this.options.now?.() ?? new Date()).toISOString(),
+        hardwareSignalSent: false,
+        hardwareSignalState: 'not_sent',
+        executionEvidence: 'not_executed'
+      });
+      return {
+        proposalId: proposal.proposalId,
+        decision: 'blocked',
+        reason,
+        hardwareSignalSent: false,
+        controllerGoalCount: this.goalCount
+      };
+    }
     if (proposal.releaseId !== release.metadata.releaseId) {
       return this.blocked(proposal, 'release_id_mismatch');
     }
@@ -322,11 +422,14 @@ export class Ros2ReferenceGateway {
               `controller_dispatch_unknown:${error instanceof Error ? error.message : 'transport_failed'}`
             );
           }
+          const parsedResult = ros2ControllerResultSchema.safeParse(result);
+          if (!parsedResult.success) throw new Error('controller_result_invalid');
+          result = parsedResult.data;
           if (!result.accepted) throw new Error(`controller_goal_rejected:${result.detail}`);
-          if (result.completed === false) {
+          if (result.completed !== true) {
             throw new Error(`controller_result_unconfirmed:${result.detail}`);
           }
-          if (result.completed === true && result.succeeded !== true) {
+          if (result.succeeded !== true) {
             throw new Error(`controller_goal_failed:${result.errorCode ?? 'unknown'}:${result.detail}`);
           }
           return result;
