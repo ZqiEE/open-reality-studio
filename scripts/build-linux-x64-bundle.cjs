@@ -66,6 +66,7 @@ try {
     join(root, "examples", "husarion-rosbot-gazebo"),
     join(stage, "examples", "husarion-rosbot-gazebo"),
   );
+  mkdirSync(join(stage, "scripts"), { recursive: true });
   for (const script of [
     "husarion-gazebo-acceptance.sh",
     "husarion-gazebo-monitor.py",
