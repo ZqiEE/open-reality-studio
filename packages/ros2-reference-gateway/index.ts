@@ -119,21 +119,39 @@ export const ros2ControllerResultSchema = z.object({
 
 export type Ros2ControllerResult = z.infer<typeof ros2ControllerResultSchema>;
 
-export interface Ros2DoctorReport {
-  rosAvailable: boolean;
-  rosDistro: string | null;
-  rmwImplementation: string | null;
-  rosDomainId: string;
-  proposalTopic: string;
-  jointStateTopic: string;
-  controllerAction: string;
-  discoveryTimeoutSeconds?: number;
-  jointStateFresh: boolean;
-  actionServerAvailable: boolean;
-  sros2Enabled: boolean;
-  limitations: string[];
-  detail?: string;
+function boundedDoctorText(maximumLength: number, label: string) {
+  return z.string().min(1).max(maximumLength).refine(
+    isUnicodeScalarText,
+    `${label} must contain only Unicode scalar values`
+  );
 }
+
+export const ros2DoctorReportSchema = z.object({
+  rosAvailable: z.boolean(),
+  rosDistro: boundedDoctorText(128, 'ROS distro').nullable(),
+  rmwImplementation: boundedDoctorText(256, 'RMW implementation').nullable(),
+  rosDomainId: z.string().min(1).max(64).refine(
+    isUnicodeScalarText,
+    'ROS domain ID must contain only Unicode scalar values'
+  ),
+  proposalTopic: boundedDoctorText(512, 'proposal topic'),
+  jointStateTopic: boundedDoctorText(512, 'joint-state topic'),
+  controllerAction: boundedDoctorText(512, 'controller action'),
+  discoveryTimeoutSeconds: z.number().finite().min(1).max(120).optional(),
+  jointStateFresh: z.boolean(),
+  actionServerAvailable: z.boolean(),
+  sros2Enabled: z.boolean(),
+  limitations: z.array(z.string().min(1).max(256).refine(
+    isUnicodeScalarText,
+    'doctor limitation must contain only Unicode scalar values'
+  )).max(32),
+  detail: z.string().max(8_192).refine(
+    isUnicodeScalarText,
+    'doctor detail must contain only Unicode scalar values'
+  ).optional()
+}).strict();
+
+export type Ros2DoctorReport = z.infer<typeof ros2DoctorReportSchema>;
 
 export interface Ros2ReferenceTransport {
   subscribeProposals(handler: (payload: string) => Promise<void>): Promise<void>;

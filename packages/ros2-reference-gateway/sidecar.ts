@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import {
   jointStateSnapshotSchema,
   ros2ControllerResultSchema,
+  ros2DoctorReportSchema,
   type JointStateSnapshot,
   type JointTrajectoryAction,
   type Ros2DoctorReport,
@@ -98,7 +99,15 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
   }
 
   async doctor(): Promise<Ros2DoctorReport> {
-    return this.request("doctor", {}) as Promise<Ros2DoctorReport>;
+    const parsed = ros2DoctorReportSchema.safeParse(
+      await this.request("doctor", {}),
+    );
+    if (!parsed.success) {
+      const error = new Error("ros2_sidecar_doctor_report_invalid");
+      this.failChannel(error);
+      throw error;
+    }
+    return parsed.data;
   }
 
   async close(): Promise<void> {
@@ -230,7 +239,13 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
       if (newline === -1) return;
       const line = this.stdoutBuffer.toString("utf8");
       this.stdoutBuffer = Buffer.alloc(0);
-      void this.handleLine(line);
+      void this.handleLine(line).catch((error) => {
+        this.failChannel(
+          error instanceof Error
+            ? error
+            : new Error("ros2_sidecar_response_invalid"),
+        );
+      });
       offset = newline + 1;
     }
   }
@@ -238,7 +253,11 @@ export class PythonRos2SidecarTransport implements Ros2ReferenceTransport {
   private async handleLine(line: string): Promise<void> {
     let message: Record<string, unknown>;
     try {
-      message = JSON.parse(line) as Record<string, unknown>;
+      const parsed = JSON.parse(line) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("response_must_be_object");
+      }
+      message = parsed as Record<string, unknown>;
     } catch {
       this.failChannel(new Error("ros2_sidecar_response_malformed"));
       return;

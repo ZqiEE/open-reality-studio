@@ -26,6 +26,7 @@ import {
 } from "../../packages/cloud-client";
 import {
   appendEvidence,
+  verifyEvidenceBundle,
   type ChainedEvidence,
   type EvidenceBundle,
   type ExecutionEvidence,
@@ -466,7 +467,6 @@ function runOneShot(operation: "doctor" | "inspect", options: Options): number {
 
 export class FileEvidenceSink implements EvidenceSink {
   private entries: ChainedEvidence[] = [];
-  private readonly createdAt = new Date().toISOString();
   private serializedBytes = 0;
   private readonly limits: {
     maxEntries: number;
@@ -518,15 +518,29 @@ export class FileEvidenceSink implements EvidenceSink {
       throw new Error("evidence_entry_capacity_exceeded");
     }
     const entries = [...this.entries, appendEvidence(this.entries, evidence)];
+    const decisionMadeAt = Date.parse(evidence.decisionMadeAt);
+    if (!Number.isFinite(decisionMadeAt)) {
+      throw new Error("evidence_bundle_invalid:evidence_time_inconsistent");
+    }
+    const createdAtMs = Date.now();
+    if (decisionMadeAt > createdAtMs) {
+      throw new Error("evidence_bundle_invalid:evidence_time_inconsistent");
+    }
     const bundle: EvidenceBundle = {
       apiVersion: "realitywarden.io/v1alpha1",
       kind: "EvidenceBundle",
       releaseId: this.release.metadata.releaseId,
       executablePolicyHash: executablePolicyHash(this.release),
-      createdAt: this.createdAt,
+      createdAt: new Date(createdAtMs).toISOString(),
       entries,
       testReportSha256: this.release.evidence.testReportSha256,
     };
+    const verification = verifyEvidenceBundle(bundle, {
+      now: new Date(createdAtMs),
+    });
+    if (!verification.ok) {
+      throw new Error(`evidence_bundle_invalid:${verification.reason}`);
+    }
     const content = `${JSON.stringify(bundle, null, 2)}\n`;
     const contentBytes = Buffer.byteLength(content, "utf8");
     if (contentBytes > this.limits.maxBytes) {

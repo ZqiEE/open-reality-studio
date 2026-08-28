@@ -22,6 +22,7 @@ import {
   type ExecutionConfigurationV2
 } from '../../packages/core/execution-configuration';
 import type { ReleaseRecord } from '../../packages/core/release-policy';
+import type { EvidenceSink } from '../../packages/core/execution-gate';
 import {
   HUSARION_ROSBOT_COMMAND_TOPIC,
   HUSARION_ROSBOT_MESSAGE_TYPE,
@@ -199,6 +200,7 @@ class FakeTransport implements HusarionRosbotTransport {
   readinessChecks = 0;
   beforeReadiness?: () => void;
   beforePublish?: () => void;
+  afterPublish?: () => void;
 
   async getOdometryObservation(): Promise<unknown | undefined> {
     this.beforeObservation?.();
@@ -215,6 +217,7 @@ class FakeTransport implements HusarionRosbotTransport {
     this.beforePublish?.();
     if (!this.commandPathReady) throw new Error('command_path_unavailable');
     this.publications.push(candidate);
+    this.afterPublish?.();
     return {
       published: true as const,
       topic: '/cmd_vel',
@@ -231,6 +234,7 @@ function setup(mode: 'shadow' | 'run', options: {
   state?: unknown;
   controllerIdentity?: string;
   stateReadAt?: Date;
+  evidence?: EvidenceSink;
 } = {}) {
   let currentNow = NOW;
   const spec = release(mode === 'shadow' ? 'shadow' : 'released');
@@ -265,7 +269,7 @@ function setup(mode: 'shadow' | 'run', options: {
       return observed;
     },
     transport,
-    evidence: { append: (entry) => { entries.push(entry); } },
+    evidence: options.evidence ?? { append: (entry) => { entries.push(entry); } },
     now: () => currentNow
   });
   return {
@@ -355,7 +359,9 @@ test('live state freshness uses time after a blocking observation', async () => 
   assert.equal(result.hardwareSignalSent, true);
   assert.equal(current.transport.publications.length, 1);
   assert.equal(current.entries.at(-1)?.stateObservedAt, new Date(NOW.getTime() + 2_000).toISOString());
-  assert.equal(current.entries.at(-1)?.decisionMadeAt, new Date(NOW.getTime() + 2_000).toISOString());
+  const decisionMadeAt = Date.parse(current.entries.at(-1)!.decisionMadeAt);
+  assert.ok(decisionMadeAt >= NOW.getTime() + 2_000);
+  assert.ok(decisionMadeAt < NOW.getTime() + 2_500);
 });
 
 test('configuration mismatch and execute-time drift block before publication', async () => {
@@ -553,7 +559,7 @@ test('command path becoming ready within the bounded startup publishes exactly o
   assert.equal(current.transport.publications.length, 1);
 });
 
-test('subscriber disappearing immediately before dispatch fails closed with zero publication', async () => {
+test('subscriber disappearing at the transport boundary is reported as attempted but unconfirmed', async () => {
   const current = setup('run');
   current.transport.beforePublish = () => {
     current.transport.commandPathReady = false;
@@ -561,10 +567,44 @@ test('subscriber disappearing immediately before dispatch fails closed with zero
   const result = await current.gateway.handleProposal(proposal(current.spec));
   assert.equal(result.decision, 'failed');
   assert.equal(result.reason, 'command_path_unavailable');
-  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(result.hardwareSignalSent, true);
   assert.equal(result.publicationCount, 0);
   assert.equal(current.transport.readinessChecks, 1);
   assert.equal(current.transport.publications.length, 0);
+  assert.equal(current.entries.at(-1)?.hardwareSignalState, 'attempted_unconfirmed');
+  assert.equal(current.entries.at(-1)?.hardwareSignalSent, true);
+});
+
+test('Evidence preflight failure blocks before the transport boundary', async () => {
+  const current = setup('run', {
+    evidence: {
+      append() {},
+      assertWritableBeforeDispatch() {
+        throw new Error('evidence_output_unwritable');
+      }
+    }
+  });
+  const result = await current.gateway.handleProposal(proposal(current.spec));
+  assert.equal(result.decision, 'failed');
+  assert.equal(result.reason, 'evidence_output_unwritable');
+  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(result.publicationCount, 0);
+  assert.equal(current.transport.publications.length, 0);
+});
+
+test('lost acknowledgement after publication remains conservatively attempted and unconfirmed', async () => {
+  const current = setup('run');
+  current.transport.afterPublish = () => {
+    throw new Error('sidecar_acknowledgement_lost');
+  };
+  const result = await current.gateway.handleProposal(proposal(current.spec));
+  assert.equal(result.decision, 'failed');
+  assert.equal(result.reason, 'sidecar_acknowledgement_lost');
+  assert.equal(result.hardwareSignalSent, true);
+  assert.equal(result.publicationCount, 0);
+  assert.equal(current.transport.publications.length, 1);
+  assert.equal(current.entries.at(-1)?.hardwareSignalState, 'attempted_unconfirmed');
+  assert.equal(current.entries.at(-1)?.hardwareSignalSent, true);
 });
 
 test('allowed Run publishes once and the single-use permit cannot publish twice', async () => {
@@ -600,7 +640,7 @@ test('Evidence binds action/configuration and verifies as a hash chain', async (
     kind: 'EvidenceBundle',
     releaseId: current.spec.metadata.releaseId,
     executablePolicyHash: executablePolicyHash(current.spec),
-    createdAt: NOW.toISOString(),
+    createdAt: evidence.decisionMadeAt,
     entries: chain
   }), { ok: true });
 });

@@ -36,6 +36,7 @@ import {
   InMemoryReleaseResolver,
   InMemoryReleaseRecordStore,
   Ros2ReferenceGateway,
+  ros2DoctorReportSchema,
   ros2ProposalEnvelopeSchema,
   type JointStateSnapshot,
   type JointTrajectoryAction,
@@ -353,7 +354,8 @@ async function testReplayPersistence(): Promise<void> {
       "run",
       new FileProposalReplayRegistry(replayPath),
     );
-    await first.gateway.handlePayload(proposal(first.spec));
+    const firstResult = await first.gateway.handlePayload(proposal(first.spec));
+    assert.equal(firstResult.decision, "allowed", JSON.stringify(firstResult));
     assert.equal(first.transport.dispatches, 1);
 
     const restarted = setup(
@@ -402,6 +404,36 @@ async function testReplayPersistence(): Promise<void> {
       const bundle = JSON.parse(readFileSync(path, "utf8")) as EvidenceBundle;
       assert.deepEqual(verifyEvidenceBundle(bundle), { ok: true });
     }
+
+    const delayedEvidencePath = join(root, "evidence", "delayed.json");
+    const delayedSink = new FileEvidenceSink(observed.spec, delayedEvidencePath);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 5));
+    const delayedDecisionAt = new Date().toISOString();
+    delayedSink.append({
+      ...entry,
+      proposalId: "delayed-proposal",
+      decisionMadeAt: delayedDecisionAt,
+    });
+    const delayedBundle = JSON.parse(
+      readFileSync(delayedEvidencePath, "utf8"),
+    ) as EvidenceBundle;
+    assert.ok(Date.parse(delayedBundle.createdAt) >= Date.parse(delayedDecisionAt));
+    assert.deepEqual(
+      verifyEvidenceBundle(delayedBundle),
+      { ok: true },
+    );
+
+    const futureEvidencePath = join(root, "evidence", "future.json");
+    const futureSink = new FileEvidenceSink(observed.spec, futureEvidencePath);
+    assert.throws(
+      () => futureSink.append({
+        ...entry,
+        proposalId: "future-proposal",
+        decisionMadeAt: new Date(Date.now() + 1_000).toISOString(),
+      }),
+      /evidence_bundle_invalid:evidence_time_inconsistent/,
+    );
+    assert.equal(readFileSync(futureEvidencePath).length, 0);
 
     const resultPath = join(root, "evidence", "cloud-result.json");
     const resultOwner = new PrivateResultFile(resultPath);
@@ -768,7 +800,7 @@ async function testEvidence(): Promise<void> {
     kind: "EvidenceBundle",
     releaseId: rejected.spec.metadata.releaseId,
     executablePolicyHash: executablePolicyHash(rejected.spec),
-    createdAt: NOW.toISOString(),
+    createdAt: chain.at(-1)!.evidence.decisionMadeAt,
     entries: chain,
   };
   assert.deepEqual(verifyEvidenceBundle(bundle), { ok: true });
@@ -788,6 +820,25 @@ function sourceFiles(path: string): string[] {
 
 async function testNoBypass(): Promise<void> {
   const root = process.cwd();
+  const validDoctorReport = await new SpyTransport().doctor();
+  assert.deepEqual(
+    ros2DoctorReportSchema.parse(validDoctorReport),
+    validDoctorReport,
+  );
+  assert.throws(
+    () => ros2DoctorReportSchema.parse({
+      ...validDoctorReport,
+      unexpectedAuthority: true,
+    }),
+    /Unrecognized key/,
+  );
+  assert.throws(
+    () => ros2DoctorReportSchema.parse({
+      ...validDoctorReport,
+      limitations: ["x".repeat(257)],
+    }),
+    /String must contain at most 256 character/,
+  );
   const sidecar = readFileSync(
     join(root, "experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py"),
     "utf8",
@@ -960,6 +1011,39 @@ async function testNoBypass(): Promise<void> {
     /ros2_sidecar_unsolicited_response/,
   );
   await unsolicitedTransport.close();
+
+  const primitiveReplyTransport = new PythonRos2SidecarTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: join(__dirname, "invalidProtocolSidecar.js"),
+    proposalTopic: "/primitive-doctor-reply",
+    discoveryTimeoutMs: 1_000,
+  });
+  await assert.rejects(
+    primitiveReplyTransport.doctor(),
+    /ros2_sidecar_response_malformed/,
+  );
+  await assert.rejects(
+    primitiveReplyTransport.doctor(),
+    /ros2_sidecar_response_malformed/,
+    "a primitive JSON response must poison the sidecar channel",
+  );
+  await primitiveReplyTransport.close();
+
+  const invalidDoctorTransport = new PythonRos2SidecarTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: join(__dirname, "invalidProtocolSidecar.js"),
+    discoveryTimeoutMs: 1_000,
+  });
+  await assert.rejects(
+    invalidDoctorTransport.doctor(),
+    /ros2_sidecar_doctor_report_invalid/,
+  );
+  await assert.rejects(
+    invalidDoctorTransport.doctor(),
+    /ros2_sidecar_doctor_report_invalid/,
+    "an invalid Doctor report must poison the sidecar channel",
+  );
+  await invalidDoctorTransport.close();
 
   const oneShotStartedAt = Date.now();
   await assert.rejects(
