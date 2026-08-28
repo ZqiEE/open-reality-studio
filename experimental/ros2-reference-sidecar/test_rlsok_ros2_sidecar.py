@@ -167,6 +167,39 @@ class SidecarFailureAndDiscoveryTests(unittest.TestCase):
             node.discovery_errors[0]["detail"], "controller_manager_response_missing"
         )
 
+    def test_discovery_waits_for_each_active_supported_controller_action(self):
+        report = {
+            "trajectoryActionServers": [
+                {"name": "/joint_trajectory_controller/follow_joint_trajectory"}
+            ],
+            "controllerManagers": [
+                {
+                    "namespace": "/",
+                    "controllers": [
+                        {
+                            "name": "joint_trajectory_controller",
+                            "type": "joint_trajectory_controller/JointTrajectoryController",
+                            "state": "inactive",
+                        },
+                        {
+                            "name": "scaled_joint_trajectory_controller",
+                            "type": "ur_controllers/ScaledJointTrajectoryController",
+                            "state": "active",
+                        },
+                    ],
+                }
+            ],
+        }
+        self.assertFalse(
+            SIDECAR.DiscoveryNode.trajectory_controller_actions_complete(report)
+        )
+        report["trajectoryActionServers"].append(
+            {"name": "/scaled_joint_trajectory_controller/follow_joint_trajectory"}
+        )
+        self.assertTrue(
+            SIDECAR.DiscoveryNode.trajectory_controller_actions_complete(report)
+        )
+
     def test_missing_goal_response_is_unknown_not_rejection(self):
         class CompletedWithoutHandle:
             @staticmethod

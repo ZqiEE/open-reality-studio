@@ -456,6 +456,30 @@ class DiscoveryNode(NodeBase):
             topic in self.robot_descriptions for topic in robot_description_topics
         )
 
+    @staticmethod
+    def trajectory_controller_actions_complete(report: Dict[str, Any]) -> bool:
+        action_names = {
+            action["name"] for action in report["trajectoryActionServers"]
+        }
+        if not action_names:
+            return False
+        supported_controller_types = {
+            "joint_trajectory_controller/JointTrajectoryController",
+            "ur_controllers/ScaledJointTrajectoryController",
+        }
+        expected_actions = set()
+        for manager in report["controllerManagers"]:
+            namespace = manager["namespace"].rstrip("/")
+            for controller in manager["controllers"]:
+                if (
+                    controller["state"] == "active"
+                    and controller["type"] in supported_controller_types
+                ):
+                    expected_actions.add(
+                        f"{namespace}/{controller['name']}/follow_joint_trajectory"
+                    )
+        return expected_actions.issubset(action_names)
+
     def report(self) -> Dict[str, Any]:
         topic_pairs = self._safe_discovery_query(
             "topic_graph_query", "report", self.get_topic_names_and_types
@@ -651,7 +675,7 @@ def main() -> int:
             if (
                 sources
                 and all(source["sample"] for source in sources)
-                and report["trajectoryActionServers"]
+                and node.trajectory_controller_actions_complete(report)
                 and node.auxiliary_discovery_complete()
             ):
                 break
