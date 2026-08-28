@@ -26,6 +26,14 @@ async function main(): Promise<void> {
   let draft: { execSpec: ExecutablePolicySpec } | undefined;
   let approvedSpec: ExecutablePolicySpec | undefined;
   let evidenceBody: Record<string, unknown> | undefined;
+  let evidenceRecord:
+    | (Record<string, unknown> & {
+        sequence: number;
+        previousHash: null;
+        createdAt: string;
+        evidenceHash: string;
+      })
+    | undefined;
   let permitBody: Record<string, unknown> | undefined;
   let pairingStarted = false;
   let tamperArtifactAfterApproval = false;
@@ -112,15 +120,6 @@ async function main(): Promise<void> {
     } else if (request.method === "POST" && path === "/v1/evidence") {
       evidenceBody = body;
       status = 201;
-      result = {
-        evidenceId,
-        sequence: 0,
-        previousHash: null,
-        evidenceHash: "pending",
-        createdAt: new Date().toISOString(),
-      };
-    } else if (request.method === "GET" && path === `/v1/evidence/${evidenceId}`) {
-      assert(evidenceBody);
       const createdAt = new Date().toISOString();
       const record = {
         sequence: 0,
@@ -132,11 +131,24 @@ async function main(): Promise<void> {
         payload: evidenceBody.payload,
         createdAt,
       };
+      evidenceRecord = {
+        ...record,
+        evidenceHash: sha256(canonicalJson(record)),
+      };
+      result = {
+        evidenceId,
+        sequence: evidenceRecord.sequence,
+        previousHash: evidenceRecord.previousHash,
+        evidenceHash: evidenceRecord.evidenceHash,
+        createdAt: evidenceRecord.createdAt,
+      };
+    } else if (request.method === "GET" && path === `/v1/evidence/${evidenceId}`) {
+      assert(evidenceBody);
+      assert(evidenceRecord);
       result = {
         apiVersion,
         id: evidenceId,
-        ...record,
-        evidenceHash: sha256(canonicalJson(record)),
+        ...evidenceRecord,
       };
     } else {
       status = 404;
@@ -274,6 +286,11 @@ async function main(): Promise<void> {
     assert.equal(evidence.hardwareSignalSent, false);
     assert.equal(evidence.controllerGoalsAttempted, 0);
     assert.equal(evidence.evidenceVerified, true);
+    assert.equal(
+      (evidenceBody?.payload as Record<string, unknown>)
+        .cloudPermitConsumptionState,
+      "consumed",
+    );
     assert.equal(readFileSync(setup.artifactPath, "utf8"), "exact-policy-bytes\n");
     if (liveDiscovery) {
       const liveSetup = JSON.parse(
