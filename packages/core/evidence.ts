@@ -215,6 +215,15 @@ function accountCanonicalString(value: string, budget: CanonicalBudget): void {
   }
 }
 
+function isArrayIndexObjectKey(value: string): boolean {
+  if (!/^(?:0|[1-9][0-9]*)$/.test(value)) return false;
+  const numeric = Number(value);
+  return Number.isInteger(numeric)
+    && numeric >= 0
+    && numeric <= 4_294_967_294
+    && String(numeric) === value;
+}
+
 function canonicalize(
   value: unknown,
   budget: CanonicalBudget,
@@ -263,6 +272,9 @@ function canonicalize(
     }
     if (entries.some(([key]) => !isUnicodeScalarString(key))) {
       throw new Error('canonical_json_rejects_unpaired_surrogate');
+    }
+    if (entries.some(([key]) => isArrayIndexObjectKey(key))) {
+      throw new Error('canonical_json_rejects_array_index_object_key');
     }
     for (const [key] of entries) accountCanonicalString(key, budget);
     return Object.fromEntries(

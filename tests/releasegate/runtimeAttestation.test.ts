@@ -440,7 +440,7 @@ test('gate records deterministic attestation evidence and verifies its hash chai
     kind: 'EvidenceBundle',
     releaseId: spec.metadata.releaseId,
     executablePolicyHash: executablePolicyHash(spec),
-    createdAt: NOW.toISOString(),
+    createdAt: evidence.decisionMadeAt,
     entries: [chained]
   }), { ok: true });
 });

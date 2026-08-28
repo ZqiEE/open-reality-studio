@@ -230,7 +230,7 @@ test('configuration drift invalidates an issued permit before zero dispatch and 
     kind: 'EvidenceBundle',
     releaseId: spec.metadata.releaseId,
     executablePolicyHash: executablePolicyHash(spec),
-    createdAt: NOW.toISOString(),
+    createdAt: evidence.decisionMadeAt,
     entries: [chained]
   }), { ok: true });
 });
