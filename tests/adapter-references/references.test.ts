@@ -263,7 +263,8 @@ test('technical contributor attribution is opt-in, factual and does not imply en
     'Aditya Jindal',
     'Bartosz Burda',
     'Dr. Denis Stogl',
-    'Atsushi Kuwagata'
+    'Atsushi Kuwagata',
+    'Rune Søe-Knudsen'
   ]);
   assert.equal(contributors.every(({ optInConfirmed }) => optInConfirmed === true), true);
   assert.equal(contributors[0]?.preferredUrl, 'https://github.com/xiao-yang25');
@@ -280,6 +281,16 @@ test('technical contributor attribution is opt-in, factual and does not imply en
   assert.equal('preferredUrl' in contributors[5]!, false);
   assert.equal(contributors[6]?.organization, 'RT Corporation');
   assert.equal(contributors[6]?.preferredUrl, 'https://rt-net.jp');
+  assert.equal(contributors[7]?.organization, 'Universal Robots');
+  assert.equal(
+    contributors[7]?.contribution,
+    'Provided technical review and clarification regarding Universal Robots ROS 2 driver speed-scaling behavior and the scaled trajectory controller.'
+  );
+  assert.equal(
+    contributors[7]?.attributionBoundary,
+    'This attribution should not be interpreted as an endorsement by either Rune Søe-Knudsen or Universal Robots.'
+  );
+  assert.equal(contributors[7]?.preferredUrl, 'https://www.universal-robots.com/');
   for (const contributor of contributors) {
     assert.equal('title' in contributor, false);
     assert.equal('logo' in contributor, false);
@@ -291,6 +302,12 @@ test('technical contributor attribution is opt-in, factual and does not imply en
   );
   assert.equal(
     contributors.some(({ displayName }) => displayName === 'Max Conway'),
+    false
+  );
+  assert.equal(
+    contributors.some(({ displayName }) =>
+      ['Loke Ji Xian', 'Ivan Perez Dominguez'].includes(String(displayName))
+    ),
     false
   );
 });

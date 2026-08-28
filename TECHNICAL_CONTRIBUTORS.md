@@ -30,6 +30,11 @@ organization relationship. No logos are used.
   distinct roles of URDF hardware limits, MoveIt planning constraints,
   ros2_control drive limits, and live encoder/controller posture, helping avoid
   blindly binding all sources into one execution identity.
+- [Rune Søe-Knudsen](https://www.universal-robots.com/) — Universal Robots.
+  Provided technical review and clarification regarding Universal Robots ROS 2
+  driver speed-scaling behavior and the scaled trajectory controller. This
+  attribution should not be interpreted as an endorsement by either Rune
+  Søe-Knudsen or Universal Robots.
 
 The machine-readable source of truth is
 [`docs/technical-contributors.json`](docs/technical-contributors.json). Add a

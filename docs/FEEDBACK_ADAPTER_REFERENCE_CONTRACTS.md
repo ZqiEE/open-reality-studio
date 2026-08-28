@@ -136,3 +136,20 @@ instead emit a stable compatibility-envelope source only when the integration
 explicitly defines and qualifies that envelope; version similarity or an
 unchanged public interface is not enough. This is adapter normalization into
 existing v2 provenance, not a new Core subsystem.
+
+## Execution-critical launch and hardware binding
+
+Selected ROS 2 launch semantics can belong to the approved setup when they
+choose an execution-critical path, such as mock or simulated components versus
+real hardware. The adapter should bind the smallest stable inputs that determine
+that choice. It must not mirror the complete Python launch program or all
+runtime configuration into RLSOK, because doing so creates noisy invalidation
+and a second source that must be maintained in parallel with the ROS stack.
+
+For a mobile base, a useful minimum execution-binding boundary can select the
+`ros2_control` hardware component, drive controller, and wheel mapping that
+jointly determine how commands reach the motors. These are integration-owned
+configuration identities represented through existing v2 provenance. Sensor
+bringup, unrelated launch arguments, and live robot state are not included by
+default. This records CRANE+ and Lidarbot architecture feedback; it is not a
+CRANE+ or Lidarbot integration, validation, endorsement, or new Core feature.
