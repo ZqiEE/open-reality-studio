@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import test from 'node:test';
 import {
   InMemoryReleaseResolver,
@@ -10,6 +11,7 @@ import {
   Ros2ReferenceGateway
 } from '../../packages/ros2-reference-gateway';
 import { PythonRos2SidecarTransport } from '../../packages/ros2-reference-gateway/sidecar';
+import { FileProposalReplayRegistry } from '../../packages/cloud-client/replay-registry';
 import type { EvidenceSink } from '../../packages/core/execution-gate';
 import type { ExecutionEvidence } from '../../packages/core/evidence';
 import {
@@ -102,6 +104,9 @@ async function runCase(
     controllerAction: `${topicPrefix}/follow_joint_trajectory`
   });
   const evidence = new CollectingEvidence();
+  const replayRoot = mode === 'run'
+    ? mkdtempSync(join(tmpdir(), `rlsok-dds-replay-${name}-`))
+    : undefined;
   let configurationReads = 0;
   const gateway = new Ros2ReferenceGateway({
     mode,
@@ -110,6 +115,9 @@ async function runCase(
     releaseRecords: records,
     transport,
     evidence,
+    proposalReplayRegistry: replayRoot
+      ? new FileProposalReplayRegistry(replayRoot)
+      : undefined,
     executionConfiguration: async () => {
       configurationReads += 1;
       const observed = configurationDrift && configurationReads >= 2
@@ -190,6 +198,7 @@ async function runCase(
     }
     if (fixtureNode.exitCode === null) fixtureNode.kill('SIGKILL');
     await transport.close();
+    if (replayRoot) rmSync(replayRoot, { recursive: true, force: true });
   }
 }
 
