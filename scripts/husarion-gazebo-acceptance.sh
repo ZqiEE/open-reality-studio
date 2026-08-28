@@ -35,7 +35,7 @@ mux_source_topic="$topic_prefix/twist_mux_controller/source"
 controller_manager="$topic_prefix/controller_manager"
 mux_node="$topic_prefix/twist_mux_controller"
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-source_commit="$(git -C "$repo_root" rev-parse HEAD)"
+source_commit="$(git -c safe.directory="$repo_root" -C "$repo_root" rev-parse HEAD)"
 gazebo_pid=""
 monitor_pid=""
 monitor_name=""
@@ -105,7 +105,10 @@ diagnostics() {
 trap 'diagnostics $?' ERR
 trap cleanup_background EXIT
 
-actual_commit="$(git -C "$HUSARION_WS/src/rosbot_ros" rev-parse HEAD)"
+actual_commit="$(
+  git -c safe.directory="$HUSARION_WS/src/rosbot_ros" \
+    -C "$HUSARION_WS/src/rosbot_ros" rev-parse HEAD
+)"
 [[ "$actual_commit" == "$PINNED_COMMIT" ]]
 echo "$actual_commit" > "$proof_dir/upstream-commit.txt"
 echo "$PINNED_CONTROLLER_SHA  $controller" | sha256sum --check
