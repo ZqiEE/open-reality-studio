@@ -333,6 +333,29 @@ test("Cloud Evidence consumption tri-state rejects internally inconsistent claim
       },
     },
   }).success, false);
+  assert.equal(submitEvidenceSchema.safeParse({
+    ...valid,
+    payload: {
+      ...valid.payload,
+      observedConfigurationDigest: "f".repeat(64),
+    },
+  }).success, false);
+  assert.equal(submitEvidenceSchema.safeParse({
+    ...valid,
+    decision: "failed",
+    hardwareSignalSent: true,
+    payload: {
+      ...valid.payload,
+      evaluationMode: "reference-run",
+      controllerGoalsAttempted: 1,
+      controllerResult: {
+        accepted: true,
+        completed: true,
+        succeeded: true,
+        detail: "controller_reported_success_but_response_was_invalid",
+      },
+    },
+  }).success, true);
 });
 
 test("cloud ROS 2 eligibility fails closed when the current time is invalid", () => {
@@ -521,6 +544,27 @@ test("idempotent mutations retry an ambiguous transport failure with one stable 
     },
     {
       invoke: (client: RlsokCloudClient) =>
+        client.consumePermit(
+          "11111111-1111-4111-8111-111111111111",
+          {
+            evaluationMode: "shadow",
+            releaseId: spec.metadata.releaseId,
+            contentHash: fixture.expected.contentHash,
+            actionHash: fixture.expected.actionHash,
+            deviceId: "fixture-arm-01",
+            controllerId: spec.robot.controllerConfigSha256,
+            configurationDigest,
+          },
+          "consume-ambiguous-result-00001",
+        ),
+      response: {
+        apiVersion: "rlsok-cloud/v1",
+        permitId: "11111111-1111-4111-8111-111111111111",
+        consumed: true,
+      },
+    },
+    {
+      invoke: (client: RlsokCloudClient) =>
         client.submitEvidence(
           {
             releaseId: spec.metadata.releaseId,
@@ -663,8 +707,10 @@ test("new runtime detects old Cloud Permit consume as an actionable rollout inco
 test("new runtime Permit consume remains compatible with new Cloud", async () => {
   const permitId = "11111111-1111-4111-8111-111111111111";
   let consumeBody: Record<string, unknown> | undefined;
+  let consumeKey: string | null = null;
   const newCloud = new RlsokCloudClient(config, async (_input, init) => {
     consumeBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    consumeKey = new Headers(init?.headers).get("idempotency-key");
     return json({ apiVersion: "rlsok-cloud/v1", permitId, consumed: true });
   });
   const result = await newCloud.consumePermit(permitId, {
@@ -678,6 +724,7 @@ test("new runtime Permit consume remains compatible with new Cloud", async () =>
   });
   assert.equal(result.consumed, true);
   assert.equal(consumeBody?.evaluationMode, "shadow");
+  assert.ok(consumeKey);
 });
 
 test("cloud dispatch boundary requires and consumes its exact local permit before dispatch", async () => {
@@ -722,6 +769,40 @@ test("cloud dispatch boundary requires and consumes its exact local permit befor
   await assert.rejects(
     boundary.dispatch(fixture.action, {}),
     /local_execution_permit_invalid/,
+  );
+  assert.equal(calls.length, 0);
+  assert.equal(dispatches, 0);
+
+  const malformedBoundary = new CloudConnectedDispatchBoundary(
+    client,
+    permitId,
+    {
+      evaluationMode: "reference-run",
+      releaseId: "fixture-release-001",
+      contentHash: fixture.expected.contentHash,
+      actionHash: fixture.expected.actionHash,
+      deviceId: "fixture-arm-01",
+      controllerId:
+        "1111111111111111111111111111111111111111111111111111111111111111",
+      configurationDigest,
+    },
+    {
+      async dispatch() {
+        dispatches += 1;
+        return "accepted";
+      },
+    },
+    async () => configurationDigest,
+  );
+  const malformedPermit = malformedBoundary.issueLocalPermit(fixture.action);
+  await assert.rejects(
+    malformedBoundary.dispatch(undefined as unknown as typeof fixture.action, malformedPermit),
+    /canonical_json_rejects_unsupported_value/,
+  );
+  assert.equal(malformedBoundary.localPermitWasConsumed, true);
+  await assert.rejects(
+    malformedBoundary.dispatch(fixture.action, malformedPermit),
+    /cloud_dispatch_boundary_reused/,
   );
   assert.equal(calls.length, 0);
   assert.equal(dispatches, 0);

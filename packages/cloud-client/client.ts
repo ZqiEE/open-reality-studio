@@ -233,13 +233,18 @@ export class RlsokCloudClient {
     );
   }
 
-  async consumePermit(permitId: string, request: ConsumePermitRequest) {
+  async consumePermit(
+    permitId: string,
+    request: ConsumePermitRequest,
+    idempotencyKey: string = randomUUID(),
+  ) {
     try {
       return consumePermitResponseSchema.parse(
         await this.request(
           "POST",
           `permits/${encodeURIComponent(permitId)}/consume`,
           consumePermitRequestSchema.parse(request),
+          { idempotencyKey, retryIdempotentMutation: true },
         ),
       );
     } catch (error) {

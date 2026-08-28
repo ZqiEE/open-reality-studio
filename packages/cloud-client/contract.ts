@@ -205,6 +205,18 @@ export const submitEvidenceSchema = submitEvidenceObjectSchema.superRefine(
         message: "controller result requires exactly one controller goal attempt",
       });
     }
+    if (
+      value.decision === "allowed" &&
+      value.payload.observedConfigurationDigest !==
+        value.payload.expectedConfigurationDigest
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["payload", "observedConfigurationDigest"],
+        message:
+          "allowed Evidence requires the observed configuration to match the approved configuration",
+      });
+    }
   },
 );
 

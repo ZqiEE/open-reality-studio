@@ -91,11 +91,12 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
     return permit;
   }
 
-  private consumeLocalPermit(
-    action: TAction,
+  private beginFinalBoundary(
     localPermit: unknown,
     now = Date.now(),
   ): LocalPermitRecord {
+    if (this.used) throw new Error("cloud_dispatch_boundary_reused");
+    this.used = true;
     if (
       typeof localPermit !== "object" ||
       localPermit === null ||
@@ -114,8 +115,7 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
       now < record.issuedAt ||
       record.expiresAt <= now ||
       record.actionHash !== this.binding.actionHash ||
-      record.configurationDigest !== this.binding.configurationDigest ||
-      sha256(canonicalJson(action)) !== record.actionHash
+      record.configurationDigest !== this.binding.configurationDigest
     ) {
       throw new Error("local_execution_permit_invalid");
     }
@@ -142,11 +142,8 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
 
   private async authorizeFinalBoundary(
     action: TAction,
-    localPermit: unknown,
+    localPermitRecord: LocalPermitRecord,
   ): Promise<void> {
-    if (this.used) throw new Error("cloud_dispatch_boundary_reused");
-    this.used = true;
-    const localPermitRecord = this.consumeLocalPermit(action, localPermit);
     if (sha256(canonicalJson(action)) !== this.binding.actionHash) {
       throw new Error("cloud_action_hash_mismatch");
     }
@@ -186,8 +183,9 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
   }
 
   async dispatch(action: TAction, localPermit: unknown): Promise<TResult> {
+    const localPermitRecord = this.beginFinalBoundary(localPermit);
     const preparedAction = this.prepareBoundAction(action);
-    await this.authorizeFinalBoundary(preparedAction, localPermit);
+    await this.authorizeFinalBoundary(preparedAction, localPermitRecord);
     return this.dispatcher.dispatch(preparedAction, localPermit);
   }
 
@@ -195,11 +193,12 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
     action: TAction,
     localPermit: unknown,
   ): Promise<TResult> {
+    const localPermitRecord = this.beginFinalBoundary(localPermit);
     if (!this.dispatcher.observeShadow) {
       throw new Error("cloud_shadow_adapter_missing");
     }
     const preparedAction = this.prepareBoundAction(action);
-    await this.authorizeFinalBoundary(preparedAction, localPermit);
+    await this.authorizeFinalBoundary(preparedAction, localPermitRecord);
     return this.dispatcher.observeShadow(preparedAction, localPermit);
   }
 }
