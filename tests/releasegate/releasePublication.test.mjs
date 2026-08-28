@@ -9,6 +9,9 @@ import {
   assertCloudProof,
   assertMinimumCommit,
 } from '../../scripts/verify-production-cloud.mjs';
+import sourceIdentity from '../../scripts/source-identity.cjs';
+
+const { assertCleanGitStatus } = sourceIdentity;
 
 const proof = () => ({
   health: { status: 'ok' },
@@ -74,4 +77,17 @@ test('old or mismatched Cloud cannot be bypassed by a new runtime candidate', ()
   assert.throws(() => assertCloudProof(runEnabled), /not_shadow_only/);
 
   assert.throws(() => assertMinimumCommit({ status: 'behind' }), /before_minimum/);
+});
+
+test('package source identity rejects dirty tracked or untracked content', () => {
+  assert.doesNotThrow(() => assertCleanGitStatus(''));
+  assert.doesNotThrow(() => assertCleanGitStatus('   \n'));
+  assert.throws(
+    () => assertCleanGitStatus(' M packages/core/evidence.ts\n'),
+    /package_source_worktree_dirty/,
+  );
+  assert.throws(
+    () => assertCleanGitStatus('?? untracked-release-input.ts\n'),
+    /package_source_worktree_dirty/,
+  );
 });

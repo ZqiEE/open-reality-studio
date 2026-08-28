@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 import type { ExecutablePolicySpec } from './exec-spec';
 import { executablePolicyHash } from './exec-spec';
 import { canonicalJson, sha256, type ExecutionEvidence } from './evidence';
@@ -114,7 +115,13 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
 {
   private readonly permits = new Map<object, {
     actionHash: string;
-    expiresAt: number;
+    stateHash: string;
+    stateObservedAt: string;
+    proposalId: string;
+    executablePolicyHash: string;
+    authorizedAt: number;
+    issuedAtMonotonic: number;
+    expiresAtMonotonic: number;
     releaseId: string;
     deviceId: string;
     controllerIdentity: string;
@@ -137,7 +144,8 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     ) => Promise<ExecutionConfiguration | undefined>,
     private readonly refreshRuntimeAttestation?: (
       request: AuthorizedExecutionRequest<TAction, TState>
-    ) => Promise<RuntimeAttestation | undefined>
+    ) => Promise<RuntimeAttestation | undefined>,
+    private readonly monotonicNow: () => number = () => performance.now()
   ) {}
 
   private evidenceFor(
@@ -187,6 +195,15 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     request: ExecutionRequest<TAction, TState>
   ): Promise<ExecutionDecision<TAction, TState>> {
     const now = snapshotNow(request.now);
+    if (!Number.isFinite(now.getTime())) {
+      await this.evidence.append(this.evidenceFor(
+        { ...request, now: new Date() },
+        'blocked',
+        'current_time_invalid',
+        ['clock_validity']
+      ));
+      return { status: 'blocked', reason: 'current_time_invalid' };
+    }
     const evidenceRequest = { ...request, now };
     const eligible = executionEligibility(request.release, request.releaseRecord, request.deviceId, now);
     if (!eligible.allowed) {
@@ -252,7 +269,23 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       ));
       return { status: 'blocked', reason: 'state_stale_or_invalid' };
     }
-    if (this.hashAction(request.action) !== request.actionHash) {
+    let observedActionHash: string;
+    let stateHash: string;
+    let releaseHash: string;
+    try {
+      observedActionHash = this.hashAction(request.action);
+      stateHash = sha256(canonicalJson(request.state));
+      releaseHash = executablePolicyHash(request.release);
+    } catch {
+      await this.evidence.append(this.evidenceFor(
+        evidenceRequest,
+        'blocked',
+        'authorization_input_invalid',
+        ['action_identity', 'state_identity', 'release_eligibility']
+      ));
+      return { status: 'blocked', reason: 'authorization_input_invalid' };
+    }
+    if (observedActionHash !== request.actionHash) {
       await this.evidence.append(this.evidenceFor(
         evidenceRequest,
         'blocked',
@@ -271,10 +304,52 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       ));
       return { status: 'blocked', reason: policy.reason };
     }
+    let postPolicyActionHash: string;
+    let postPolicyStateHash: string;
+    let postPolicyReleaseHash: string;
+    try {
+      postPolicyActionHash = this.hashAction(request.action);
+      postPolicyStateHash = sha256(canonicalJson(request.state));
+      postPolicyReleaseHash = executablePolicyHash(request.release);
+    } catch {
+      postPolicyActionHash = '';
+      postPolicyStateHash = '';
+      postPolicyReleaseHash = '';
+    }
+    if (
+      postPolicyActionHash !== observedActionHash
+      || postPolicyStateHash !== stateHash
+      || postPolicyReleaseHash !== releaseHash
+    ) {
+      await this.evidence.append(this.evidenceFor(
+        evidenceRequest,
+        'blocked',
+        'authorization_input_changed_during_evaluation',
+        ['action_identity', 'state_identity', 'release_eligibility']
+      ));
+      return { status: 'blocked', reason: 'authorization_input_changed_during_evaluation' };
+    }
+    const issuedAtMonotonic = this.monotonicNow();
+    if (!Number.isFinite(issuedAtMonotonic)) {
+      await this.evidence.append(this.evidenceFor(
+        evidenceRequest,
+        'blocked',
+        'permit_clock_invalid',
+        ['clock_validity', 'single_use_permit']
+      ));
+      return { status: 'blocked', reason: 'permit_clock_invalid' };
+    }
     const permit = Object.freeze({}) as ExecutionPermit;
     this.permits.set(permit as object, {
       actionHash: request.actionHash,
-      expiresAt: now.getTime() + Math.min(1_000, request.release.runtimePolicy.maxStateAgeMs),
+      stateHash,
+      stateObservedAt: request.stateObservedAt,
+      proposalId: request.proposalId,
+      executablePolicyHash: releaseHash,
+      authorizedAt: now.getTime(),
+      issuedAtMonotonic,
+      expiresAtMonotonic:
+        issuedAtMonotonic + Math.min(1_000, request.release.runtimePolicy.maxStateAgeMs),
       releaseId: request.release.metadata.releaseId,
       deviceId: request.deviceId,
       controllerIdentity: request.controllerIdentity ?? request.release.robot.controllerConfigSha256,
@@ -293,14 +368,24 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
   }
 
   async execute(request: AuthorizedExecutionRequest<TAction, TState>): Promise<TResult> {
-    // Capture the exact JSON value synchronously, before the first await. A
-    // caller-owned object must not be able to change adapter-visible bytes
-    // while Evidence preflight or final authority refreshes are in progress.
-    const preparedAction = JSON.parse(canonicalJson(request.action)) as TAction;
     const suppliedNowMs = request.now?.getTime();
     const permit = request.permit as object;
     const record = this.permits.get(permit);
     this.permits.delete(permit);
+    const executedAtMonotonic = this.monotonicNow();
+    let preparedAction: TAction | undefined;
+    let observedStateHash: string | undefined;
+    let observedReleaseHash: string | undefined;
+    try {
+      // Capture the exact JSON value synchronously, before the first await. A
+      // caller-owned object must not be able to change adapter-visible bytes
+      // while Evidence preflight or final authority refreshes are in progress.
+      preparedAction = JSON.parse(canonicalJson(request.action)) as TAction;
+      observedStateHash = sha256(canonicalJson(request.state));
+      observedReleaseHash = executablePolicyHash(request.release);
+    } catch {
+      // The consumed permit will fail closed below with a diagnosable reason.
+    }
     await this.evidence.assertWritableBeforeDispatch?.();
     let currentReleaseRecord = request.releaseRecord;
     let currentExecutionConfiguration = request.executionConfiguration;
@@ -342,12 +427,15 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     }
     // Date is mutable. Use the synchronously captured scalar so refresh and
     // dispatch code cannot rewrite authorization or Evidence time in place.
-    const now = suppliedNowMs === undefined
+    const suppliedNowValid = suppliedNowMs === undefined || Number.isFinite(suppliedNowMs);
+    const now = suppliedNowValid && suppliedNowMs !== undefined
+      ? new Date(suppliedNowMs)
+      : suppliedNowValid
       ? new Date()
-      : new Date(suppliedNowMs);
+      : new Date();
     const currentRequest = {
       ...request,
-      action: preparedAction,
+      action: preparedAction ?? request.action,
       executionConfiguration: currentExecutionConfiguration,
       runtimeAttestation: currentRuntimeAttestation,
       // Freeze the final authorization time before dispatch. Evidence must not
@@ -382,14 +470,29 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       : Number.NaN;
     let invalidReason: string | null = null;
     if (!record) invalidReason = 'permit_unknown_or_reused';
+    else if (!suppliedNowValid) invalidReason = 'current_time_invalid';
+    else if (
+      !Number.isFinite(executedAtMonotonic)
+      || executedAtMonotonic < record.issuedAtMonotonic
+    ) invalidReason = 'permit_clock_invalid';
+    else if (executedAtMonotonic >= record.expiresAtMonotonic) invalidReason = 'permit_expired';
+    else if (now.getTime() < record.authorizedAt) invalidReason = 'execution_clock_rollback';
     else if (request.state === undefined || !request.stateObservedAt) invalidReason = 'state_missing';
     else if (
       !Number.isFinite(stateAgeMs)
       || stateAgeMs < 0
       || stateAgeMs > request.release.runtimePolicy.maxStateAgeMs
     ) invalidReason = 'state_stale_or_invalid';
-    else if (record.expiresAt <= now.getTime()) invalidReason = 'permit_expired';
+    else if (preparedAction === undefined || observedStateHash === undefined || observedReleaseHash === undefined) {
+      invalidReason = 'permit_bound_input_invalid';
+    }
     else if (record.actionHash !== request.actionHash) invalidReason = 'permit_action_binding_mismatch';
+    else if (record.stateHash !== observedStateHash) invalidReason = 'permit_state_binding_mismatch';
+    else if (record.stateObservedAt !== request.stateObservedAt) invalidReason = 'permit_state_time_binding_mismatch';
+    else if (record.proposalId !== request.proposalId) invalidReason = 'permit_proposal_binding_mismatch';
+    else if (record.executablePolicyHash !== observedReleaseHash) {
+      invalidReason = 'permit_release_content_binding_mismatch';
+    }
     else if (record.releaseId !== request.release.metadata.releaseId) invalidReason = 'permit_release_binding_mismatch';
     else if (record.deviceId !== request.deviceId) invalidReason = 'permit_device_binding_mismatch';
     else if (record.controllerIdentity !== (request.controllerIdentity ?? request.release.robot.controllerConfigSha256)) {
@@ -432,10 +535,32 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
       ));
       throw new Error(`execution_permit_invalid:${invalidReason}`);
     }
+    // Refreshes and Evidence preflight are asynchronous. Recheck the
+    // crash-local deadline at the last possible point before crossing the
+    // controller boundary; entering execute just before expiry must not buy an
+    // unbounded authorization window while those checks wait.
+    const preDispatchMonotonic = this.monotonicNow();
+    if (
+      !Number.isFinite(preDispatchMonotonic)
+      || preDispatchMonotonic < record!.issuedAtMonotonic
+      || preDispatchMonotonic >= record!.expiresAtMonotonic
+    ) {
+      const reason = !Number.isFinite(preDispatchMonotonic)
+        || preDispatchMonotonic < record!.issuedAtMonotonic
+        ? 'permit_clock_invalid'
+        : 'permit_expired';
+      await this.evidence.append(this.evidenceFor(
+        currentRequest,
+        'failed',
+        reason,
+        ['single_use_permit']
+      ));
+      throw new Error(`execution_permit_invalid:${reason}`);
+    }
     const dispatchedAt = now.toISOString();
     let result: TResult;
     try {
-      result = await this.dispatcher.dispatch(preparedAction, request.permit);
+      result = await this.dispatcher.dispatch(preparedAction as TAction, request.permit);
     } catch (error) {
       await this.evidence.append(this.evidenceFor(
         currentRequest,
@@ -480,7 +605,9 @@ export class ShadowExecutionGate<TAction, TState> {
   ) {}
 
   async evaluate(request: ExecutionRequest<TAction, TState>): Promise<ExecutionDecision<TAction, TState>> {
-    const now = snapshotNow(request.now);
+    const suppliedNow = snapshotNow(request.now);
+    const clockValid = Number.isFinite(suppliedNow.getTime());
+    const now = clockValid ? suppliedNow : new Date();
     let status: 'allowed' | 'blocked' = 'blocked';
     const identity = executablePolicyHash(request.release);
     const configuration = evaluateConfigurationBinding({
@@ -497,7 +624,9 @@ export class ShadowExecutionGate<TAction, TState> {
       now
     });
     let reason =
-      !configuration.allowed
+      !clockValid
+        ? 'current_time_invalid'
+      : !configuration.allowed
         ? configuration.reason!
       : request.releaseRecord.state === 'revoked' || request.release.evidence.status === 'revoked'
         ? 'release_revoked'
@@ -508,6 +637,13 @@ export class ShadowExecutionGate<TAction, TState> {
         : request.releaseRecord.executablePolicyHash !== identity
           || request.releaseRecord.approvedIdentityHash !== identity
           ? 'release_identity_changed_reapproval_required'
+          : request.release.approvedConfigurationDigest
+            && !request.releaseRecord.approvedConfigurationDigest
+              ? 'configuration_unbound'
+            : request.release.approvedConfigurationDigest
+              && request.releaseRecord.approvedConfigurationDigest
+                !== request.release.approvedConfigurationDigest
+                ? 'configuration_mismatch'
           : request.release.evidence.status !== 'approved'
             ? 'release_not_approved'
             : request.release.deployment.mode !== 'shadow'

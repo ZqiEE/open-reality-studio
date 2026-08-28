@@ -195,6 +195,16 @@ export const submitEvidenceSchema = submitEvidenceObjectSchema.superRefine(
         message: "hardware signal state must match controller goal attempts",
       });
     }
+    if (
+      value.payload.controllerResult !== undefined &&
+      value.payload.controllerGoalsAttempted !== 1
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["payload", "controllerResult"],
+        message: "controller result requires exactly one controller goal attempt",
+      });
+    }
   },
 );
 

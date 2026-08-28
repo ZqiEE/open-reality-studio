@@ -47,6 +47,10 @@ try {
     join(stage, "lib", "rlsok", "experimental", "ros2-reference-sidecar"),
   );
   copy(
+    join(root, "experimental", "husarion-rosbot-gazebo"),
+    join(stage, "lib", "rlsok", "experimental", "husarion-rosbot-gazebo"),
+  );
+  copy(
     join(root, "sdk", "python", "rlsok"),
     join(stage, "lib", "rlsok", "sdk", "python", "rlsok"),
   );
@@ -108,6 +112,25 @@ exec "$RLSOK_RUNTIME_ROOT/bin/node" "$RLSOK_RUNTIME_ROOT/lib/rlsok/dist/apps/cli
   }).trim();
   if (versionOutput !== `rlsok runtime ${version} (product v1.3.0)`) {
     throw new Error(`bundle_version_mismatch:${versionOutput}`);
+  }
+  const husarionSelfTest = execFileSync(
+    "python3",
+    [
+      "-S",
+      join(
+        stage,
+        "lib",
+        "rlsok",
+        "experimental",
+        "husarion-rosbot-gazebo",
+        "rlsok_husarion_rosbot_sidecar.py",
+      ),
+      "--self-test",
+    ],
+    { encoding: "utf8" },
+  );
+  if (!husarionSelfTest.includes("sidecar_self_test_passed")) {
+    throw new Error("bundle_husarion_sidecar_self_test_failed");
   }
   const uninstall = `#!/bin/sh
 set -eu

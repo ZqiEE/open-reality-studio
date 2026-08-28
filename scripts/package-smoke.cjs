@@ -13,6 +13,7 @@ const {
 const { tmpdir } = require('node:os');
 const { basename, resolve } = require('node:path');
 const { createHash } = require('node:crypto');
+const { assertCleanGitStatus } = require('./source-identity.cjs');
 
 const root = resolve(__dirname, '..');
 const npmCli = process.env.npm_execpath
@@ -29,6 +30,7 @@ function run(command, args, cwd = root) {
 }
 
 try {
+  assertCleanGitStatus(run('git', ['status', '--porcelain']));
   const packed = JSON.parse(run(process.execPath, [npmCli, 'pack', '--json']));
   const tarball = resolve(root, packed[0].filename);
   const installRoot = resolve(temporary, 'install');

@@ -132,6 +132,9 @@ interface ExecSpecCheck {
 }
 
 export function checkExecutablePolicySpec(input: unknown, now: Date = new Date()): ExecSpecCheck {
+  if (!Number.isFinite(now.getTime())) {
+    return { result: 'INVALID', reasons: ['current_time_invalid'] };
+  }
   const parsed = executablePolicySpecSchema.safeParse(input);
   if (!parsed.success) {
     return {

@@ -41,6 +41,7 @@ import {
   HUSARION_ROSBOT_CONTROLLERS_SOURCE,
   observeTrustedHusarionConfiguration
 } from '../../packages/husarion-rosbot-gazebo/trusted-observation';
+import { PythonHusarionRosbotTransport } from '../../packages/husarion-rosbot-gazebo/sidecar';
 
 const NOW = new Date('2026-08-23T00:00:00.000Z');
 const H = (character: string) => character.repeat(64);
@@ -625,6 +626,57 @@ test('Python sidecar protocol self-test does not require ROS installation', () =
   const result = spawnSync(python, ['-S', sidecar, '--self-test'], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /sidecar_self_test_passed/);
+  const bundleBuilder = readFileSync(
+    join(process.cwd(), 'scripts/build-linux-x64-bundle.cjs'),
+    'utf8'
+  );
+  assert.match(
+    bundleBuilder,
+    /experimental["'],\s*["']husarion-rosbot-gazebo/
+  );
+  assert.match(bundleBuilder, /bundle_husarion_sidecar_self_test_failed/);
+});
+
+test('Husarion sidecar IPC is bounded and poisons uncertain response channels', async () => {
+  const fixture = (name: string) => join(__dirname, '..', 'ros2-reference', name);
+  const hanging = new PythonHusarionRosbotTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: fixture('hangingSidecar.js'),
+    discoveryTimeoutMs: 1_000
+  });
+  const startedAt = Date.now();
+  await assert.rejects(
+    (hanging as any).request('doctor', {}),
+    /rosbot_sidecar_doctor_timeout/
+  );
+  assert.ok(Date.now() - startedAt < 3_000);
+  await assert.rejects(
+    (hanging as any).request('doctor', {}),
+    /rosbot_sidecar_doctor_timeout/
+  );
+  await hanging.close();
+
+  const oversized = new PythonHusarionRosbotTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: fixture('oversizedSidecar.js'),
+    discoveryTimeoutMs: 1_000
+  });
+  await assert.rejects(
+    (oversized as any).request('doctor', {}),
+    /rosbot_sidecar_response_too_large/
+  );
+  await oversized.close();
+
+  const unsolicited = new PythonHusarionRosbotTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: fixture('unsolicitedSidecar.js'),
+    discoveryTimeoutMs: 1_000
+  });
+  await assert.rejects(
+    (unsolicited as any).request('doctor', {}),
+    /rosbot_sidecar_unsolicited_response/
+  );
+  await unsolicited.close();
 });
 
 test('Husarion sidecar readiness requires the intended mux rather than an observer', () => {

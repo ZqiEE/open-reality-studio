@@ -354,6 +354,10 @@ export function verifyEvidenceBundle(
   if (!Number.isFinite(verificationTimeMs)) {
     return { ok: false, reason: 'verification_time_invalid' };
   }
+  const bundleCreatedAtMs = timestampMilliseconds(bundle.createdAt)!;
+  if (bundleCreatedAtMs > verificationTimeMs) {
+    return { ok: false, reason: 'bundle_created_at_future' };
+  }
   if (options.expiresAt !== undefined) {
     const expirationMs = timestampMilliseconds(options.expiresAt);
     if (expirationMs === null) {
@@ -365,6 +369,7 @@ export function verifyEvidenceBundle(
   }
 
   let previousHash: string | null = null;
+  let previousDecisionMadeAtMs: number | null = null;
   for (let index = 0; index < bundle.entries.length; index += 1) {
     const entry = bundle.entries[index];
     if (
@@ -391,6 +396,9 @@ export function verifyEvidenceBundle(
     const controllerResultPresent = entry.evidence.controllerResult !== undefined;
     const dispatchedAtMs = timestampMilliseconds(entry.evidence.dispatchedAt);
     const decisionMadeAtMs = timestampMilliseconds(entry.evidence.decisionMadeAt);
+    const stateObservedAtMs = entry.evidence.stateObservedAt === undefined
+      ? null
+      : timestampMilliseconds(entry.evidence.stateObservedAt);
     if (
       signalSent !== (entry.evidence.hardwareSignalState !== 'not_sent')
       || (signalSent && !dispatchedAtPresent)
@@ -408,6 +416,15 @@ export function verifyEvidenceBundle(
     ) {
       return { ok: false, reason: `hardware_evidence_inconsistent:${index}` };
     }
+    if (
+      decisionMadeAtMs === null
+      || decisionMadeAtMs > bundleCreatedAtMs
+      || decisionMadeAtMs > verificationTimeMs
+      || (previousDecisionMadeAtMs !== null && decisionMadeAtMs < previousDecisionMadeAtMs)
+      || (stateObservedAtMs !== null && stateObservedAtMs > decisionMadeAtMs)
+    ) {
+      return { ok: false, reason: `evidence_time_inconsistent:${index}` };
+    }
     const { hash, ...body } = entry;
     let observedHash: string;
     try {
@@ -419,6 +436,7 @@ export function verifyEvidenceBundle(
       return { ok: false, reason: `content_hash_mismatch:${index}` };
     }
     previousHash = hash;
+    previousDecisionMadeAtMs = decisionMadeAtMs;
   }
   return { ok: true };
 }

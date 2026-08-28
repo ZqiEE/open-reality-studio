@@ -158,6 +158,11 @@ async function testExecSpec(): Promise<void> {
   revoked.evidence = { status: 'revoked', scenarioPackId: 'pick-v3', testReportSha256: H('3'), approvedBy: '', approvedAt: '' };
   assert.equal(checkExecutablePolicySpec(revoked, NOW).result, 'BLOCK');
 
+  assert.deepEqual(checkExecutablePolicySpec(valid, new Date(Number.NaN)), {
+    result: 'INVALID',
+    reasons: ['current_time_invalid']
+  });
+
 }
 
 async function testReleasePolicyAndDiff(): Promise<void> {
@@ -252,6 +257,10 @@ async function testReleasePolicyAndDiff(): Promise<void> {
     'arm-03',
     NOW
   ), { allowed: false, reason: 'release_identity_changed_reapproval_required' });
+  assert.deepEqual(executionEligibility(release, releasedRecord(release), 'arm-03', new Date(Number.NaN)), {
+    allowed: false,
+    reason: 'current_time_invalid'
+  });
 }
 
 async function testEvidence(): Promise<void> {
@@ -426,6 +435,33 @@ async function testEvidence(): Promise<void> {
   const tampered = structuredClone(bundle);
   tampered.entries[0].evidence.decisionReason = 'edited';
   assert.match((verifyEvidenceBundle(tampered) as { ok: false; reason: string }).reason, /content_hash_mismatch/);
+
+  const futureState = appendEvidence([], {
+    ...evidenceFor(release),
+    stateObservedAt: new Date(NOW.getTime() + 1).toISOString()
+  });
+  assert.deepEqual(verifyEvidenceBundle({
+    ...bundle,
+    entries: [futureState]
+  }, { now: NOW }), { ok: false, reason: 'evidence_time_inconsistent:0' });
+
+  const later = appendEvidence([], {
+    ...evidenceFor(release),
+    decisionMadeAt: new Date(NOW.getTime() + 1).toISOString()
+  });
+  const rollback = appendEvidence([later], evidenceFor(release));
+  assert.deepEqual(verifyEvidenceBundle({
+    ...bundle,
+    createdAt: new Date(NOW.getTime() + 1).toISOString(),
+    entries: [later, rollback]
+  }, { now: new Date(NOW.getTime() + 1) }), {
+    ok: false,
+    reason: 'evidence_time_inconsistent:1'
+  });
+  assert.deepEqual(verifyEvidenceBundle({
+    ...bundle,
+    createdAt: new Date(NOW.getTime() + 1).toISOString()
+  }, { now: NOW }), { ok: false, reason: 'bundle_created_at_future' });
 }
 
 async function testGateAndShadow(): Promise<void> {
@@ -434,6 +470,8 @@ async function testGateAndShadow(): Promise<void> {
   let dispatches = 0;
   const dispatchedActions: unknown[] = [];
   let currentRecord = releasedRecord(release);
+  let monotonicNow = 10_000;
+  let monotonicAdvanceOnRefresh = 0;
   const hashAction = (action: unknown) => sha256(canonicalJson(action));
   const gate = new ReleaseExecutionGate(
     {
@@ -450,7 +488,14 @@ async function testGateAndShadow(): Promise<void> {
       matchedRuleIds: ['safe-only']
     }),
     hashAction,
-    async () => currentRecord
+    async () => {
+      monotonicNow += monotonicAdvanceOnRefresh;
+      monotonicAdvanceOnRefresh = 0;
+      return currentRecord;
+    },
+    undefined,
+    undefined,
+    () => monotonicNow
   );
 
   const action = { safe: false };
@@ -499,10 +544,22 @@ async function testGateAndShadow(): Promise<void> {
     actionHash: hashAction(safeAction)
   });
   if (expiring.status !== 'allowed') throw new Error('expected allowed');
-  await assert.rejects(gate.execute({
-    ...expiring.authorizedRequest,
-    now: new Date(NOW.getTime() + 1_001)
-  }), /execution_permit_invalid/);
+  monotonicNow += 1_001;
+  await assert.rejects(gate.execute(expiring.authorizedRequest), /execution_permit_invalid:permit_expired/);
+  assert.equal(dispatches, 1);
+
+  const expiresDuringRefresh = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-expires-during-refresh',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (expiresDuringRefresh.status !== 'allowed') throw new Error('expected allowed');
+  monotonicAdvanceOnRefresh = 1_000;
+  await assert.rejects(
+    gate.execute(expiresDuringRefresh.authorizedRequest),
+    /execution_permit_invalid:permit_expired/
+  );
   assert.equal(dispatches, 1);
 
   const another = await gate.evaluate({
@@ -575,6 +632,82 @@ async function testGateAndShadow(): Promise<void> {
   await assert.rejects(gate.execute({ ...base, permit: {} } as any), /execution_permit_invalid/);
   assert.equal(dispatches, 1);
 
+  const stateBound = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-state-bound',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (stateBound.status !== 'allowed') throw new Error('expected allowed');
+  stateBound.authorizedRequest.state = { ready: false };
+  await assert.rejects(
+    gate.execute(stateBound.authorizedRequest),
+    /execution_permit_invalid:permit_state_binding_mismatch/
+  );
+
+  const stateTimeBound = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-state-time-bound',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (stateTimeBound.status !== 'allowed') throw new Error('expected allowed');
+  stateTimeBound.authorizedRequest.stateObservedAt = new Date(NOW.getTime() - 1).toISOString();
+  await assert.rejects(
+    gate.execute(stateTimeBound.authorizedRequest),
+    /execution_permit_invalid:permit_state_time_binding_mismatch/
+  );
+
+  const proposalBound = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-id-bound',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (proposalBound.status !== 'allowed') throw new Error('expected allowed');
+  proposalBound.authorizedRequest.proposalId = 'proposal-id-forged';
+  await assert.rejects(
+    gate.execute(proposalBound.authorizedRequest),
+    /execution_permit_invalid:permit_proposal_binding_mismatch/
+  );
+
+  const releaseContentBound = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-release-content-bound',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (releaseContentBound.status !== 'allowed') throw new Error('expected allowed');
+  const changedRelease = spec({ model: { ...release.model, sha256: H('9') } });
+  releaseContentBound.authorizedRequest.release = changedRelease;
+  releaseContentBound.authorizedRequest.releaseRecord = releasedRecord(changedRelease);
+  await assert.rejects(
+    gate.execute(releaseContentBound.authorizedRequest),
+    /execution_permit_invalid:permit_release_content_binding_mismatch/
+  );
+
+  const clockRollback = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-clock-rollback',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (clockRollback.status !== 'allowed') throw new Error('expected allowed');
+  clockRollback.authorizedRequest.now = new Date(NOW.getTime() - 1);
+  await assert.rejects(
+    gate.execute(clockRollback.authorizedRequest),
+    /execution_permit_invalid:execution_clock_rollback/
+  );
+
+  const invalidClock = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-invalid-clock',
+    action: safeAction,
+    actionHash: hashAction(safeAction),
+    now: new Date(Number.NaN)
+  });
+  assert.deepEqual(invalidClock, { status: 'blocked', reason: 'current_time_invalid' });
+
   const shadowEntries: ExecutionEvidence[] = [];
   const shadow = new ShadowExecutionGate(
     { append(entry) { shadowEntries.push(entry); } },
@@ -590,6 +723,30 @@ async function testGateAndShadow(): Promise<void> {
   assert.equal(dispatches, 1);
   assert.equal(shadowEntries[0].hardwareSignalSent, false);
   assert.equal(shadowEntries[0].hardwareSignalState, 'not_sent');
+
+  const shadowConfigurationMismatch = await shadow.evaluate({
+    ...base,
+    releaseRecord: {
+      ...releasedRecord(release),
+      state: 'shadow',
+      approvedConfigurationDigest: H('9')
+    },
+    proposalId: 'proposal-shadow-configuration-mismatch',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  assert.deepEqual(shadowConfigurationMismatch, { status: 'blocked', reason: 'configuration_mismatch' });
+
+  const shadowInvalidClock = await shadow.evaluate({
+    ...base,
+    releaseRecord: { ...releasedRecord(release), state: 'shadow' },
+    proposalId: 'proposal-shadow-invalid-clock',
+    action: safeAction,
+    actionHash: hashAction(safeAction),
+    now: new Date(Number.NaN)
+  });
+  assert.deepEqual(shadowInvalidClock, { status: 'blocked', reason: 'current_time_invalid' });
+  assert.equal(shadowEntries.at(-1)?.decisionReason, 'shadow:current_time_invalid');
 
   const callerOwnedAction = { safe: true };
   const mutationSafe = await gate.evaluate({

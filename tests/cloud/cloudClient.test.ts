@@ -317,6 +317,22 @@ test("Cloud Evidence consumption tri-state rejects internally inconsistent claim
     ...valid,
     hardwareSignalSent: true,
   }).success, false);
+  assert.equal(submitEvidenceSchema.safeParse({
+    ...valid,
+    decision: "blocked",
+    hardwareSignalSent: false,
+    payload: {
+      ...valid.payload,
+      evaluationMode: "denial",
+      controllerGoalsAttempted: 0,
+      controllerResult: {
+        accepted: true,
+        completed: true,
+        succeeded: true,
+        detail: "fabricated_without_attempt",
+      },
+    },
+  }).success, false);
 });
 
 test("cloud ROS 2 eligibility fails closed when the current time is invalid", () => {
@@ -941,6 +957,40 @@ test("cloud dispatch boundary fails closed for an invalid local clock", async (c
   );
   const permit = boundary.issueLocalPermit(fixture.action, 1_000);
   context.mock.method(Date, "now", () => Number.NaN);
+  await assert.rejects(
+    boundary.dispatch(fixture.action, permit),
+    /local_execution_permit_invalid/,
+  );
+  assert.equal(cloudCalls, 0);
+});
+
+test("cloud dispatch boundary expires on actual elapsed time even when wall time is frozen", async (context) => {
+  let monotonicNow = 1_000;
+  let cloudCalls = 0;
+  context.mock.method(Date, "now", () => 1_000);
+  const client = new RlsokCloudClient(config, async () => {
+    cloudCalls += 1;
+    throw new Error("cloud_must_not_be_called");
+  });
+  const boundary = new CloudConnectedDispatchBoundary(
+    client,
+    "11111111-1111-4111-8111-111111111111",
+    {
+      releaseId: "fixture-release-001",
+      contentHash: fixture.expected.contentHash,
+      actionHash: fixture.expected.actionHash,
+      deviceId: "fixture-arm-01",
+      controllerId: "controller",
+      configurationDigest,
+      evaluationMode: "reference-run",
+    },
+    { async dispatch() { throw new Error("must_not_dispatch"); } },
+    async () => configurationDigest,
+    undefined,
+    () => monotonicNow,
+  );
+  const permit = boundary.issueLocalPermit(fixture.action);
+  monotonicNow = 2_000;
   await assert.rejects(
     boundary.dispatch(fixture.action, permit),
     /local_execution_permit_invalid/,

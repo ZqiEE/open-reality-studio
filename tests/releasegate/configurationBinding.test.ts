@@ -263,8 +263,6 @@ test('issued permit retains its configuration binding if the request is mutated'
   if (decision.status !== 'allowed') throw new Error('permit missing');
 
   const changed = configuration({ robotIdentity: H('9') });
-  decision.authorizedRequest.release.executionConfiguration = changed;
-  decision.authorizedRequest.release.approvedConfigurationDigest = configurationDigest(changed);
   decision.authorizedRequest.executionConfiguration = changed;
 
   await assert.rejects(

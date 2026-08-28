@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import { canonicalJson, sha256 } from "../core/evidence";
 import type { ConsumePermitRequest } from "./contract";
 import type { RlsokCloudClient } from "./client";
@@ -11,6 +12,8 @@ interface LocalPermitRecord {
   actionHash: string;
   issuedAt: number;
   expiresAt: number;
+  issuedAtMonotonic: number;
+  expiresAtMonotonic: number;
   configurationDigest: string;
 }
 
@@ -47,6 +50,7 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
     private readonly dispatcher: LocalDispatcher<TAction, TResult>,
     private readonly currentConfigurationDigest: () => Promise<string | null>,
     private readonly validateCurrentLocalAuthority?: () => void,
+    private readonly monotonicNow: () => number = () => performance.now(),
   ) {
     this.binding = Object.freeze({ ...binding });
   }
@@ -64,9 +68,11 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
   }
 
   issueLocalPermit(action: TAction, now = Date.now()): object {
+    const issuedAtMonotonic = this.monotonicNow();
     if (
       !validEpochMilliseconds(now) ||
-      !validEpochMilliseconds(now + 1_000)
+      !validEpochMilliseconds(now + 1_000) ||
+      !Number.isFinite(issuedAtMonotonic)
     ) {
       throw new Error("local_execution_permit_time_invalid");
     }
@@ -78,6 +84,8 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
       actionHash: this.binding.actionHash,
       issuedAt: now,
       expiresAt: now + 1_000,
+      issuedAtMonotonic,
+      expiresAtMonotonic: issuedAtMonotonic + 1_000,
       configurationDigest: this.binding.configurationDigest,
     });
     return permit;
@@ -97,8 +105,12 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
     }
     const record = this.localPermits.get(localPermit)!;
     this.localPermits.delete(localPermit);
+    const consumedAtMonotonic = this.monotonicNow();
     if (
       !validEpochMilliseconds(now) ||
+      !Number.isFinite(consumedAtMonotonic) ||
+      consumedAtMonotonic < record.issuedAtMonotonic ||
+      record.expiresAtMonotonic <= consumedAtMonotonic ||
       now < record.issuedAt ||
       record.expiresAt <= now ||
       record.actionHash !== this.binding.actionHash ||
@@ -115,8 +127,12 @@ export class CloudConnectedDispatchBoundary<TAction, TResult> {
     record: LocalPermitRecord,
     now = Date.now(),
   ): void {
+    const currentMonotonic = this.monotonicNow();
     if (
       !validEpochMilliseconds(now) ||
+      !Number.isFinite(currentMonotonic) ||
+      currentMonotonic < record.issuedAtMonotonic ||
+      record.expiresAtMonotonic <= currentMonotonic ||
       now < record.issuedAt ||
       record.expiresAt <= now
     ) {
