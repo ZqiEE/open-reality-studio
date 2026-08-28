@@ -163,6 +163,7 @@ async function runCase(
     const result = await Promise.race([
       new Promise<{
         decision: string;
+        reason: string;
         hardwareSignalSent: boolean;
         controllerGoalCount: number;
       }>(async (resolveResult) => {
@@ -213,7 +214,7 @@ test('real DDS Best Effort JointState supports Shadow with zero dispatch', async
 
 test('real DDS eligible reference run reaches one fake controller goal', async () => {
   const { result, evidence } = await runCase('reference', 'run');
-  assert.equal(result.decision, 'allowed');
+  assert.equal(result.decision, 'allowed', result.reason);
   assert.equal(result.controllerGoalCount, 1);
   assert.equal(result.hardwareSignalSent, true);
   assert.equal(evidence.at(-1)?.executionEvidence, 'controller_result_recorded');
