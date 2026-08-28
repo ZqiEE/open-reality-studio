@@ -75,6 +75,10 @@ function attestationMaxAgeMs(release: ExecutablePolicySpec): number {
     ?? release.runtimePolicy.maxStateAgeMs;
 }
 
+function snapshotNow(now: Date | undefined): Date {
+  return new Date((now ?? new Date()).getTime());
+}
+
 function attestationEvidence(
   release: ExecutablePolicySpec,
   attestation: RuntimeAttestation | undefined
@@ -182,12 +186,13 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
   async evaluate(
     request: ExecutionRequest<TAction, TState>
   ): Promise<ExecutionDecision<TAction, TState>> {
-    const now = request.now ?? new Date();
+    const now = snapshotNow(request.now);
+    const evidenceRequest = { ...request, now };
     const eligible = executionEligibility(request.release, request.releaseRecord, request.deviceId, now);
     if (!eligible.allowed) {
       const approvalRequired = eligible.reason.includes('approval') || eligible.reason.includes('state_tested');
       await this.evidence.append(this.evidenceFor(
-        request,
+        evidenceRequest,
         approvalRequired ? 'approval_required' : 'blocked',
         eligible.reason,
         ['release_eligibility']
@@ -206,7 +211,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     });
     if (!configuration.allowed) {
       await this.evidence.append(this.evidenceFor(
-        request,
+        evidenceRequest,
         'blocked',
         configuration.reason!,
         ['configuration_binding']
@@ -221,7 +226,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     });
     if (!attestation.allowed) {
       await this.evidence.append(this.evidenceFor(
-        request,
+        evidenceRequest,
         'blocked',
         attestation.reason!,
         ['runtime_attestation']
@@ -230,7 +235,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     }
     if (request.state === undefined || !request.stateObservedAt) {
       await this.evidence.append(this.evidenceFor(
-        request,
+        evidenceRequest,
         'blocked',
         'state_missing',
         ['state_freshness']
@@ -240,7 +245,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     const ageMs = now.getTime() - Date.parse(request.stateObservedAt);
     if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > request.release.runtimePolicy.maxStateAgeMs) {
       await this.evidence.append(this.evidenceFor(
-        request,
+        evidenceRequest,
         'blocked',
         'state_stale_or_invalid',
         ['state_freshness']
@@ -249,7 +254,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     }
     if (this.hashAction(request.action) !== request.actionHash) {
       await this.evidence.append(this.evidenceFor(
-        request,
+        evidenceRequest,
         'blocked',
         'action_hash_mismatch',
         ['action_identity']
@@ -259,7 +264,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     const policy = await this.policy(request.action, request.state);
     if (!policy.allowed) {
       await this.evidence.append(this.evidenceFor(
-        request,
+        evidenceRequest,
         'blocked',
         policy.reason,
         policy.matchedRuleIds
@@ -283,7 +288,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     return {
       status: 'allowed',
       reason: policy.reason,
-      authorizedRequest: { ...request, permit }
+      authorizedRequest: { ...request, now, permit }
     };
   }
 
@@ -292,6 +297,7 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
     // caller-owned object must not be able to change adapter-visible bytes
     // while Evidence preflight or final authority refreshes are in progress.
     const preparedAction = JSON.parse(canonicalJson(request.action)) as TAction;
+    const suppliedNowMs = request.now?.getTime();
     const permit = request.permit as object;
     const record = this.permits.get(permit);
     this.permits.delete(permit);
@@ -305,7 +311,12 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
         : request.releaseRecord;
     } catch {
       await this.evidence.append(this.evidenceFor(
-        request,
+        {
+          ...request,
+          now: suppliedNowMs === undefined
+            ? new Date()
+            : new Date(suppliedNowMs)
+        },
         'failed',
         'release_record_refresh_failed',
         ['release_eligibility', 'single_use_permit']
@@ -329,7 +340,11 @@ export class ReleaseExecutionGate<TAction, TState, TResult>
         currentRuntimeAttestation = undefined;
       }
     }
-    const now = request.now ?? new Date();
+    // Date is mutable. Use the synchronously captured scalar so refresh and
+    // dispatch code cannot rewrite authorization or Evidence time in place.
+    const now = suppliedNowMs === undefined
+      ? new Date()
+      : new Date(suppliedNowMs);
     const currentRequest = {
       ...request,
       action: preparedAction,
@@ -465,7 +480,7 @@ export class ShadowExecutionGate<TAction, TState> {
   ) {}
 
   async evaluate(request: ExecutionRequest<TAction, TState>): Promise<ExecutionDecision<TAction, TState>> {
-    const now = request.now ?? new Date();
+    const now = snapshotNow(request.now);
     let status: 'allowed' | 'blocked' = 'blocked';
     const identity = executablePolicyHash(request.release);
     const configuration = evaluateConfigurationBinding({

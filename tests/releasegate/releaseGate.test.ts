@@ -608,11 +608,13 @@ async function testGateAndShadow(): Promise<void> {
 }
 
 async function testDispatchEvidenceFreezesDecisionTimeBeforeAsyncDispatch(): Promise<void> {
-  const observedAt = new Date();
+  const expectedAuthorizationTime = '2026-07-26T00:00:00.000Z';
+  const authorizationTime = new Date(expectedAuthorizationTime);
+  let mutableExecutionClock: Date | undefined;
   const initial = spec();
   const executionConfiguration = executionConfigurationSchema.parse({
     ...initial.executionConfiguration,
-    observedAt: observedAt.toISOString()
+    observedAt: authorizationTime.toISOString()
   });
   const release = spec({
     executionConfiguration,
@@ -624,17 +626,24 @@ async function testDispatchEvidenceFreezesDecisionTimeBeforeAsyncDispatch(): Pro
   const gate = new ReleaseExecutionGate(
     {
       async dispatch() {
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        mutableExecutionClock?.setTime(mutableExecutionClock.getTime() + 10_000);
         return { accepted: true };
       }
     },
     { append(entry) { entries.push(entry); } },
-    async () => ({
-      allowed: true,
-      reason: 'policy_allowed',
-      matchedRuleIds: ['safe-only']
-    }),
-    hashAction
+    async () => {
+      authorizationTime.setTime(authorizationTime.getTime() + 10_000);
+      return {
+        allowed: true,
+        reason: 'policy_allowed',
+        matchedRuleIds: ['safe-only']
+      };
+    },
+    hashAction,
+    async () => {
+      mutableExecutionClock?.setTime(mutableExecutionClock.getTime() + 10_000);
+      return releasedRecord(release);
+    }
   );
   const decision = await gate.evaluate({
     release,
@@ -645,10 +654,15 @@ async function testDispatchEvidenceFreezesDecisionTimeBeforeAsyncDispatch(): Pro
     action,
     actionHash: hashAction(action),
     state: { ready: true },
-    stateObservedAt: observedAt.toISOString()
+    stateObservedAt: authorizationTime.toISOString(),
+    now: authorizationTime
   });
   assert.equal(decision.status, 'allowed');
   if (decision.status !== 'allowed') throw new Error('expected allowed');
+  assert.equal(decision.authorizedRequest.now?.toISOString(), expectedAuthorizationTime);
+  const executionClock = new Date(expectedAuthorizationTime);
+  decision.authorizedRequest.now = executionClock;
+  mutableExecutionClock = executionClock;
   await gate.execute(decision.authorizedRequest);
 
   const dispatched = entries.at(-1);
