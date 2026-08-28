@@ -842,6 +842,22 @@ async function testNoBypass(): Promise<void> {
     /def start_ready_controller_requests\([\s\S]+client\.service_is_ready\(\)[\s\S]+client\.call_async\(/,
     "controller-manager discovery must wait for DDS service matching before its one read-only request",
   );
+  const sidecarTestPython = process.platform === "win32" ? "python" : "python3";
+  const sidecarTests = spawnSync(
+    sidecarTestPython,
+    [
+      join(
+        root,
+        "experimental/ros2-reference-sidecar/test_rlsok_ros2_sidecar.py",
+      ),
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(
+    sidecarTests.status,
+    0,
+    `Python sidecar regressions failed: ${sidecarTests.stderr || sidecarTests.stdout}`,
+  );
   assert.doesNotMatch(
     discoveryNode,
     /wait_for_service\(timeout_sec=0\.0\)/,
