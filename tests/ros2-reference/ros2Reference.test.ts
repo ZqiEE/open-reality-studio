@@ -471,6 +471,35 @@ async function testContract(): Promise<void> {
     unknown.gateway.handlePayload(JSON.stringify(raw)),
     /active_release_not_found/,
   );
+
+  const serialized = setup("run");
+  let releaseState: (() => void) | undefined;
+  const stateHeld = new Promise<void>((resolveState) => {
+    releaseState = resolveState;
+  });
+  const stateRequested = new Promise<void>((resolveRequested) => {
+    serialized.transport.getFreshJointState = async () => {
+      resolveRequested();
+      await stateHeld;
+      return serialized.transport.state!;
+    };
+  });
+  const results: string[] = [];
+  await serialized.gateway.start((result) => results.push(result.reason));
+  const first = serialized.transport.handler!(
+    proposal(serialized.spec, "serialized-first"),
+  );
+  await stateRequested;
+  await assert.rejects(
+    serialized.transport.handler!(
+      proposal(serialized.spec, "serialized-concurrent"),
+    ),
+    /proposal_backpressure/,
+  );
+  releaseState?.();
+  await first;
+  assert.deepEqual(results, ["reference_goal_dispatched"]);
+  assert.equal(serialized.transport.dispatches, 1);
 }
 
 async function testShadow(): Promise<void> {

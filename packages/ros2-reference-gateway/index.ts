@@ -248,9 +248,16 @@ export class Ros2ReferenceGateway {
   }
 
   async start(onResult?: (result: Ros2GatewayResult) => void): Promise<void> {
+    let processing = false;
     await this.options.transport.subscribeProposals(async (payload) => {
-      const result = await this.handlePayload(payload);
-      onResult?.(result);
+      if (processing) throw new Error('proposal_backpressure');
+      processing = true;
+      try {
+        const result = await this.handlePayload(payload);
+        onResult?.(result);
+      } finally {
+        processing = false;
+      }
     });
   }
 

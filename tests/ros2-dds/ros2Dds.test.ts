@@ -160,30 +160,36 @@ async function runCase(
   });
   let caseTimeout: NodeJS.Timeout | undefined;
   try {
-    const result = await Promise.race([
+    const selected = await Promise.race([
       new Promise<{
-        decision: string;
-        reason: string;
-        hardwareSignalSent: boolean;
-        controllerGoalCount: number;
+        result: {
+          decision: string;
+          reason: string;
+          hardwareSignalSent: boolean;
+          controllerGoalCount: number;
+        };
+        evidence: ExecutionEvidence[];
       }>(async (resolveResult) => {
-        await gateway.start(resolveResult);
+        await gateway.start((result) => {
+          if (result.reason === 'proposal_id_duplicate') return;
+          resolveResult({ result, evidence: [...evidence.entries] });
+        });
       }),
       new Promise<never>((_, reject) =>
         { caseTimeout = setTimeout(() => reject(new Error(`dds_${name}_timeout`)), 20_000); }
       )
     ]);
-    const sanitizedEvidence = evidence.entries.map((entry) => ({
+    const sanitizedEvidence = selected.evidence.map((entry) => ({
       ...entry,
       proposedAction: '[sanitized fixture action]'
     }));
     await mkdir('artifacts/ros2-dds', { recursive: true });
     await writeFile(
       `artifacts/ros2-dds/${name}.json`,
-      `${JSON.stringify({ case: name, result, evidence: sanitizedEvidence }, null, 2)}\n`,
+      `${JSON.stringify({ case: name, result: selected.result, evidence: sanitizedEvidence }, null, 2)}\n`,
       'utf8'
     );
-    return { result, evidence: evidence.entries };
+    return selected;
   } finally {
     if (caseTimeout) clearTimeout(caseTimeout);
     fixtureNode.kill('SIGTERM');
