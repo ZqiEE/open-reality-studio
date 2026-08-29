@@ -23,11 +23,11 @@
     "schemaVersion": 1,
     "integration": "nav2-velocity-smoother",
     "status": "reference-contract",
-    "stableApprovedInputs": ["velocity smoother limits digest", "controller implementation identity and version", "frame contract"],
+    "stableApprovedInputs": ["Nav2 distribution and release identity for version-specific execution semantics", "selected velocity-smoother command-semantics digest covering feedback, smoothing frequency, vector scaling, velocity/acceleration/deceleration limits, deadband, timeout and execution-relevant timestamp behavior", "CLOSED_LOOP-only odometry source/topic, observation duration and selected frame/source identity", "resolved controller-output to velocity-smoother to optional execution-critical gates to base-command-consumer topology", "allowed FollowPath controller, goal-checker and progress-checker implementation identities and selected configuration for ROS 2 Jazzy"],
     "runtimeCapabilities": ["nav2.command_path.ready"],
-    "excludedVolatileInputs": ["current velocity sample", "planner-local observation noise"],
+    "excludedVolatileInputs": ["current odometry or velocity sample", "planner-local observation noise", "unselected ROS graph participants and unrelated parameters"],
     "mismatchBehavior": "block-before-dispatch",
-    "externalTestGate": "Run a simulated Nav2 graph with changed limits and require pre-dispatch denial."
+    "externalTestGate": "A future Jazzy FollowPath adapter must bind each exact pre-dispatch controller_id, goal_checker_id and progress_checker_id selection; prove semantic/configuration/source/topology drift and selector substitution deny before dispatch, while volatile odometry sample changes alone do not. Jazzy has no path_handler_id field."
   },
   {
     "schemaVersion": 1,

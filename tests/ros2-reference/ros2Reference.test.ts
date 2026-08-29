@@ -489,6 +489,22 @@ async function testContract(): Promise<void> {
     /payload_too_large/,
   );
 
+  const nav2SelectorAttempt = setup("run");
+  const withNav2Selectors = JSON.parse(
+    proposal(nav2SelectorAttempt.spec, "nav2-selector-attempt"),
+  ) as any;
+  Object.assign(withNav2Selectors.actionPayload, {
+    controller_id: "different_controller",
+    goal_checker_id: "different_goal_checker",
+    progress_checker_id: "different_progress_checker",
+    path_handler_id: "not_a_jazzy_field",
+  });
+  await assert.rejects(
+    nav2SelectorAttempt.gateway.handlePayload(JSON.stringify(withNav2Selectors)),
+    /proposal_schema_invalid/,
+  );
+  assert.equal(nav2SelectorAttempt.transport.dispatches, 0);
+
   const duplicate = setup("shadow");
   await duplicate.gateway.handlePayload(proposal(duplicate.spec));
   const duplicateResult = await duplicate.gateway.handlePayload(

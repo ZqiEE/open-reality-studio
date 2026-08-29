@@ -60,6 +60,15 @@
       "attributionBoundary": "This attribution should not be interpreted as an endorsement by either Rune Søe-Knudsen or Universal Robots.",
       "preferredUrl": "https://www.universal-robots.com/",
       "optInConfirmed": true
+    },
+    {
+      "id": "tetsu-yamaguchi",
+      "displayName": "Tetsu Yamaguchi",
+      "project": "Engineering Assurance Layer (adjacent tool)",
+      "contribution": "Contributed technical feedback on the distinction between Nav2 velocity_smoother limits, command-path semantics, and controller-local behavior following ros-navigation/navigation2#6357. Works on Engineering Assurance Layer, an adjacent tool.",
+      "attributionBoundary": "Has not reviewed RLSOK's implementation and does not endorse it.",
+      "preferredUrl": "https://github.com/ty-knowgic/engineering-assurance-layer",
+      "optInConfirmed": true
     }
   ]
 }

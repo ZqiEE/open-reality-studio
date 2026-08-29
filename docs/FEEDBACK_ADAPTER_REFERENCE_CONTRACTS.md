@@ -137,6 +137,65 @@ explicitly defines and qualifies that envelope; version similarity or an
 unchanged public interface is not enough. This is adapter normalization into
 existing v2 provenance, not a new Core subsystem.
 
+## Nav2 Jazzy execution-boundary reference
+
+Runtime v1.4.5 does not implement a Nav2 adapter or dispatch
+`nav2_msgs/action/FollowPath`. Its executable ROS 2 reference accepts only
+`control_msgs/action/FollowJointTrajectory`, and the Husarion reference
+explicitly excludes Nav2. The `nav2-velocity-smoother` entry is therefore a
+future adapter contract, not a supported integration or a claim that the current
+Runtime observes Nav2. No current v1.4.5 Run request can supply a Nav2 controller
+selector through the strict trajectory proposal schema.
+
+The version-specific review used the upstream Navigation2 `jazzy` branch at
+commit `f4108e5b1c2bce804a1aa0c7be6673a8eb4a1501`. An adapter for a different
+Nav2 version must inspect that version's definitions rather than projecting the
+Jazzy fields onto it.
+
+| Jazzy input                                                            | Classification                                                                      | Authorization reason                                                                                                                                                                              |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `feedback` (`OPEN_LOOP` / `CLOSED_LOOP`)                               | stable execution-critical approved input                                            | It selects whether constraint deltas start from the last smoothed command or odometry. `OPEN_LOOP` is command-space smoothing and is not evidence of the robot's measured physical state.         |
+| `scale_velocities`                                                     | stable execution-critical approved input                                            | It changes whether all velocity axes are scaled together when one axis reaches an acceleration/deceleration constraint.                                                                           |
+| `smoothing_frequency`                                                  | stable execution-critical approved input                                            | It changes the interval over which acceleration/deceleration constraints are applied and therefore changes emitted command behavior with identical numeric limits.                                |
+| `max_velocity`, `min_velocity`, `max_accel`, `max_decel`               | stable execution-critical approved input                                            | These are the selected numeric command-space constraints.                                                                                                                                         |
+| `deadband_velocity`                                                    | stable execution-critical approved input                                            | It changes which otherwise valid outputs are replaced with zero.                                                                                                                                  |
+| `velocity_timeout`                                                     | stable execution-critical approved input                                            | It changes when missing input causes the smoother to publish a decelerating zero command and then stop publishing.                                                                                |
+| `odom_topic`, `odom_duration`, selected odometry frame/source identity | stable execution-critical approved input only in `CLOSED_LOOP`                      | They select and smooth the observation used as current velocity. In `OPEN_LOOP` they are not consumed by the smoothing decision and are non-authorizing configuration.                            |
+| current odometry/velocity sample                                       | volatile observed input                                                             | Its value changes continuously and must not be frozen into approval identity. A trusted adapter may require freshness and continuity without hashing the sample value into static approval.       |
+| `stamp_smoothed_velocity_with_smoothing_time`                          | Jazzy-specific stable input when downstream command semantics consume the timestamp | It changes the timestamp placed on emitted commands. If the selected consumer ignores timestamps, the adapter may explicitly classify it as irrelevant instead of silently omitting the decision. |
+| `use_realtime_priority`                                                | irrelevant/non-authorizing for this reference                                       | It changes scheduling priority, not the selected mathematical command mapping. RLSOK is not a real-time or functional-safety monitor.                                                             |
+| unrelated parameters and graph participants                            | irrelevant/non-authorizing configuration                                            | They do not enter the selected command path or command semantics and must not cause global invalidation.                                                                                          |
+
+`nav2.command_path.ready` may be emitted only when an integration-owned observer
+proves the resolved command path, not merely that a smoother node is alive or
+configured. The minimum proof is the controller output feeding the approved
+velocity-smoother input, the approved smoother output feeding each selected
+execution-critical gate, and the final output reaching the selected base command
+consumer. If `nav2_collision_monitor` is selected in that path, its identity,
+selected command-semantic configuration, and placement are stable approved
+inputs; it is not mandatory when absent. Raw collision observations remain
+volatile. Unknown or bypassed topology emits no ready capability and blocks
+before hardware dispatch.
+
+Jazzy's `FollowPath` goal exposes `controller_id`, `goal_checker_id`, and
+`progress_checker_id`; it does not expose `path_handler_id`. Allowed plugin
+implementation/version/configuration identities are approval-time facts. The
+exact resolved selector for the current goal is a pre-dispatch fact and must be
+inside the immutable action authorized and handed to the transport. Empty
+selectors must be resolved to the actual single/default plugin before the final
+check. Recording a selector after dispatch, approving only the loaded plugin
+set, or reading a mutable caller-owned goal and then dispatching it is
+insufficient.
+
+A future adapter must negatively test same-limit changes to feedback, frequency,
+scaling, deadband and timeout; CLOSED_LOOP odometry source changes; smoother or
+optional-gate bypass; and substitution of each version-exposed goal selector.
+Every denial must record expected and observed facts with hardware dispatch
+`NO`. Positive controls must show that an approved selector passes, a volatile
+odometry sample change alone does not invalidate static approval, and Shadow
+remains zero-dispatch. Until that adapter and simulated graph exist, these tests
+remain an external implementation gate rather than v1.4.5 test claims.
+
 ## Execution-critical launch and hardware binding
 
 Selected ROS 2 launch semantics can belong to the approved setup when they
