@@ -41,6 +41,16 @@
   },
   {
     "schemaVersion": 1,
+    "integration": "schunk-svh-selected-command-path",
+    "status": "reference-contract",
+    "stableApprovedInputs": ["selected left/right hand role, controller action endpoint and ordered joint-to-channel mapping", "joint_trajectory_controller identity/version and selected YAML command semantics covering partial-goal policy, command/state interfaces and controller-manager update rate", "SCHUNK SVH driver and library identity/version", "observed firmware compatibility envelope and effective firmware-selected current, position and homing settings digest"],
+    "runtimeCapabilities": [],
+    "excludedVolatileInputs": ["raw device_file path and USB enumeration order", "joint_state_broadcaster and unselected state or diagnostic interfaces", "live position, velocity, effort and current samples", "logging, visualization and output configuration"],
+    "mismatchBehavior": "block-before-dispatch",
+    "externalTestGate": "Against an official SVH fake or simulated harness, change one selected command-path, YAML or effective firmware-settings fact and require zero dispatch; raw device paths and joint-state-broadcaster-only changes must not invalidate approval. No SVH support is claimed, and that result alone would not establish support."
+  },
+  {
+    "schemaVersion": 1,
     "integration": "crane-x7-selected-limits",
     "status": "reference-contract",
     "stableApprovedInputs": ["selected URDF hardware-level limits digest", "selected MoveIt planning-constraints digest only when approved command semantics depend on planner output", "selected ros2_control hardware-drive limits and configuration digest"],

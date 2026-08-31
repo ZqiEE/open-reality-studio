@@ -203,6 +203,7 @@ test('remaining integration references declare selected identity, volatile exclu
     'ros2-canopen-command-path',
     'nav2-velocity-smoother',
     'elite-cs-model',
+    'schunk-svh-selected-command-path',
     'crane-x7-selected-limits',
     'device-serial-calibration',
     'physical-execution-identity',

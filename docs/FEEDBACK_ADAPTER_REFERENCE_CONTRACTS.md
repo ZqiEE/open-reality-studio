@@ -103,10 +103,80 @@ or hashes an entire environment.
 
 `examples/adapter-references/selected-identity-references.json` gives executable
 schemas for Clearpath generator inputs, CANopen command-path state, Nav2
-velocity-smoother limits, Elite model identity, CRANE-X7 selected limits and
-device serial/calibration binding. Every fixture declares volatile exclusions,
-fail-closed mismatch behavior and the real external test still required. These
-contracts close the design ambiguity without fabricating vendor support.
+velocity-smoother limits, Elite model identity, SCHUNK SVH selected command-path
+identity, CRANE-X7 selected limits and device serial/calibration binding. Every
+fixture declares volatile exclusions, fail-closed mismatch behavior and the
+real external test still required. These contracts close the design ambiguity
+without fabricating vendor support.
+
+### Elite CS model boundary
+
+The Elite reference already selects the exact reported robot model and the
+driver/SDK identity and version. Exact model is sufficient for the narrow
+CS63-to-CS66 invariant; an additional physical controller identifier is not
+required. Driver/SDK identity remains selected for a separate reason: it is
+part of the approved software execution setup and is not a substitute for robot
+model.
+
+The current reference does not claim continuity of one physical arm across a
+replacement by another arm of the same model. A future integration that makes
+that claim can reuse the generic device-serial-to-role binding, but serial is
+not mandatory for the present Elite model boundary. Controller software version
+is also unselected today: there is no implemented Elite observer that can
+truthfully supply it, and the current claim does not require it. It may become a
+selected software provenance fact only if a trustworthy observer, explicit
+product invariant and tests exist. Missing or changed unselected serial or
+controller-software observations must not create false denial.
+
+The local fixture exercises the existing generic v2 binding with disposable
+values. A real Elite-owned observer still has to prove that its reported model
+accurately identifies the connected robot before any Elite support claim.
+
+### SCHUNK SVH selected command path
+
+The upstream review used the official `ros2` branch at commit
+`d7115d099e86dd3d2de7d8f9a7295c6796ce7596`. The supported YAML is small, but it
+must not be mirrored or hashed as a whole. Its meaningful fields classify as
+follows:
+
+Pinned sources: [controller YAML](https://github.com/SCHUNK-SE-Co-KG/schunk_svh_ros_driver/blob/d7115d099e86dd3d2de7d8f9a7295c6796ce7596/schunk_svh_driver/cfg/schunk_svh_driver.yaml),
+[launch selection](https://github.com/SCHUNK-SE-Co-KG/schunk_svh_ros_driver/blob/d7115d099e86dd3d2de7d8f9a7295c6796ce7596/schunk_svh_driver/launch/schunk_svh_driver.launch.py),
+[driver Xacro](https://github.com/SCHUNK-SE-Co-KG/schunk_svh_ros_driver/blob/d7115d099e86dd3d2de7d8f9a7295c6796ce7596/schunk_svh_driver/urdf/schunk_svh_driver.xacro),
+and [system interface](https://github.com/SCHUNK-SE-Co-KG/schunk_svh_ros_driver/blob/d7115d099e86dd3d2de7d8f9a7295c6796ce7596/schunk_svh_driver/src/system_interface.cpp).
+
+| Upstream input | Classification | Selected-boundary reason |
+| --- | --- | --- |
+| selected `left_hand` or `right_hand` controller name and `type` | EXECUTION-CRITICAL STABLE INPUT | Selects the action endpoint, controller plugin and hand-specific command path. The unselected opposite-hand block is excluded. |
+| `allow_partial_joints_goal` | EXECUTION-CRITICAL STABLE INPUT | Changes whether a trajectory may address only a subset of the hand joints. |
+| selected `joints` in order | EXECUTION-CRITICAL STABLE INPUT | Defines the hand-specific joint-to-channel command mapping. |
+| `command_interfaces` and selected `state_interfaces` | EXECUTION-CRITICAL STABLE INPUT | Defines position command semantics and the feedback interfaces consumed by the selected trajectory controller. |
+| controller-manager `update_rate` | EXECUTION-CRITICAL STABLE INPUT | Changes read/update/write timing; bind the value or an integration-qualified timing compatibility envelope. |
+| `joint_state_broadcaster.type` | NOT RELEVANT TO RLSOK by default | Publishes state outside the selected hardware-write path. Select it only if a future trusted observation contract explicitly depends on that source. |
+| YAML comments, ordering and formatting | NOT RELEVANT TO RLSOK | They do not change the selected semantic projection and must not invalidate approval. |
+
+The YAML is not the complete execution setup. The official launch selects the
+left/right `control` role and accepts a `device_file`; the Xacro fixes the
+nine-channel order; and the system interface reads firmware major/minor before
+loading per-channel current, position and homing settings, with explicit
+fallback settings for unsupported versions. A future adapter therefore selects
+the effective firmware compatibility envelope and the digest of the settings
+actually applied, together with driver, library and controller identities. It
+does not hash unused firmware blocks or the whole upstream files.
+
+The raw `/dev/ttyUSB*` path and USB enumeration order are discovery/transport
+details, not trustworthy physical-hand identity. If physical-unit continuity is
+ever claimed, a trusted observer can reuse the generic serial-to-role contract;
+the public upstream firmware interface reviewed here does not establish such a
+unique serial. Live positions, velocities, efforts and currents remain volatile
+observations. Logging, visualization, output routing and an unselected
+joint-state broadcaster remain outside approval identity.
+
+The local fixture proves only that the selected projection is representable by
+existing v2 configuration binding and fails closed before a fake dispatch. It
+does not implement an SVH adapter, validate physical hardware or claim SCHUNK
+support. An official fake/simulated graph still has to exercise the observer,
+firmware selection and command path; that result would be necessary evidence,
+not sufficient proof of supported hardware.
 
 The CRANE-X7 fixture makes four source roles explicit without blindly hashing
 them together. Selected URDF hardware limits and selected ros2_control

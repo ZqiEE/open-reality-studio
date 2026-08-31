@@ -1,11 +1,15 @@
 # RLSOK email feedback ledger
 
-Audit date: 2026-08-28 (Asia/Shanghai)
+Audit date: 2026-08-31 (Asia/Shanghai)
 
 Audited runtime baseline: `6ed21e2969272d857f19eb1ae5d91065205d7d9e` (merged PR #21)
 Closure artifacts: this feedback-closure branch; exact merge SHA is recorded after review
 
-External-validation reply update: 2026-08-28 (Asia/Shanghai). The ledger records
+Latest local targeted-review baseline:
+`31a3c046a9687a1661423d676564e66967ea8b50`; frozen Runtime v1.4.5
+candidate `4e9b188a78ff1a770f6333097aec0b418773da88` remains unchanged.
+
+External-validation reply update: 2026-08-31 (Asia/Shanghai). The ledger records
 conceptual validation separately from an actual code, secured-graph, or Shadow
 run so that a positive reply cannot silently close a stronger external gate.
 
@@ -14,20 +18,20 @@ run so that a positive reply cannot silently close a stronger external gate.
 The connected Gmail account was searched with `in:anywhere`, including Spam
 and Trash, for RLSOK, ROS/robot, execution/authorization, configuration,
 controller, runtime/provenance, DDS, CANopen, RMF, MAVROS, Nav2, teleoperation,
-and fault terms. The search covered all mail through the audit time, including
-late replies received through 2026-08-28. Full threads were read; the
-ledger does not infer a claim from a subject or snippet.
+and fault terms. The original search covered all mail through 2026-08-28. The
+2026-08-31 targeted delta used the supplied review artifact's Elite and SCHUNK
+maintainer-reply summaries; it does not infer a claim from a subject or snippet.
 
 Feedback determines what to inspect, not what to believe. Status is assigned
 from reproducible RLSOK code, tests, and architecture, not the sender's role,
 tone, or authority.
 
-Status totals (39 meaningful replies):
+Status totals (40 meaningful replies):
 
 | Status               | Count |
 | -------------------- | ----: |
-| IMPLEMENTED                                   |    17 |
-| REFERENCE-CONTRACT; EXTERNAL TEST OPEN        |     9 |
+| IMPLEMENTED                                   |    16 |
+| REFERENCE-CONTRACT; EXTERNAL TEST OPEN        |    11 |
 | CODE/DOC-FIXED; EXTERNAL VALIDATION OPEN      |     8 |
 | EXTERNAL-TEST-DEFERRED (no generic invariant) |     4 |
 | OUT-OF-SCOPE                                  |     1 |
@@ -88,7 +92,7 @@ reviewed reply without publishing private message bodies or email addresses.
 | E23 | Alex and Alisa / SO-ARM101 — 2026-08-21 — Gmail `1a0238e6eccc71c9`; validation `1a038459178f828d` | Stable USB serials assign leader/follower roles independent of port number; with multiple same-role arms, calibration should bind to device serial. They later confirmed serial → role → calibration is their source of truth: USB port changes do not invalidate, while reassigning a physical serial to a different role should. | Generic physical-identity and calibration provenance invariant; external conceptual validation. | v2 device/robot identity plus calibration content provenance binds the stable mapping without binding volatile USB ports. **IMPLEMENTED; EXTERNAL CONCEPT VALIDATED**. They explicitly did not review the actual code. | Preserve the generic fixture and no-support boundary. An actual code/Shadow review remains useful before any support claim; no SO-ARM integration. Medium Shadow value. |
 | E24 | Max Conway / CorrellLab GOLEM — 2026-08-21 — Gmail `1a0262287140648b`; follow-up 2026-08-27 | Upper-body motor/capability state, including contact/caught conditions, should be checked before a new H12 motion. The latest reply expresses interest and requests a real-time technical conversation but supplies no new invariant. | Adapter-owned live evidence; Core must not infer it from raw motors. The conversation request opens review/test-bed discussion only. | Runnable normalization maps only the external verdict to `upper_body.motion_ready`; review inputs, examples and questions are documented. **REFERENCE-CONTRACT; EXTERNAL TEST OPEN**; RLSOK never infers contact/caught state. | A GOLEM owner/simulator must exercise the fixture before support is claimed. Do not create speculative code, schedule outreach, or add contributor attribution without explicit listing consent. High external Shadow value. |
 | E25 | Erik Boasson / CycloneDDS — 2026-08-21 — Gmail `1a024e427026d74b`; validation `1a0394e14caa6912` | DDS GUIDs change when entities are recreated, ROS identities can be spoofed, and authenticated DDS Security is needed before treating them as trust evidence. The follow-up confirms that trust should be scoped to the command-critical path, unrelated participants should be ignored, and raw graph names/GUIDs are insufficient. | Generic trust-boundary guidance; vendor/RMW extraction is not portable Core behavior.                | Command-path contract refuses raw GUID/name trust and requires authenticated middleware proof. **REFERENCE-CONTRACT; EXTERNAL CONCEPT VALIDATED; EXTERNAL TEST OPEN** for CycloneDDS extraction. The actual code and a secured graph were not independently tested. | Never use raw GUID alone as durable approval identity. Do not turn RLSOK into DDS security. High negative-test value.                                                                                                        |
-| E26 | Yan Xiaojia / Elite Robots CS — 2026-08-21 — Gmail `1a023addb448bc28`                | Current SDK/driver does not validate a CS63→CS66 model change; robot model is the primary stable setup identifier.                                                                                                                                      | Reproducible vendor-adapter gap, not a generic Core defect.                                          | Elite fixture requires reported model and driver/SDK identity with mismatch denial. **REFERENCE-CONTRACT; EXTERNAL TEST OPEN** for an Elite-owned observer.                                                                          | Do not claim Elite support until the external mismatch test runs. Medium Shadow value.                                                                                                                                       |
+| E26 | Yan Xiaojia / Elite Robots CS — 2026-08-21 — Gmail `1a023addb448bc28`; follow-up 2026-08-31, message ID not supplied in review artifact | Exact reported model is sufficient for CS63→CS66 detection and does not require another physical controller identifier. Same-model unit continuity would require a trustworthy unique hardware identifier. Controller software is distinct from driver/SDK and matters only if explicitly selected inside the execution boundary. | Concrete clarification of one future Elite adapter boundary; conceptual validation, not code or physical observer review. | The reference already selects exact model plus driver/SDK and does not require a controller hardware ID. Focused generic-v2 tests now prove model and driver drift deny before fake dispatch while unselected serial/controller-software observations do not invalidate. **REFERENCE-CONTRACT; EXTERNAL CONCEPT VALIDATED; EXTERNAL TEST OPEN** for a truthful Elite-owned model observer. | Keep driver/SDK as the independent approved software invariant. Do not require serial or controller software under the present claim, fabricate an observer, claim Elite support, or infer public-listing consent. |
 | E27 | Ruddrho Mollik / vision-guided color sorting — 2026-08-21 — Gmail `1a023bc0de26885e` | Camera calibration, robot-camera transform, workcell setup, and object/bin mapping can change the meaning of an unchanged arm command.                                                                                                                  | Generic configuration-provenance claim.                                                              | v2 calibration/frame digests and explicit content provenance can represent these selected, security-critical inputs. **IMPLEMENTED**.                                                                                                   | Integrators choose explicit sources; do not absorb perception or workcell validation into Core. Contributor opt-in recorded; no code-review, integration, endorsement, or support claim. Medium Shadow value. |
 | E28 | Atsushi Kuwagata / CRANE-X7 — 2026-08-21 — Gmail `1a023bd77ddc0fe2`; follow-up 2026-08-27 | URDF owns hardware limits, MoveIt owns planning constraints, ros2_control owns hardware-drive limits, and actuator encoders/controller own current posture; blindly hashing all together causes false invalidation. The maintainer believes the selected source split is correct but is not familiar enough with RLSOK internals to review implementation details. | Generic separation of selected approved configuration from runtime state; conceptual confirmation, not code review or external test validation. | v2 provenance/limits bind only selected stable sources; MoveIt is conditional on approved planner-dependent semantics, while RuntimeAttestation/state freshness handles selected current posture without freezing it into approval identity. **IMPLEMENTED; EXTERNAL CONCEPT VALIDATED**. Actual reference fixture/Shadow validation remains open. | Contributor opt-in confirmed as Atsushi Kuwagata, RT Corporation, `https://rt-net.jp`. Do not imply endorsement, partnership, certification, code review, CRANE-X7 integration or support. A real fixture/Shadow run remains open. High Shadow value. |
 | E29 | Wenjie / BXI — 2026-08-21 — Gmail `1a024a02e6d64a86`                                 | Policy artifact and controller/config changes are primary invalidators; inference dependencies such as PyTorch/NumPy/custom libraries may matter, but whole-environment churn should not dominate.                                                      | Generic explicit-dependency provenance rule.                                                         | ExecSpec binds policy artifact and the collector emits only explicit Python/PyTorch/NumPy/custom/CUDA declarations with stable digest and mismatch denial. **IMPLEMENTED**.                                                          | Integrators own the allowlist. Whole-environment hashing and default `pip freeze` remain intentionally excluded. High Shadow value.                                                                                          |
@@ -102,6 +106,7 @@ reviewed reply without publishing private message bodies or email addresses.
 | E37 | Bobby Larson / Ganglion — 2026-08-27 — Gmail message ID not supplied in development delta | Periodic/eventual capability-policy sweeps are insufficient for queued physical motion. Queued intent is not in flight and must use dispatch-near exact command/target, configuration/policy/revocation epoch, short-TTL and single-use authority. Controller-accepted execution begins the outside boundary; stopping it is a controlled-stop/safety responsibility. A selected observed-state epoch was proposed as the remaining TOCTOU concern. | Generic last-mile authorization audit, not an integration or endorsement claim. | Exact action/target, refreshed release/configuration eligibility, TTL and single-use were already implemented. The existing execute-time refreshed `RuntimeAttestation` continuity token already represents an explicitly selected adapter-owned state epoch; the new generic normalization, Evidence-focused regressions and no-stop ROS boundary make that contract explicit. **REFERENCE-CONTRACT; EXTERNAL TEST OPEN** for integration-owned state facts. | Do not add a duplicate epoch or hash raw state/world data. An adapter rotates continuity only for selected execution-relevant transitions; unrelated observations do not globally invalidate. Validate the selected classifier externally. High negative/TOCTOU Shadow value. |
 | E38 | Motty / CRANE+ — 2026-08-27 — Gmail `1a043130a2c6f9d2` | Execution-critical launch choices can be worth including in the approved setup, but reproducing all launch/runtime conditions inside the execution guard creates source-code mirroring and dual-maintenance risk. | Generic selected launch-semantics boundary; personal developer feedback, explicitly not an RT Corporation view. | Existing v2 selected provenance can bind the smallest stable launch inputs that choose mock, simulation, or real hardware paths. No Core or authorization behavior change is required. **REFERENCE-CONTRACT; EXTERNAL TEST OPEN**. | Do not mirror the full Python launch graph or runtime configuration and do not treat this as a CRANE+ feature request, integration, validation, RT Corporation position, or endorsement. |
 | E39 | Chinedu / Lidarbot — 2026-08-27 — Gmail `1a04267aeadf6c06` | The `ros2_control` hardware component, drive controller, and wheel mapping form a useful minimum boundary for confirming how commands reach the motors. | Generic selected execution-binding guidance for a mobile base. | Existing v2 provenance can bind those integration-owned configuration identities without adding a Core field or runtime capability. **REFERENCE-CONTRACT; EXTERNAL TEST OPEN**. | Do not add a Lidarbot integration or infer validation. The sender's questions about remote deployment, safety, and cybersecurity are not validated claims or feature requests; RLSOK remains execution authorization, not functional safety or a generic cybersecurity product. |
+| E40 | Harry Arnst / SCHUNK SVH — 2026-08-31 — message ID not supplied in review artifact | The SVH driver has little user configuration; `schunk_svh_driver/cfg/schunk_svh_driver.yaml` is the main candidate to inspect. | Useful inspection pointer, not proof that every YAML field is authorizing or that YAML is the complete execution setup. | Official source review at driver commit `d7115d099e86dd3d2de7d8f9a7295c6796ce7596` found a minimal selected controller/side, joint mapping, partial-goal, interface and timing projection. Firmware-selected current/position/homing settings live outside the YAML. Existing v2 provenance represents these facts; a focused reference and fake-dispatch regression were added without an adapter. **REFERENCE-CONTRACT; EXTERNAL TEST OPEN**. | Do not hash the whole YAML or bind raw `/dev/ttyUSB*`. Validate the selected projection, firmware observer and command path in an official fake/simulated graph before any SVH support statement. The reply is not public attribution consent. |
 
 ## Feedback closure audit
 
@@ -264,12 +269,13 @@ ledger because they change external-validation priority or product stage fit.
 
 ## Remaining real-world gates
 
-There is no unexplained `PARTIAL` or unrepresented generic defect in the 37-row
+There is no unexplained `PARTIAL` or unrepresented generic defect in the 40-row
 ledger. Remaining gates are explicit and external:
 
 - run the DDS reference against a secured Fast DDS graph and add a CycloneDDS
   extractor only when authenticated signals are actually available;
-- have ros2_medkit, GOLEM, Clearpath, CANopen, Nav2, Elite, CRANE-X7 and device
+- have ros2_medkit, GOLEM, Clearpath, CANopen, Nav2, Elite, SCHUNK SVH,
+  CRANE-X7 and device
   owners exercise the provided contracts/fixtures before any support claim;
 - perform uncoached Class A first-time comprehension and Class B regression
   validation against the live public site and Zero-to-Shadow path;
@@ -284,11 +290,13 @@ robot integration.
 
 Each reply asks one narrow source-of-truth/capability question, limits any run
 to Shadow/simulation/reference review, and explicitly makes no support claim.
-The exact public reference set is
+The exact version-controlled reference set (public only after release) is
 `examples/adapter-references/selected-identity-references.json`,
 `packages/adapter-references/command-path.ts`,
 `packages/adapter-references/capabilities.ts`, and
-`tests/adapter-references/references.test.ts`, narrowed per row below.
+`tests/adapter-references/references.test.ts` plus
+`tests/adapter-references/selectedIdentityBinding.test.ts`, narrowed per row
+below.
 
 | Ledger row / project | Gmail SENT message ID | Exact review artifact | State |
 | --- | --- | --- | --- |
@@ -296,7 +304,7 @@ The exact public reference set is
 | E07 Clearpath | `1a03819d2a515d2a` | selected generated-configuration identity fixture plus reference test | Awaiting external result |
 | E24 GOLEM | `1a037d005f03ef8e` | `capabilities.ts` upper-body normalization plus reference test | Awaiting external result |
 | E25 CycloneDDS | `1a03819dd7e127bb` | `command-path.ts` authenticated DDS identity boundary plus reference test | Conceptually validated by reply `1a0394e14caa6912`; actual code, CycloneDDS extractor, and secured graph not tested |
-| E26 Elite | `1a03819c6c6dda5d` | selected robot-model/driver identity fixture plus mismatch test | Awaiting external result |
+| E26 Elite | `1a03819c6c6dda5d` | selected robot-model/driver identity fixture plus focused generic-v2 mismatch tests | Conceptually validated by the 2026-08-31 reply; a truthful Elite observer and actual external mismatch run remain open |
 | E31 secured Fast DDS | `1a03819e73693009` | scoped authenticated command-path trust fixture plus negative tests | Conceptually validated by reply `1a0394e14caa6912`; actual code and real secured graph not tested |
 | E20 ros2_medkit | `1a03819f9c6a2c1c` | `capabilities.ts` degradation normalization plus reference test | Awaiting external result |
 | E14 Nav2 | `1a0381a2d8bdf85a` | selected Jazzy smoother semantics, CLOSED_LOOP source, command topology and FollowPath-selector reference plus test | Awaiting an actual adapter and simulated graph result; current Runtime has no Nav2 dispatch path |
