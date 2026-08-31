@@ -292,19 +292,19 @@ async function main(): Promise<void> {
     };
     if (deterministicClock)
       environment.RLSOK_TEST_SHARED_MONOTONIC_EPOCH_MS = sharedClockEpochMs;
-    if (timing.observationOffsetMs === undefined) {
-      delete environment.RLSOK_TEST_OBSERVATION_OFFSET_MS;
-    } else {
+    if (timing.observationOffsetMs !== undefined) {
       environment.RLSOK_TEST_OBSERVATION_OFFSET_MS = String(
         timing.observationOffsetMs,
       );
+    } else if (deterministicClock) {
+      delete environment.RLSOK_TEST_OBSERVATION_OFFSET_MS;
     }
-    if (timing.discoveryTimeoutMs === undefined) {
-      delete environment.RLSOK_ROS2_DISCOVERY_TIMEOUT_MS;
-    } else {
+    if (timing.discoveryTimeoutMs !== undefined) {
       environment.RLSOK_ROS2_DISCOVERY_TIMEOUT_MS = String(
         timing.discoveryTimeoutMs,
       );
+    } else if (deterministicClock) {
+      delete environment.RLSOK_ROS2_DISCOVERY_TIMEOUT_MS;
     }
     const child = spawn(
       installedCli ? cli : process.execPath,
