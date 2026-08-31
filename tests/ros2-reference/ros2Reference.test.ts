@@ -585,10 +585,12 @@ async function testShadow(): Promise<void> {
     positions: [0, 0],
     observedAt: "2026-07-26T11:00:00.000Z",
   };
-  assert.equal(
-    (await stale.gateway.handlePayload(proposal(stale.spec))).reason,
-    "state_stale_or_invalid",
-  );
+  const staleResult = await stale.gateway.handlePayload(proposal(stale.spec));
+  assert.equal(staleResult.decision, "blocked");
+  assert.equal(staleResult.reason, "state_stale_or_invalid");
+  assert.equal(staleResult.hardwareSignalSent, false);
+  assert.equal(staleResult.controllerGoalCount, 0);
+  assert.equal(stale.transport.dispatches, 0);
 }
 
 async function testReferenceRun(): Promise<void> {
