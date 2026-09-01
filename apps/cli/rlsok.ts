@@ -16,7 +16,7 @@ import {
 import { ros2Usage, runRos2Command } from './ros2';
 import { cloudUsage, runCloudCommand } from './cloud';
 import { runStandaloneShadow } from './shadow';
-import { runPairCommand } from './pair';
+import { pairingFailureGuidance, runPairCommand } from './pair';
 import { runSetupCommand } from './setup';
 import { runObserveCommand } from './observe';
 import { runUr5eValidationCommand } from './validate-ur5e';
@@ -161,6 +161,7 @@ void main().catch((error) => {
     message
   );
   const guidance: Record<string, string> = {
+    ...pairingFailureGuidance,
     dds_discovery_timeout:
       "ROS 2 discovery timed out. Confirm this terminal sourced /opt/ros/jazzy/setup.bash, check ROS_DOMAIN_ID matches the robot graph, and run 'rlsok ros2 doctor'.",
     proposal_timeout:
@@ -173,8 +174,6 @@ void main().catch((error) => {
       "No fresh JointState was received. Check 'ros2 topic echo --once /joint_states' and verify ROS_DOMAIN_ID before retrying.",
     joint_state_stale:
       "JointState stopped updating. Restore the state publisher and retry; RLSOK will not evaluate stale robot state.",
-    pairing_expired:
-      "Cloud pairing expired before approval. Run 'rlsok pair' again and approve the new code within 10 minutes.",
     "runtime_already_paired_use_--replace":
       "This runtime is already paired. Continue with 'rlsok setup', or use 'rlsok pair --replace' only when intentionally replacing credentials.",
   };

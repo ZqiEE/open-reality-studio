@@ -103,10 +103,80 @@ or hashes an entire environment.
 
 `examples/adapter-references/selected-identity-references.json` gives executable
 schemas for Clearpath generator inputs, CANopen command-path state, Nav2
-velocity-smoother limits, Elite model identity, CRANE-X7 selected limits and
-device serial/calibration binding. Every fixture declares volatile exclusions,
-fail-closed mismatch behavior and the real external test still required. These
-contracts close the design ambiguity without fabricating vendor support.
+velocity-smoother limits, Elite model identity, SCHUNK SVH selected command-path
+identity, CRANE-X7 selected limits and device serial/calibration binding. Every
+fixture declares volatile exclusions, fail-closed mismatch behavior and the
+real external test still required. These contracts close the design ambiguity
+without fabricating vendor support.
+
+### Elite CS model boundary
+
+The Elite reference already selects the exact reported robot model and the
+driver/SDK identity and version. Exact model is sufficient for the narrow
+CS63-to-CS66 invariant; an additional physical controller identifier is not
+required. Driver/SDK identity remains selected for a separate reason: it is
+part of the approved software execution setup and is not a substitute for robot
+model.
+
+The current reference does not claim continuity of one physical arm across a
+replacement by another arm of the same model. A future integration that makes
+that claim can reuse the generic device-serial-to-role binding, but serial is
+not mandatory for the present Elite model boundary. Controller software version
+is also unselected today: there is no implemented Elite observer that can
+truthfully supply it, and the current claim does not require it. It may become a
+selected software provenance fact only if a trustworthy observer, explicit
+product invariant and tests exist. Missing or changed unselected serial or
+controller-software observations must not create false denial.
+
+The local fixture exercises the existing generic v2 binding with disposable
+values. A real Elite-owned observer still has to prove that its reported model
+accurately identifies the connected robot before any Elite support claim.
+
+### SCHUNK SVH selected command path
+
+The upstream review used the official `ros2` branch at commit
+`d7115d099e86dd3d2de7d8f9a7295c6796ce7596`. The supported YAML is small, but it
+must not be mirrored or hashed as a whole. Its meaningful fields classify as
+follows:
+
+Pinned sources: [controller YAML](https://github.com/SCHUNK-SE-Co-KG/schunk_svh_ros_driver/blob/d7115d099e86dd3d2de7d8f9a7295c6796ce7596/schunk_svh_driver/cfg/schunk_svh_driver.yaml),
+[launch selection](https://github.com/SCHUNK-SE-Co-KG/schunk_svh_ros_driver/blob/d7115d099e86dd3d2de7d8f9a7295c6796ce7596/schunk_svh_driver/launch/schunk_svh_driver.launch.py),
+[driver Xacro](https://github.com/SCHUNK-SE-Co-KG/schunk_svh_ros_driver/blob/d7115d099e86dd3d2de7d8f9a7295c6796ce7596/schunk_svh_driver/urdf/schunk_svh_driver.xacro),
+and [system interface](https://github.com/SCHUNK-SE-Co-KG/schunk_svh_ros_driver/blob/d7115d099e86dd3d2de7d8f9a7295c6796ce7596/schunk_svh_driver/src/system_interface.cpp).
+
+| Upstream input | Classification | Selected-boundary reason |
+| --- | --- | --- |
+| selected `left_hand` or `right_hand` controller name and `type` | EXECUTION-CRITICAL STABLE INPUT | Selects the action endpoint, controller plugin and hand-specific command path. The unselected opposite-hand block is excluded. |
+| `allow_partial_joints_goal` | EXECUTION-CRITICAL STABLE INPUT | Changes whether a trajectory may address only a subset of the hand joints. |
+| selected `joints` in order | EXECUTION-CRITICAL STABLE INPUT | Defines the hand-specific joint-to-channel command mapping. |
+| `command_interfaces` and selected `state_interfaces` | EXECUTION-CRITICAL STABLE INPUT | Defines position command semantics and the feedback interfaces consumed by the selected trajectory controller. |
+| controller-manager `update_rate` | EXECUTION-CRITICAL STABLE INPUT | Changes read/update/write timing; bind the value or an integration-qualified timing compatibility envelope. |
+| `joint_state_broadcaster.type` | NOT RELEVANT TO RLSOK by default | Publishes state outside the selected hardware-write path. Select it only if a future trusted observation contract explicitly depends on that source. |
+| YAML comments, ordering and formatting | NOT RELEVANT TO RLSOK | They do not change the selected semantic projection and must not invalidate approval. |
+
+The YAML is not the complete execution setup. The official launch selects the
+left/right `control` role and accepts a `device_file`; the Xacro fixes the
+nine-channel order; and the system interface reads firmware major/minor before
+loading per-channel current, position and homing settings, with explicit
+fallback settings for unsupported versions. A future adapter therefore selects
+the effective firmware compatibility envelope and the digest of the settings
+actually applied, together with driver, library and controller identities. It
+does not hash unused firmware blocks or the whole upstream files.
+
+The raw `/dev/ttyUSB*` path and USB enumeration order are discovery/transport
+details, not trustworthy physical-hand identity. If physical-unit continuity is
+ever claimed, a trusted observer can reuse the generic serial-to-role contract;
+the public upstream firmware interface reviewed here does not establish such a
+unique serial. Live positions, velocities, efforts and currents remain volatile
+observations. Logging, visualization, output routing and an unselected
+joint-state broadcaster remain outside approval identity.
+
+The local fixture proves only that the selected projection is representable by
+existing v2 configuration binding and fails closed before a fake dispatch. It
+does not implement an SVH adapter, validate physical hardware or claim SCHUNK
+support. An official fake/simulated graph still has to exercise the observer,
+firmware selection and command path; that result would be necessary evidence,
+not sufficient proof of supported hardware.
 
 The CRANE-X7 fixture makes four source roles explicit without blindly hashing
 them together. Selected URDF hardware limits and selected ros2_control
@@ -136,6 +206,65 @@ instead emit a stable compatibility-envelope source only when the integration
 explicitly defines and qualifies that envelope; version similarity or an
 unchanged public interface is not enough. This is adapter normalization into
 existing v2 provenance, not a new Core subsystem.
+
+## Nav2 Jazzy execution-boundary reference
+
+Runtime v1.4.5 does not implement a Nav2 adapter or dispatch
+`nav2_msgs/action/FollowPath`. Its executable ROS 2 reference accepts only
+`control_msgs/action/FollowJointTrajectory`, and the Husarion reference
+explicitly excludes Nav2. The `nav2-velocity-smoother` entry is therefore a
+future adapter contract, not a supported integration or a claim that the current
+Runtime observes Nav2. No current v1.4.5 Run request can supply a Nav2 controller
+selector through the strict trajectory proposal schema.
+
+The version-specific review used the upstream Navigation2 `jazzy` branch at
+commit `f4108e5b1c2bce804a1aa0c7be6673a8eb4a1501`. An adapter for a different
+Nav2 version must inspect that version's definitions rather than projecting the
+Jazzy fields onto it.
+
+| Jazzy input                                                            | Classification                                                                      | Authorization reason                                                                                                                                                                              |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `feedback` (`OPEN_LOOP` / `CLOSED_LOOP`)                               | stable execution-critical approved input                                            | It selects whether constraint deltas start from the last smoothed command or odometry. `OPEN_LOOP` is command-space smoothing and is not evidence of the robot's measured physical state.         |
+| `scale_velocities`                                                     | stable execution-critical approved input                                            | It changes whether all velocity axes are scaled together when one axis reaches an acceleration/deceleration constraint.                                                                           |
+| `smoothing_frequency`                                                  | stable execution-critical approved input                                            | It changes the interval over which acceleration/deceleration constraints are applied and therefore changes emitted command behavior with identical numeric limits.                                |
+| `max_velocity`, `min_velocity`, `max_accel`, `max_decel`               | stable execution-critical approved input                                            | These are the selected numeric command-space constraints.                                                                                                                                         |
+| `deadband_velocity`                                                    | stable execution-critical approved input                                            | It changes which otherwise valid outputs are replaced with zero.                                                                                                                                  |
+| `velocity_timeout`                                                     | stable execution-critical approved input                                            | It changes when missing input causes the smoother to publish a decelerating zero command and then stop publishing.                                                                                |
+| `odom_topic`, `odom_duration`, selected odometry frame/source identity | stable execution-critical approved input only in `CLOSED_LOOP`                      | They select and smooth the observation used as current velocity. In `OPEN_LOOP` they are not consumed by the smoothing decision and are non-authorizing configuration.                            |
+| current odometry/velocity sample                                       | volatile observed input                                                             | Its value changes continuously and must not be frozen into approval identity. A trusted adapter may require freshness and continuity without hashing the sample value into static approval.       |
+| `stamp_smoothed_velocity_with_smoothing_time`                          | Jazzy-specific stable input when downstream command semantics consume the timestamp | It changes the timestamp placed on emitted commands. If the selected consumer ignores timestamps, the adapter may explicitly classify it as irrelevant instead of silently omitting the decision. |
+| `use_realtime_priority`                                                | irrelevant/non-authorizing for this reference                                       | It changes scheduling priority, not the selected mathematical command mapping. RLSOK is not a real-time or functional-safety monitor.                                                             |
+| unrelated parameters and graph participants                            | irrelevant/non-authorizing configuration                                            | They do not enter the selected command path or command semantics and must not cause global invalidation.                                                                                          |
+
+`nav2.command_path.ready` may be emitted only when an integration-owned observer
+proves the resolved command path, not merely that a smoother node is alive or
+configured. The minimum proof is the controller output feeding the approved
+velocity-smoother input, the approved smoother output feeding each selected
+execution-critical gate, and the final output reaching the selected base command
+consumer. If `nav2_collision_monitor` is selected in that path, its identity,
+selected command-semantic configuration, and placement are stable approved
+inputs; it is not mandatory when absent. Raw collision observations remain
+volatile. Unknown or bypassed topology emits no ready capability and blocks
+before hardware dispatch.
+
+Jazzy's `FollowPath` goal exposes `controller_id`, `goal_checker_id`, and
+`progress_checker_id`; it does not expose `path_handler_id`. Allowed plugin
+implementation/version/configuration identities are approval-time facts. The
+exact resolved selector for the current goal is a pre-dispatch fact and must be
+inside the immutable action authorized and handed to the transport. Empty
+selectors must be resolved to the actual single/default plugin before the final
+check. Recording a selector after dispatch, approving only the loaded plugin
+set, or reading a mutable caller-owned goal and then dispatching it is
+insufficient.
+
+A future adapter must negatively test same-limit changes to feedback, frequency,
+scaling, deadband and timeout; CLOSED_LOOP odometry source changes; smoother or
+optional-gate bypass; and substitution of each version-exposed goal selector.
+Every denial must record expected and observed facts with hardware dispatch
+`NO`. Positive controls must show that an approved selector passes, a volatile
+odometry sample change alone does not invalidate static approval, and Shadow
+remains zero-dispatch. Until that adapter and simulated graph exist, these tests
+remain an external implementation gate rather than v1.4.5 test claims.
 
 ## Execution-critical launch and hardware binding
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import {
   chmodSync,
   mkdirSync,
@@ -22,6 +23,37 @@ const apiVersion = "rlsok-cloud/v1";
 async function main(): Promise<void> {
   const installedCli = process.env.RLSOK_INSTALLED_CLI;
   const liveDiscovery = process.env.RLSOK_SETUP_LIVE_DISCOVERY === "1";
+  const deterministicClock = !installedCli && !liveDiscovery;
+  const sharedClockEpochMs = "1893456000000";
+  const sharedClockPreload = resolve(
+    process.cwd(),
+    "tests/setup/sharedMonotonicClock.cjs",
+  );
+  if (deterministicClock) {
+    process.env.RLSOK_TEST_SHARED_MONOTONIC_EPOCH_MS = sharedClockEpochMs;
+    const { sharedNowMs } = createRequire(__filename)(sharedClockPreload) as {
+      sharedNowMs: () => number;
+    };
+    const parentBefore = sharedNowMs();
+    const probe = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        "process.stdout.write(String(require(process.argv[1]).sharedNowMs()))",
+        sharedClockPreload,
+      ],
+      { encoding: "utf8", env: process.env },
+    );
+    const parentAfter = sharedNowMs();
+    assert.equal(probe.status, 0, probe.stderr);
+    const childNow = Number(probe.stdout);
+    assert.ok(
+      Number.isSafeInteger(childNow) &&
+        childNow >= parentBefore &&
+        childNow <= parentAfter,
+      `shared monotonic clock domains differ: ${parentBefore} <= ${childNow} <= ${parentAfter}`,
+    );
+  }
   const temporary = mkdtempSync(join(tmpdir(), "rlsok-zero-to-shadow-"));
   let draft: { execSpec: ExecutablePolicySpec } | undefined;
   let approvedSpec: ExecutablePolicySpec | undefined;
@@ -206,10 +238,18 @@ async function main(): Promise<void> {
   const cli = installedCli ?? resolve(__dirname, "../../apps/cli/rlsok.js");
   const sidecar = resolve(
     process.cwd(),
-    "experimental/ros2-reference-sidecar/rlsok_ros2_simulated_sidecar.py",
+    deterministicClock
+      ? "tests/setup/sharedMonotonicRos2Sidecar.cjs"
+      : "experimental/ros2-reference-sidecar/rlsok_ros2_simulated_sidecar.py",
   );
   const python = process.platform === "win32" ? "python" : "python3";
-  const runSetup = async (fixture: string | undefined): Promise<{
+  const runSetup = async (
+    fixture: string | undefined,
+    timing: {
+      observationOffsetMs?: number;
+      discoveryTimeoutMs?: number;
+    } = {},
+  ): Promise<{
     exitCode: number | null;
     stdout: string;
     stderr: string;
@@ -232,21 +272,49 @@ async function main(): Promise<void> {
       "--non-interactive",
       "--no-browser",
     ];
-    if (!installedCli) cliArgs.push("--python", python, "--sidecar", sidecar);
+    if (!installedCli) {
+      cliArgs.push(
+        "--python",
+        deterministicClock ? process.execPath : python,
+        "--sidecar",
+        sidecar,
+      );
+    }
+    const environment: NodeJS.ProcessEnv = {
+      ...process.env,
+      RLSOK_SETUP_ACCEPTANCE: "1",
+      ...(fixture ? { RLSOK_SETUP_DISCOVERY_FIXTURE: fixture } : {}),
+      RLSOK_DATA_HOME: data,
+      ROS_DISTRO: "jazzy",
+      RMW_IMPLEMENTATION: "rmw_fastrtps_cpp",
+      XDG_CONFIG_HOME: config,
+      LOCALAPPDATA: config,
+    };
+    if (deterministicClock)
+      environment.RLSOK_TEST_SHARED_MONOTONIC_EPOCH_MS = sharedClockEpochMs;
+    if (timing.observationOffsetMs !== undefined) {
+      environment.RLSOK_TEST_OBSERVATION_OFFSET_MS = String(
+        timing.observationOffsetMs,
+      );
+    } else if (deterministicClock) {
+      delete environment.RLSOK_TEST_OBSERVATION_OFFSET_MS;
+    }
+    if (timing.discoveryTimeoutMs !== undefined) {
+      environment.RLSOK_ROS2_DISCOVERY_TIMEOUT_MS = String(
+        timing.discoveryTimeoutMs,
+      );
+    } else if (deterministicClock) {
+      delete environment.RLSOK_ROS2_DISCOVERY_TIMEOUT_MS;
+    }
     const child = spawn(
       installedCli ? cli : process.execPath,
-      installedCli ? cliArgs : [cli, ...cliArgs],
+      installedCli
+        ? cliArgs
+        : deterministicClock
+          ? ["--require", sharedClockPreload, cli, ...cliArgs]
+          : [cli, ...cliArgs],
       {
-        env: {
-          ...process.env,
-          RLSOK_SETUP_ACCEPTANCE: "1",
-          ...(fixture ? { RLSOK_SETUP_DISCOVERY_FIXTURE: fixture } : {}),
-          RLSOK_DATA_HOME: data,
-          ROS_DISTRO: "jazzy",
-          RMW_IMPLEMENTATION: "rmw_fastrtps_cpp",
-          XDG_CONFIG_HOME: config,
-          LOCALAPPDATA: config,
-        },
+        env: environment,
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
@@ -336,6 +404,108 @@ async function main(): Promise<void> {
             null,
             2,
           )}\n`,
+        );
+      }
+    }
+
+    if (deterministicClock) {
+      const freshnessCases = [
+        { name: "future observation", observationOffsetMs: 10_000 },
+        { name: "stale observation", observationOffsetMs: -2_000 },
+      ];
+      for (const freshnessCase of freshnessCases) {
+        draft = undefined;
+        approvedSpec = undefined;
+        evidenceBody = undefined;
+        evidenceRecord = undefined;
+        permitBody = undefined;
+        const blocked = await runSetup(discoveryPath, {
+          observationOffsetMs: freshnessCase.observationOffsetMs,
+          discoveryTimeoutMs: 1_000,
+        });
+        assert.equal(
+          blocked.exitCode,
+          2,
+          `${freshnessCase.name}\n${blocked.stderr}\n${blocked.stdout}`,
+        );
+        const blockedOutput = `${blocked.stderr}\n${blocked.stdout}`;
+        assert.match(
+          blockedOutput,
+          /FAILED[\s\S]*Observed: joint_state_stale/,
+          freshnessCase.name,
+        );
+        assert.match(
+          blockedOutput,
+          /Reason: joint_state_stale/,
+          freshnessCase.name,
+        );
+        assert.match(
+          blockedOutput,
+          /Hardware dispatch: NO/,
+          freshnessCase.name,
+        );
+        assert.match(
+          blockedOutput,
+          /Next action: JointState stopped updating/,
+          freshnessCase.name,
+        );
+        assert.doesNotMatch(
+          blockedOutput,
+          /Zero-to-Shadow complete/,
+          freshnessCase.name,
+        );
+        const blockedDraft = draft as
+          | { execSpec: ExecutablePolicySpec }
+          | undefined;
+        assert(blockedDraft, freshnessCase.name);
+        assert.equal(
+          blockedDraft.execSpec.runtimePolicy.maxStateAgeMs,
+          1_000,
+          freshnessCase.name,
+        );
+        const localEvidence = JSON.parse(
+          readFileSync(
+            join(
+              data,
+              "evidence",
+              `${blockedDraft.execSpec.metadata.releaseId}.json`,
+            ),
+            "utf8",
+          ),
+        ) as {
+          decision: string;
+          reason: string;
+          cloudPermitId: string | null;
+          cloudPermitConsumed: boolean;
+          cloudPermitConsumptionState: string;
+          localPermitConsumed: boolean;
+          controllerGoalsAttempted: number;
+          hardwareSignalSent: boolean;
+          cloudEvidenceId: string | null;
+          evidenceVerified: boolean;
+        };
+        assert.equal(localEvidence.decision, "blocked", freshnessCase.name);
+        assert.equal(
+          localEvidence.reason,
+          "joint_state_stale",
+          freshnessCase.name,
+        );
+        assert.equal(localEvidence.cloudPermitId, null, freshnessCase.name);
+        assert.equal(localEvidence.cloudPermitConsumed, false, freshnessCase.name);
+        assert.equal(
+          localEvidence.cloudPermitConsumptionState,
+          "not_consumed",
+          freshnessCase.name,
+        );
+        assert.equal(localEvidence.localPermitConsumed, false, freshnessCase.name);
+        assert.equal(localEvidence.controllerGoalsAttempted, 0, freshnessCase.name);
+        assert.equal(localEvidence.hardwareSignalSent, false, freshnessCase.name);
+        assert.equal(localEvidence.cloudEvidenceId, null, freshnessCase.name);
+        assert.equal(localEvidence.evidenceVerified, false, freshnessCase.name);
+        assert.equal(permitBody, undefined, freshnessCase.name);
+        assert.equal(evidenceBody, undefined, freshnessCase.name);
+        process.stdout.write(
+          `ok - zero-to-shadow ${freshnessCase.name} blocked before dispatch\n`,
         );
       }
     }

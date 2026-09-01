@@ -32,11 +32,28 @@ import {
   type OfficialRobotIntegration,
   type Ros2DiscoveryReport,
 } from "../../packages/robot-integrations";
-import { openBrowser, runPairCommand } from "./pair";
+import { launchBrowser } from "./browser-launch";
+import { hasHelpFlag } from "./help-flag";
+import { runPairCommand } from "./pair";
 import { runRos2Command } from "./ros2";
 import { discoverRos2Environment } from "./ros-discovery";
 
 type Options = Record<string, string | true>;
+
+const SETUP_FLAG_OPTIONS = new Set(["non-interactive", "no-browser", "help"]);
+const SETUP_VALUE_OPTIONS = new Set([
+  "approval-timeout-minutes",
+  "artifact",
+  "cloud",
+  "controller-action",
+  "device-name",
+  "discovery-timeout-ms",
+  "joint-state-topic",
+  "python",
+  "release-name",
+  "robot-namespace",
+  "sidecar",
+]);
 
 type DiscoveryReport = Ros2DiscoveryReport;
 
@@ -76,9 +93,17 @@ function parseOptions(args: string[]): Options {
     if (!name?.startsWith("--"))
       throw new Error(`Unexpected argument ${name ?? ""}. Run rlsok setup --help.`);
     const key = name.slice(2);
-    if (["non-interactive", "no-browser", "json", "help"].includes(key)) {
+    if (key === "json") {
+      throw new Error(
+        "Option --json is not supported by rlsok setup; no machine-readable setup output contract is available.",
+      );
+    }
+    if (SETUP_FLAG_OPTIONS.has(key)) {
       options[key] = true;
       continue;
+    }
+    if (!SETUP_VALUE_OPTIONS.has(key)) {
+      throw new Error(`Unknown option --${key}. Run rlsok setup --help.`);
     }
     const value = args[++index];
     if (!value || value.startsWith("--"))
@@ -409,10 +434,29 @@ export function setupUsage(): string {
     "  --cloud <url>                  Hosted Cloud API (default https://api.rlsok.com)",
     "  --non-interactive              require explicit choices when ambiguous",
     "  --no-browser                   print browser URLs instead of opening them",
+    "                                 (recommended for headless/SSH systems)",
   ].join("\n");
 }
 
+export function presentSetupApproval(
+  approvalUrl: string,
+  noBrowser: boolean,
+  openBrowser: (url: string) => void = launchBrowser,
+): void {
+  process.stdout.write(`  Approval: ${approvalUrl}\n`);
+  if (!noBrowser) openBrowser(approvalUrl);
+}
+
 export async function runSetupCommand(args: string[]): Promise<number> {
+  if (
+    hasHelpFlag(
+      args,
+      new Set([...SETUP_VALUE_OPTIONS].map((name) => `--${name}`)),
+    )
+  ) {
+    process.stdout.write(`${setupUsage()}\n`);
+    return 0;
+  }
   const options = parseOptions(args);
   if (options.help) {
     process.stdout.write(`${setupUsage()}\n`);
@@ -659,9 +703,12 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     execSpec: spec,
   });
   process.stdout.write(
-    `  ✓ Draft ${draft.releaseId} created without uploading policy bytes.\n  Approval: ${draft.approvalUrl}\n`,
+    `  ✓ Draft ${draft.releaseId} created without uploading policy bytes.\n`,
   );
-  if (!options["no-browser"]) openBrowser(draft.approvalUrl);
+  presentSetupApproval(
+    draft.approvalUrl,
+    Boolean(options["no-browser"]),
+  );
   const approvalTimeout = Number(option(options, "approval-timeout-minutes") ?? "30");
   if (!Number.isFinite(approvalTimeout) || approvalTimeout <= 0 || approvalTimeout > 1440)
     throw new Error("Approval timeout must be between 1 and 1440 minutes.");

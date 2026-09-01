@@ -489,6 +489,22 @@ async function testContract(): Promise<void> {
     /payload_too_large/,
   );
 
+  const nav2SelectorAttempt = setup("run");
+  const withNav2Selectors = JSON.parse(
+    proposal(nav2SelectorAttempt.spec, "nav2-selector-attempt"),
+  ) as any;
+  Object.assign(withNav2Selectors.actionPayload, {
+    controller_id: "different_controller",
+    goal_checker_id: "different_goal_checker",
+    progress_checker_id: "different_progress_checker",
+    path_handler_id: "not_a_jazzy_field",
+  });
+  await assert.rejects(
+    nav2SelectorAttempt.gateway.handlePayload(JSON.stringify(withNav2Selectors)),
+    /proposal_schema_invalid/,
+  );
+  assert.equal(nav2SelectorAttempt.transport.dispatches, 0);
+
   const duplicate = setup("shadow");
   await duplicate.gateway.handlePayload(proposal(duplicate.spec));
   const duplicateResult = await duplicate.gateway.handlePayload(
@@ -569,10 +585,12 @@ async function testShadow(): Promise<void> {
     positions: [0, 0],
     observedAt: "2026-07-26T11:00:00.000Z",
   };
-  assert.equal(
-    (await stale.gateway.handlePayload(proposal(stale.spec))).reason,
-    "state_stale_or_invalid",
-  );
+  const staleResult = await stale.gateway.handlePayload(proposal(stale.spec));
+  assert.equal(staleResult.decision, "blocked");
+  assert.equal(staleResult.reason, "state_stale_or_invalid");
+  assert.equal(staleResult.hardwareSignalSent, false);
+  assert.equal(staleResult.controllerGoalCount, 0);
+  assert.equal(stale.transport.dispatches, 0);
 }
 
 async function testReferenceRun(): Promise<void> {

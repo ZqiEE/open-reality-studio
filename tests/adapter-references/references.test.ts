@@ -203,12 +203,41 @@ test('remaining integration references declare selected identity, volatile exclu
     'ros2-canopen-command-path',
     'nav2-velocity-smoother',
     'elite-cs-model',
+    'schunk-svh-selected-command-path',
     'crane-x7-selected-limits',
     'device-serial-calibration',
     'physical-execution-identity',
     'ros2-control-runtime-compatibility'
   ]);
   assert.equal(references.every(({ externalTestGate }) => externalTestGate.length > 20), true);
+
+  const nav2 = references.find(({ integration }) =>
+    integration === 'nav2-velocity-smoother'
+  )!;
+  assert.equal(
+    nav2.stableApprovedInputs.some((input) =>
+      input.includes('feedback, smoothing frequency, vector scaling')
+    ),
+    true
+  );
+  assert.equal(
+    nav2.stableApprovedInputs.some((input) =>
+      input.startsWith('CLOSED_LOOP-only odometry source/topic')
+    ),
+    true
+  );
+  assert.equal(
+    nav2.stableApprovedInputs.some((input) =>
+      input.includes('base-command-consumer topology')
+    ),
+    true
+  );
+  assert.equal(
+    nav2.excludedVolatileInputs.includes('current odometry or velocity sample'),
+    true
+  );
+  assert.match(nav2.externalTestGate, /controller_id, goal_checker_id and progress_checker_id/);
+  assert.match(nav2.externalTestGate, /Jazzy has no path_handler_id field/);
 
   const craneX7 = references.find(({ integration }) =>
     integration === 'crane-x7-selected-limits'
@@ -264,7 +293,8 @@ test('technical contributor attribution is opt-in, factual and does not imply en
     'Bartosz Burda',
     'Dr. Denis Stogl',
     'Atsushi Kuwagata',
-    'Rune Søe-Knudsen'
+    'Rune Søe-Knudsen',
+    'Tetsu Yamaguchi'
   ]);
   assert.equal(contributors.every(({ optInConfirmed }) => optInConfirmed === true), true);
   assert.equal(contributors[0]?.preferredUrl, 'https://github.com/xiao-yang25');
@@ -291,6 +321,19 @@ test('technical contributor attribution is opt-in, factual and does not imply en
     'This attribution should not be interpreted as an endorsement by either Rune Søe-Knudsen or Universal Robots.'
   );
   assert.equal(contributors[7]?.preferredUrl, 'https://www.universal-robots.com/');
+  assert.equal(contributors[8]?.project, 'Engineering Assurance Layer (adjacent tool)');
+  assert.equal(
+    contributors[8]?.preferredUrl,
+    'https://github.com/ty-knowgic/engineering-assurance-layer'
+  );
+  assert.match(
+    String(contributors[8]?.contribution),
+    /following ros-navigation\/navigation2#6357/
+  );
+  assert.equal(
+    contributors[8]?.attributionBoundary,
+    "Has not reviewed RLSOK's implementation and does not endorse it."
+  );
   for (const contributor of contributors) {
     assert.equal('title' in contributor, false);
     assert.equal('logo' in contributor, false);

@@ -49,6 +49,7 @@ import {
   ros2ProposalEnvelopeSchema,
 } from "../../packages/ros2-reference-gateway";
 import { PythonRos2SidecarTransport } from "../../packages/ros2-reference-gateway/sidecar";
+import { hasHelpFlag } from "./help-flag";
 import { operatorFailureReport } from "./operator-report";
 
 type Options = Record<string, string>;
@@ -956,6 +957,16 @@ export function ros2Usage(): string {
 }
 
 export async function runRos2Command(args: string[]): Promise<number> {
+  if (
+    args[0] === "help" ||
+    hasHelpFlag(
+      args,
+      new Set(args.filter((arg) => arg.startsWith("--") && arg !== "--help")),
+    )
+  ) {
+    process.stdout.write(`${ros2Usage()}\n`);
+    return 0;
+  }
   const operation = args[0] && !args[0].startsWith("--") ? args[0] : "shadow";
   const inspectRelease =
     operation === "inspect" && args[1] && !args[1].startsWith("--")
