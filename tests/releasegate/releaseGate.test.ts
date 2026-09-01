@@ -16,7 +16,8 @@ import {
 } from '../../packages/core/exec-spec';
 import {
   configurationDigest,
-  executionConfigurationSchema
+  executionConfigurationSchema,
+  type ExecutionConfiguration
 } from '../../packages/core/execution-configuration';
 import {
   ReleaseExecutionGate,
@@ -158,6 +159,11 @@ async function testExecSpec(): Promise<void> {
   revoked.evidence = { status: 'revoked', scenarioPackId: 'pick-v3', testReportSha256: H('3'), approvedBy: '', approvedAt: '' };
   assert.equal(checkExecutablePolicySpec(revoked, NOW).result, 'BLOCK');
 
+  assert.deepEqual(checkExecutablePolicySpec(valid, new Date(Number.NaN)), {
+    result: 'INVALID',
+    reasons: ['current_time_invalid']
+  });
+
 }
 
 async function testReleasePolicyAndDiff(): Promise<void> {
@@ -252,6 +258,10 @@ async function testReleasePolicyAndDiff(): Promise<void> {
     'arm-03',
     NOW
   ), { allowed: false, reason: 'release_identity_changed_reapproval_required' });
+  assert.deepEqual(executionEligibility(release, releasedRecord(release), 'arm-03', new Date(Number.NaN)), {
+    allowed: false,
+    reason: 'current_time_invalid'
+  });
 }
 
 async function testEvidence(): Promise<void> {
@@ -270,22 +280,217 @@ async function testEvidence(): Promise<void> {
     createdAt: NOW.toISOString(),
     entries: [first, second]
   };
+  assert.throws(
+    () => canonicalJson({ value: '\ud800' }),
+    /canonical_json_rejects_unpaired_surrogate/
+  );
+  assert.throws(
+    () => canonicalJson({ ['\udfff']: 'value' }),
+    /canonical_json_rejects_unpaired_surrogate/
+  );
+  for (const unsupported of [undefined, () => undefined, Symbol('unsupported')]) {
+    assert.throws(
+      () => canonicalJson(unsupported),
+      /canonical_json_rejects_unsupported_value/
+    );
+  }
+  for (const unsupported of [
+    { nested: () => undefined },
+    { nested: Symbol('unsupported') },
+    [() => undefined],
+    [Symbol('unsupported')],
+    [undefined],
+    new Date('2026-01-01T00:00:00.000Z'),
+  ]) {
+    assert.throws(
+      () => canonicalJson(unsupported),
+      /canonical_json_rejects_unsupported_value/
+    );
+  }
+  const sparse = new Array(1);
+  assert.throws(
+    () => canonicalJson(sparse),
+    /canonical_json_rejects_unsupported_value/
+  );
+  assert.equal(
+    canonicalJson({ 'é': 5, e: 4, aa: 3, aA: 2, _: 1 }),
+    '{"_":1,"aA":2,"aa":3,"e":4,"é":5}'
+  );
+  assert.throws(
+    () => canonicalJson({ '10': 1, '2': 2 }),
+    /canonical_json_rejects_array_index_object_key/
+  );
+  assert.throws(
+    () => canonicalJson({ '4294967294': true }),
+    /canonical_json_rejects_array_index_object_key/
+  );
+  assert.equal(
+    canonicalJson({ '4294967295': true, a: false }),
+    '{"4294967295":true,"a":false}'
+  );
+  let tooDeep: unknown = 'leaf';
+  for (let depth = 0; depth < 130; depth += 1) {
+    tooDeep = { value: tooDeep };
+  }
+  assert.throws(() => canonicalJson(tooDeep), /canonical_json_depth_exceeded/);
+  assert.deepEqual(
+    verifyEvidenceBundle({ ...bundle, entries: Array(10_001).fill(first) }),
+    { ok: false, reason: 'bundle_missing_or_malformed' }
+  );
   assert.deepEqual(verifyEvidenceBundle(bundle), { ok: true });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expectedReleaseId: ''
+  }), { ok: false, reason: 'release_id_mismatch' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expectedExecutablePolicyHash: ''
+  }), { ok: false, reason: 'executable_policy_hash_mismatch' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: new Date(NOW.getTime() + 1).toISOString(),
+    now: new Date(Number.NaN)
+  }), { ok: false, reason: 'verification_time_invalid' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: 'not-a-timestamp',
+    now: NOW
+  }), { ok: false, reason: 'release_expiry_invalid' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: '2026-02-30T00:00:00.000Z',
+    now: NOW
+  }), { ok: false, reason: 'release_expiry_invalid' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: '',
+    now: NOW
+  }), { ok: false, reason: 'release_expiry_invalid' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: NOW.toISOString(),
+    now: NOW
+  }), { ok: false, reason: 'release_expired' });
+  assert.deepEqual(verifyEvidenceBundle(bundle, {
+    expiresAt: new Date(NOW.getTime() + 1).toISOString(),
+    now: NOW
+  }), { ok: true });
+  assert.deepEqual(verifyEvidenceBundle({
+    ...bundle,
+    createdAt: '2026-02-30T00:00:00.000Z'
+  }), { ok: false, reason: 'bundle_missing_or_malformed' });
+  const invalidCalendarEvidence = appendEvidence([], {
+    ...evidenceFor(release),
+    decisionMadeAt: '2026-02-30T00:00:00.000Z'
+  });
+  assert.deepEqual(verifyEvidenceBundle({
+    ...bundle,
+    entries: [invalidCalendarEvidence]
+  }), { ok: false, reason: 'entry_missing_or_malformed:0' });
+  for (const proposedAction of [undefined, () => undefined, Symbol('action'), 1n]) {
+    assert.deepEqual(verifyEvidenceBundle({
+      ...bundle,
+      entries: [{
+        ...first,
+        evidence: { ...first.evidence, proposedAction }
+      }]
+    }), { ok: false, reason: 'entry_missing_or_malformed:0' });
+  }
+  const cyclicAction: { self?: unknown } = {};
+  cyclicAction.self = cyclicAction;
+  for (const proposedAction of [
+    { nested: 1n },
+    { nonFinite: Number.POSITIVE_INFINITY },
+    cyclicAction
+  ]) {
+    assert.deepEqual(verifyEvidenceBundle({
+      ...bundle,
+      entries: [{
+        ...first,
+        evidence: { ...first.evidence, proposedAction }
+      }]
+    }), { ok: false, reason: 'entry_missing_or_malformed:0' });
+  }
+  const inconsistentHardwareEntries: ExecutionEvidence[] = [
+    {
+      ...evidenceFor(release),
+      decision: 'blocked',
+      hardwareSignalSent: true,
+      hardwareSignalState: 'attempted_unconfirmed',
+      dispatchedAt: NOW.toISOString()
+    },
+    {
+      ...evidenceFor(release),
+      decision: 'allowed',
+      hardwareSignalSent: true,
+      hardwareSignalState: 'attempted_unconfirmed'
+    },
+    {
+      ...evidenceFor(release),
+      hardwareSignalSent: false,
+      hardwareSignalState: 'not_sent',
+      dispatchedAt: NOW.toISOString()
+    },
+    {
+      ...evidenceFor(release),
+      hardwareSignalSent: false,
+      hardwareSignalState: 'not_sent',
+      controllerResult: { completed: true }
+    },
+    {
+      ...evidenceFor(release),
+      decision: 'failed',
+      decisionMadeAt: new Date(NOW.getTime() + 1).toISOString(),
+      hardwareSignalSent: true,
+      hardwareSignalState: 'attempted_unconfirmed',
+      dispatchedAt: NOW.toISOString()
+    }
+  ];
+  for (const inconsistent of inconsistentHardwareEntries) {
+    assert.deepEqual(verifyEvidenceBundle({
+      ...bundle,
+      entries: [appendEvidence([], inconsistent)]
+    }), { ok: false, reason: 'hardware_evidence_inconsistent:0' });
+  }
   const tampered = structuredClone(bundle);
   tampered.entries[0].evidence.decisionReason = 'edited';
   assert.match((verifyEvidenceBundle(tampered) as { ok: false; reason: string }).reason, /content_hash_mismatch/);
+
+  const futureState = appendEvidence([], {
+    ...evidenceFor(release),
+    stateObservedAt: new Date(NOW.getTime() + 1).toISOString()
+  });
+  assert.deepEqual(verifyEvidenceBundle({
+    ...bundle,
+    entries: [futureState]
+  }, { now: NOW }), { ok: false, reason: 'evidence_time_inconsistent:0' });
+
+  const later = appendEvidence([], {
+    ...evidenceFor(release),
+    decisionMadeAt: new Date(NOW.getTime() + 1).toISOString()
+  });
+  const rollback = appendEvidence([later], evidenceFor(release));
+  assert.deepEqual(verifyEvidenceBundle({
+    ...bundle,
+    createdAt: new Date(NOW.getTime() + 1).toISOString(),
+    entries: [later, rollback]
+  }, { now: new Date(NOW.getTime() + 1) }), {
+    ok: false,
+    reason: 'evidence_time_inconsistent:1'
+  });
+  assert.deepEqual(verifyEvidenceBundle({
+    ...bundle,
+    createdAt: new Date(NOW.getTime() + 1).toISOString()
+  }, { now: NOW }), { ok: false, reason: 'bundle_created_at_future' });
 }
 
 async function testGateAndShadow(): Promise<void> {
   const release = spec();
   const entries: ExecutionEvidence[] = [];
   let dispatches = 0;
+  const dispatchedActions: unknown[] = [];
   let currentRecord = releasedRecord(release);
+  let monotonicNow = 10_000;
+  let monotonicAdvanceOnRefresh = 0;
   const hashAction = (action: unknown) => sha256(canonicalJson(action));
   const gate = new ReleaseExecutionGate(
     {
-      async dispatch() {
+      async dispatch(action) {
         dispatches += 1;
+        dispatchedActions.push(action);
         return { accepted: true };
       }
     },
@@ -296,7 +501,14 @@ async function testGateAndShadow(): Promise<void> {
       matchedRuleIds: ['safe-only']
     }),
     hashAction,
-    async () => currentRecord
+    async () => {
+      monotonicNow += monotonicAdvanceOnRefresh;
+      monotonicAdvanceOnRefresh = 0;
+      return currentRecord;
+    },
+    undefined,
+    undefined,
+    () => monotonicNow
   );
 
   const action = { safe: false };
@@ -345,10 +557,22 @@ async function testGateAndShadow(): Promise<void> {
     actionHash: hashAction(safeAction)
   });
   if (expiring.status !== 'allowed') throw new Error('expected allowed');
-  await assert.rejects(gate.execute({
-    ...expiring.authorizedRequest,
-    now: new Date(NOW.getTime() + 1_001)
-  }), /execution_permit_invalid/);
+  monotonicNow += 1_001;
+  await assert.rejects(gate.execute(expiring.authorizedRequest), /execution_permit_invalid:permit_expired/);
+  assert.equal(dispatches, 1);
+
+  const expiresDuringRefresh = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-expires-during-refresh',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (expiresDuringRefresh.status !== 'allowed') throw new Error('expected allowed');
+  monotonicAdvanceOnRefresh = 1_000;
+  await assert.rejects(
+    gate.execute(expiresDuringRefresh.authorizedRequest),
+    /execution_permit_invalid:permit_expired/
+  );
   assert.equal(dispatches, 1);
 
   const another = await gate.evaluate({
@@ -421,6 +645,82 @@ async function testGateAndShadow(): Promise<void> {
   await assert.rejects(gate.execute({ ...base, permit: {} } as any), /execution_permit_invalid/);
   assert.equal(dispatches, 1);
 
+  const stateBound = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-state-bound',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (stateBound.status !== 'allowed') throw new Error('expected allowed');
+  stateBound.authorizedRequest.state = { ready: false };
+  await assert.rejects(
+    gate.execute(stateBound.authorizedRequest),
+    /execution_permit_invalid:permit_state_binding_mismatch/
+  );
+
+  const stateTimeBound = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-state-time-bound',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (stateTimeBound.status !== 'allowed') throw new Error('expected allowed');
+  stateTimeBound.authorizedRequest.stateObservedAt = new Date(NOW.getTime() - 1).toISOString();
+  await assert.rejects(
+    gate.execute(stateTimeBound.authorizedRequest),
+    /execution_permit_invalid:permit_state_time_binding_mismatch/
+  );
+
+  const proposalBound = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-id-bound',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (proposalBound.status !== 'allowed') throw new Error('expected allowed');
+  proposalBound.authorizedRequest.proposalId = 'proposal-id-forged';
+  await assert.rejects(
+    gate.execute(proposalBound.authorizedRequest),
+    /execution_permit_invalid:permit_proposal_binding_mismatch/
+  );
+
+  const releaseContentBound = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-release-content-bound',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (releaseContentBound.status !== 'allowed') throw new Error('expected allowed');
+  const changedRelease = spec({ model: { ...release.model, sha256: H('9') } });
+  releaseContentBound.authorizedRequest.release = changedRelease;
+  releaseContentBound.authorizedRequest.releaseRecord = releasedRecord(changedRelease);
+  await assert.rejects(
+    gate.execute(releaseContentBound.authorizedRequest),
+    /execution_permit_invalid:permit_release_content_binding_mismatch/
+  );
+
+  const clockRollback = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-clock-rollback',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  if (clockRollback.status !== 'allowed') throw new Error('expected allowed');
+  clockRollback.authorizedRequest.now = new Date(NOW.getTime() - 1);
+  await assert.rejects(
+    gate.execute(clockRollback.authorizedRequest),
+    /execution_permit_invalid:execution_clock_rollback/
+  );
+
+  const invalidClock = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-invalid-clock',
+    action: safeAction,
+    actionHash: hashAction(safeAction),
+    now: new Date(Number.NaN)
+  });
+  assert.deepEqual(invalidClock, { status: 'blocked', reason: 'current_time_invalid' });
+
   const shadowEntries: ExecutionEvidence[] = [];
   const shadow = new ShadowExecutionGate(
     { append(entry) { shadowEntries.push(entry); } },
@@ -436,13 +736,416 @@ async function testGateAndShadow(): Promise<void> {
   assert.equal(dispatches, 1);
   assert.equal(shadowEntries[0].hardwareSignalSent, false);
   assert.equal(shadowEntries[0].hardwareSignalState, 'not_sent');
+
+  const shadowConfigurationMismatch = await shadow.evaluate({
+    ...base,
+    releaseRecord: {
+      ...releasedRecord(release),
+      state: 'shadow',
+      approvedConfigurationDigest: H('9')
+    },
+    proposalId: 'proposal-shadow-configuration-mismatch',
+    action: safeAction,
+    actionHash: hashAction(safeAction)
+  });
+  assert.deepEqual(shadowConfigurationMismatch, { status: 'blocked', reason: 'configuration_mismatch' });
+
+  const shadowInvalidClock = await shadow.evaluate({
+    ...base,
+    releaseRecord: { ...releasedRecord(release), state: 'shadow' },
+    proposalId: 'proposal-shadow-invalid-clock',
+    action: safeAction,
+    actionHash: hashAction(safeAction),
+    now: new Date(Number.NaN)
+  });
+  assert.deepEqual(shadowInvalidClock, { status: 'blocked', reason: 'current_time_invalid' });
+  assert.equal(shadowEntries.at(-1)?.decisionReason, 'shadow:current_time_invalid');
+
+  const callerOwnedAction = { safe: true };
+  const mutationSafe = await gate.evaluate({
+    ...base,
+    proposalId: 'proposal-action-toctou',
+    action: callerOwnedAction,
+    actionHash: hashAction(callerOwnedAction)
+  });
+  if (mutationSafe.status !== 'allowed') throw new Error('expected allowed');
+  const execution = gate.execute(mutationSafe.authorizedRequest);
+  callerOwnedAction.safe = false;
+  await execution;
+  assert.deepEqual(dispatchedActions.at(-1), { safe: true });
+  assert.deepEqual(entries.at(-1)?.proposedAction, { safe: true });
+  assert.equal(dispatches, 2);
+}
+
+async function testDispatchEvidenceFreezesDecisionTimeBeforeAsyncDispatch(): Promise<void> {
+  const expectedAuthorizationTime = '2026-07-26T00:00:00.000Z';
+  const authorizationTime = new Date(expectedAuthorizationTime);
+  let mutableExecutionClock: Date | undefined;
+  const initial = spec();
+  const executionConfiguration = executionConfigurationSchema.parse({
+    ...initial.executionConfiguration,
+    observedAt: authorizationTime.toISOString()
+  });
+  const release = spec({
+    executionConfiguration,
+    approvedConfigurationDigest: configurationDigest(executionConfiguration)
+  });
+  const action = { safe: true };
+  const hashAction = (candidate: unknown) => sha256(canonicalJson(candidate));
+  const expectedExecutablePolicyHash = executablePolicyHash(release);
+  const expectedModelHash = release.model.sha256;
+  const expectedConfigurationDigest = configurationDigest(executionConfiguration);
+  const entries: ExecutionEvidence[] = [];
+  let authorizedRequest: {
+    release: ExecutablePolicySpec;
+    executionConfiguration?: ExecutionConfiguration;
+  } | undefined;
+  const gate = new ReleaseExecutionGate(
+    {
+      async dispatch(candidate: typeof action) {
+        mutableExecutionClock?.setTime(mutableExecutionClock.getTime() + 10_000);
+        candidate.safe = false;
+        if (authorizedRequest) {
+          authorizedRequest.release.model.sha256 = 'f'.repeat(64);
+          if (authorizedRequest.executionConfiguration?.schemaVersion === 1) {
+            authorizedRequest.executionConfiguration.controller.name = 'mutated-controller';
+          }
+        }
+        return { accepted: true };
+      }
+    },
+    { append(entry) { entries.push(entry); } },
+    async () => {
+      authorizationTime.setTime(authorizationTime.getTime() + 10_000);
+      return {
+        allowed: true,
+        reason: 'policy_allowed',
+        matchedRuleIds: ['safe-only']
+      };
+    },
+    hashAction,
+    async () => {
+      mutableExecutionClock?.setTime(mutableExecutionClock.getTime() + 10_000);
+      return releasedRecord(release);
+    }
+  );
+  const decision = await gate.evaluate({
+    release,
+    releaseRecord: releasedRecord(release),
+    executionConfiguration,
+    deviceId: 'arm-03',
+    proposalId: 'proposal-async-dispatch-timing',
+    action,
+    actionHash: hashAction(action),
+    state: { ready: true },
+    stateObservedAt: authorizationTime.toISOString(),
+    now: authorizationTime
+  });
+  assert.equal(decision.status, 'allowed');
+  if (decision.status !== 'allowed') throw new Error('expected allowed');
+  const issuedAt = decision.authorizedRequest.now?.getTime();
+  assert.ok(issuedAt !== undefined && issuedAt >= Date.parse(expectedAuthorizationTime));
+  assert.ok(issuedAt < Date.parse(expectedAuthorizationTime) + 1_000);
+  const executionClock = new Date(issuedAt);
+  decision.authorizedRequest.now = executionClock;
+  authorizedRequest = decision.authorizedRequest;
+  mutableExecutionClock = executionClock;
+  await gate.execute(decision.authorizedRequest);
+
+  const dispatched = entries.at(-1);
+  assert.ok(dispatched?.dispatchedAt);
+  assert.equal(dispatched.decisionMadeAt, dispatched.dispatchedAt);
+  assert.deepEqual(dispatched.proposedAction, { safe: true });
+  assert.equal(dispatched.executablePolicyHash, expectedExecutablePolicyHash);
+  assert.equal(dispatched.modelHash, expectedModelHash);
+  assert.equal(dispatched.observedConfigurationDigest, expectedConfigurationDigest);
+  const entry = appendEvidence([], dispatched);
+  assert.deepEqual(verifyEvidenceBundle({
+    apiVersion: 'realitywarden.io/v1alpha1',
+    kind: 'EvidenceBundle',
+    releaseId: release.metadata.releaseId,
+    executablePolicyHash: expectedExecutablePolicyHash,
+    createdAt: dispatched.decisionMadeAt,
+    entries: [entry]
+  }), { ok: true });
+}
+
+async function testAuthorizationSnapshotsAndMonotonicFreshness(): Promise<void> {
+  const hashAction = (candidate: unknown) => sha256(canonicalJson(candidate));
+
+  let monotonicNow = 20_000;
+  let policyEntered!: () => void;
+  let allowPolicyRead!: () => void;
+  let policyRead!: () => void;
+  let allowPolicyReturn!: () => void;
+  const entered = new Promise<void>((resolve) => { policyEntered = resolve; });
+  const read = new Promise<void>((resolve) => { allowPolicyRead = resolve; });
+  const observed = new Promise<void>((resolve) => { policyRead = resolve; });
+  const returned = new Promise<void>((resolve) => { allowPolicyReturn = resolve; });
+  let observedSafe: boolean | undefined;
+  let observedReady: boolean | undefined;
+  let dispatches = 0;
+  const release = spec();
+  const callerAction = { safe: false };
+  const callerState = { ready: true };
+  const snapshotGate = new ReleaseExecutionGate(
+    { async dispatch() { dispatches += 1; return { completed: true }; } },
+    { append() {} },
+    async (action: typeof callerAction, state: typeof callerState) => {
+      policyEntered();
+      await read;
+      observedSafe = action.safe;
+      observedReady = state.ready;
+      policyRead();
+      await returned;
+      return {
+        allowed: observedSafe,
+        reason: observedSafe ? 'policy_allowed' : 'policy_blocked',
+        matchedRuleIds: ['snapshot-policy']
+      };
+    },
+    hashAction,
+    undefined,
+    undefined,
+    undefined,
+    () => monotonicNow
+  );
+  const evaluation = snapshotGate.evaluate({
+    release,
+    releaseRecord: releasedRecord(release),
+    executionConfiguration: release.executionConfiguration,
+    deviceId: 'arm-03',
+    proposalId: 'proposal-policy-aba',
+    action: callerAction,
+    actionHash: hashAction(callerAction),
+    state: callerState,
+    stateObservedAt: NOW.toISOString(),
+    now: NOW
+  });
+  await entered;
+  callerAction.safe = true;
+  callerState.ready = false;
+  allowPolicyRead();
+  await observed;
+  callerAction.safe = false;
+  callerState.ready = true;
+  allowPolicyReturn();
+  const snapshotDecision = await evaluation;
+  assert.equal(observedSafe, false);
+  assert.equal(observedReady, true);
+  assert.equal(snapshotDecision.status, 'blocked');
+  assert.equal(snapshotDecision.reason, 'policy_blocked');
+  assert.equal(dispatches, 0);
+
+  let shadowPolicyEntered!: () => void;
+  let allowShadowPolicyRead!: () => void;
+  let shadowPolicyRead!: () => void;
+  let allowShadowPolicyReturn!: () => void;
+  const shadowEntered = new Promise<void>((resolve) => { shadowPolicyEntered = resolve; });
+  const shadowRead = new Promise<void>((resolve) => { allowShadowPolicyRead = resolve; });
+  const shadowObserved = new Promise<void>((resolve) => { shadowPolicyRead = resolve; });
+  const shadowReturned = new Promise<void>((resolve) => { allowShadowPolicyReturn = resolve; });
+  const shadowAction = { safe: false };
+  const shadowState = { ready: true };
+  let shadowObservedSafe: boolean | undefined;
+  let shadowObservedReady: boolean | undefined;
+  const shadowEntries: ExecutionEvidence[] = [];
+  const shadowRelease = spec({
+    deployment: { ...release.deployment, mode: 'shadow' }
+  });
+  const shadowRecord: ReleaseRecord = {
+    ...releasedRecord(shadowRelease),
+    state: 'shadow'
+  };
+  const shadowGate = new ShadowExecutionGate(
+    { append(entry) { shadowEntries.push(entry); } },
+    async (action: typeof shadowAction, state: typeof shadowState) => {
+      shadowPolicyEntered();
+      await shadowRead;
+      shadowObservedSafe = action.safe;
+      shadowObservedReady = state.ready;
+      shadowPolicyRead();
+      await shadowReturned;
+      return {
+        allowed: shadowObservedSafe,
+        reason: shadowObservedSafe ? 'policy_allowed' : 'policy_blocked',
+        matchedRuleIds: ['shadow-snapshot-policy']
+      };
+    },
+    hashAction
+  );
+  const shadowEvaluation = shadowGate.evaluate({
+    release: shadowRelease,
+    releaseRecord: shadowRecord,
+    executionConfiguration: shadowRelease.executionConfiguration,
+    deviceId: 'arm-03',
+    proposalId: 'proposal-shadow-policy-aba',
+    action: shadowAction,
+    actionHash: hashAction(shadowAction),
+    state: shadowState,
+    stateObservedAt: NOW.toISOString(),
+    now: NOW
+  });
+  await shadowEntered;
+  shadowAction.safe = true;
+  shadowState.ready = false;
+  allowShadowPolicyRead();
+  await shadowObserved;
+  shadowAction.safe = false;
+  shadowState.ready = true;
+  allowShadowPolicyReturn();
+  const shadowDecision = await shadowEvaluation;
+  assert.equal(shadowObservedSafe, false);
+  assert.equal(shadowObservedReady, true);
+  assert.equal(shadowDecision.status, 'blocked');
+  assert.equal(shadowDecision.reason, 'policy_blocked');
+  assert.deepEqual(shadowEntries.at(-1)?.proposedAction, { safe: false });
+  assert.equal(shadowEntries.at(-1)?.decision, 'blocked');
+  assert.equal(shadowEntries.at(-1)?.hardwareSignalSent, false);
+
+  const timingEntries: ExecutionEvidence[] = [];
+  const timingGate = new ReleaseExecutionGate(
+    { async dispatch() { dispatches += 1; return { completed: true }; } },
+    { append(entry) { timingEntries.push(entry); } },
+    async () => ({ allowed: true, reason: 'policy_allowed', matchedRuleIds: ['timing-policy'] }),
+    hashAction,
+    async (request) => request.releaseRecord,
+    undefined,
+    undefined,
+    () => monotonicNow
+  );
+  const safeAction = { safe: true };
+  const nearStale = await timingGate.evaluate({
+    release,
+    releaseRecord: releasedRecord(release),
+    executionConfiguration: release.executionConfiguration,
+    deviceId: 'arm-03',
+    proposalId: 'proposal-near-stale-state',
+    action: safeAction,
+    actionHash: hashAction(safeAction),
+    state: { ready: true },
+    stateObservedAt: new Date(NOW.getTime() - 999).toISOString(),
+    now: NOW
+  });
+  assert.equal(nearStale.status, 'allowed');
+  if (nearStale.status !== 'allowed') throw new Error('expected near-stale permit');
+  monotonicNow += 2;
+  await assert.rejects(
+    timingGate.execute(nearStale.authorizedRequest),
+    /execution_permit_invalid:state_stale_or_invalid/
+  );
+  assert.equal(dispatches, 0);
+  assert.equal(timingEntries.at(-1)?.decisionReason, 'state_stale_or_invalid');
+
+  const expiringRelease = spec({
+    deployment: {
+      ...release.deployment,
+      expiresAt: new Date(NOW.getTime() + 1).toISOString()
+    }
+  });
+  const nearExpiry = await timingGate.evaluate({
+    release: expiringRelease,
+    releaseRecord: releasedRecord(expiringRelease),
+    executionConfiguration: expiringRelease.executionConfiguration,
+    deviceId: 'arm-03',
+    proposalId: 'proposal-near-release-expiry',
+    action: safeAction,
+    actionHash: hashAction(safeAction),
+    state: { ready: true },
+    stateObservedAt: NOW.toISOString(),
+    now: NOW
+  });
+  assert.equal(nearExpiry.status, 'allowed');
+  if (nearExpiry.status !== 'allowed') throw new Error('expected near-expiry permit');
+  monotonicNow += 2;
+  await assert.rejects(
+    timingGate.execute(nearExpiry.authorizedRequest),
+    /execution_permit_invalid:release_expired/
+  );
+  assert.equal(dispatches, 0);
+  assert.equal(timingEntries.at(-1)?.decisionReason, 'release_expired');
+
+  let failingAuthorized:
+    | Extract<Awaited<ReturnType<typeof timingGate.evaluate>>, { status: 'allowed' }>['authorizedRequest']
+    | undefined;
+  const refreshFailureEntries: ExecutionEvidence[] = [];
+  const refreshFailureGate = new ReleaseExecutionGate(
+    { async dispatch() { dispatches += 1; return { completed: true }; } },
+    { append(entry) { refreshFailureEntries.push(entry); } },
+    async () => ({ allowed: true, reason: 'policy_allowed', matchedRuleIds: ['timing-policy'] }),
+    hashAction,
+    async () => {
+      monotonicNow += 750;
+      if (failingAuthorized) failingAuthorized.action = { safe: false };
+      throw new Error('release store unavailable');
+    },
+    undefined,
+    undefined,
+    () => monotonicNow
+  );
+  const refreshFailure = await refreshFailureGate.evaluate({
+    release,
+    releaseRecord: releasedRecord(release),
+    executionConfiguration: release.executionConfiguration,
+    deviceId: 'arm-03',
+    proposalId: 'proposal-refresh-failure-time',
+    action: safeAction,
+    actionHash: hashAction(safeAction),
+    state: { ready: true },
+    stateObservedAt: NOW.toISOString(),
+    now: NOW
+  });
+  assert.equal(refreshFailure.status, 'allowed');
+  if (refreshFailure.status !== 'allowed') throw new Error('expected refresh-failure permit');
+  failingAuthorized = refreshFailure.authorizedRequest;
+  await assert.rejects(
+    refreshFailureGate.execute(failingAuthorized),
+    /execution_permit_invalid/
+  );
+  assert.equal(
+    refreshFailureEntries.at(-1)?.decisionMadeAt,
+    new Date(NOW.getTime() + 750).toISOString()
+  );
+  assert.deepEqual(refreshFailureEntries.at(-1)?.proposedAction, safeAction);
+  assert.equal(dispatches, 0);
+
+  const delayedGate = new ReleaseExecutionGate(
+    { async dispatch() { dispatches += 1; return { completed: true }; } },
+    { append(entry) { timingEntries.push(entry); } },
+    async () => {
+      monotonicNow += 2;
+      return { allowed: true, reason: 'policy_allowed', matchedRuleIds: ['timing-policy'] };
+    },
+    hashAction,
+    undefined,
+    undefined,
+    undefined,
+    () => monotonicNow
+  );
+  const delayedDecision = await delayedGate.evaluate({
+    release,
+    releaseRecord: releasedRecord(release),
+    executionConfiguration: release.executionConfiguration,
+    deviceId: 'arm-03',
+    proposalId: 'proposal-state-expires-during-policy',
+    action: safeAction,
+    actionHash: hashAction(safeAction),
+    state: { ready: true },
+    stateObservedAt: new Date(NOW.getTime() - 999).toISOString(),
+    now: NOW
+  });
+  assert.equal(delayedDecision.status, 'blocked');
+  assert.equal(delayedDecision.reason, 'state_stale_or_invalid');
+  assert.equal(dispatches, 0);
 }
 
 const suites: Record<string, () => Promise<void>> = {
   'exec-spec': testExecSpec,
   'release-policy': testReleasePolicyAndDiff,
   evidence: testEvidence,
-  'execution-gate': testGateAndShadow
+  'execution-gate': testGateAndShadow,
+  'dispatch-evidence-time': testDispatchEvidenceFreezesDecisionTimeBeforeAsyncDispatch,
+  'authorization-snapshots-and-time': testAuthorizationSnapshotsAndMonotonicFreshness
 };
 
 async function main(): Promise<void> {

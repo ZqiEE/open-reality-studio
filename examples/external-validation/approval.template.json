@@ -1,0 +1,11 @@
+{
+  "schema": "rlsok.io/external-approval-proof/v1",
+  "sessionId": "copy the UUID from session.json",
+  "releaseId": "copy the exact approved release ID",
+  "executablePolicyHash": "copy the 64-character contentHash from rlsok cloud get-release",
+  "runtimeCredentialId": "non-secret runtime credential or device audit ID",
+  "approverPrincipalId": "different authenticated Cloud principal audit ID",
+  "independentlyApproved": true,
+  "approvedAt": "2026-08-27T00:00:00.000Z",
+  "cloudReleaseReceiptSha256": "sha256 of exact rlsok cloud get-release JSON"
+}

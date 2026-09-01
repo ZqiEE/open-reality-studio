@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const output = path.join(root, '.tmp-rlsok');
+const output = fs.mkdtempSync(path.join(root, '.tmp-rlsok-'));
 const isTest = process.argv[2] === '--test';
 const sourceEntry = isTest ? process.argv[3] : 'apps/cli/rlsok.ts';
 if (!sourceEntry || path.extname(sourceEntry) !== '.ts') {
@@ -15,7 +15,6 @@ if (!sourceEntry || path.extname(sourceEntry) !== '.ts') {
 const runtimeArgs = isTest ? process.argv.slice(4) : process.argv.slice(2);
 const compiledEntry = path.join(output, sourceEntry.replace(/\.ts$/, '.js'));
 
-if (fs.existsSync(output)) fs.rmSync(output, { recursive: true, force: true });
 try {
   execFileSync(
     process.execPath,

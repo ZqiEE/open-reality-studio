@@ -10,7 +10,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { operatorFailureReport } from "../../apps/cli/operator-report";
+import {
+  hardwareDispatchForCliFailure,
+  operatorFailureReport,
+} from "../../apps/cli/operator-report";
 import {
   CloudClientError,
   RlsokCloudClient,
@@ -52,6 +55,28 @@ function report(status: RecoveryStatus, reason: string): string {
 }
 
 async function main(): Promise<void> {
+  const installer = readFileSync("packaging/install.sh", "utf8");
+  assert.match(
+    installer,
+    /BACKUP_ROOT="\$INSTALL_ROOT\/\$RLSOK_RUNTIME_VERSION\.activation-backup"/,
+  );
+  assert.match(
+    installer,
+    /rollback was incomplete; recovery remains at \$ROLLBACK_ROOT and \$BACKUP_ROOT/,
+  );
+  assert.match(installer, /rm -rf "\$ROLLBACK_ROOT" "\$BACKUP_ROOT"/);
+  assert.equal(
+    hardwareDispatchForCliFailure("ros2", "run", "ROS 2 unavailable"),
+    "NO",
+  );
+  assert.equal(
+    hardwareDispatchForCliFailure(
+      "ros2",
+      "run",
+      "controller_dispatch_unknown:transport_failed",
+    ),
+    "UNKNOWN",
+  );
   const temporary = mkdtempSync(join(tmpdir(), "rlsok-first-user-recovery-"));
   const cli = resolve(__dirname, "../../apps/cli/rlsok.js");
   const sidecar = resolve(
@@ -339,6 +364,57 @@ async function main(): Promise<void> {
   assert.match(tampered.reason, /content_hash_mismatch/);
   record("tampered Evidence", "FAILED", tampered.reason);
 
+  const emptyEvidence = verifyEvidenceBundle({
+    ...bundle,
+    entries: [],
+  });
+  assert.deepEqual(emptyEvidence, { ok: false, reason: "bundle_empty" });
+  record("empty Evidence bundle", "FAILED", "bundle_empty");
+
+  const incompleteEvidence = verifyEvidenceBundle({
+    ...bundle,
+    entries: [
+      {
+        ...entry,
+        evidence: {
+          ...entry.evidence,
+          decisionReason: "",
+        },
+      },
+    ],
+  });
+  assert.deepEqual(incompleteEvidence, {
+    ok: false,
+    reason: "entry_missing_or_malformed:0",
+  });
+  record(
+    "incomplete Evidence entry",
+    "FAILED",
+    "entry_missing_or_malformed:0",
+  );
+
+  const invalidOptionalDigest = verifyEvidenceBundle({
+    ...bundle,
+    entries: [
+      {
+        ...entry,
+        evidence: {
+          ...entry.evidence,
+          expectedConfigurationDigest: "not-a-digest",
+        },
+      },
+    ],
+  });
+  assert.deepEqual(invalidOptionalDigest, {
+    ok: false,
+    reason: "entry_missing_or_malformed:0",
+  });
+  record(
+    "invalid optional Evidence digest",
+    "FAILED",
+    "entry_missing_or_malformed:0",
+  );
+
   const proofPath =
     process.env.RLSOK_RECOVERY_MATRIX_PROOF ??
     resolve("artifacts/first-user-recovery-matrix.json");
@@ -357,8 +433,8 @@ async function main(): Promise<void> {
       2,
     )}\n`,
   );
-  assert.equal(covered.length, 15);
-  process.stdout.write("ok - first-user recovery matrix (15 cases)\n");
+  assert.equal(covered.length, 18);
+  process.stdout.write("ok - first-user recovery matrix (18 cases)\n");
   rmSync(temporary, { recursive: true, force: true });
 }
 

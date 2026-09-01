@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional
 
 try:
     import rclpy
+    from action_msgs.msg import GoalStatus
     from rclpy.utilities import get_rmw_implementation_identifier
     from builtin_interfaces.msg import Duration
     from control_msgs.action import FollowJointTrajectory
@@ -54,6 +55,8 @@ NodeBase = globals().get("Node", object)
 
 
 OUTPUT_LOCK = threading.Lock()
+MAX_DISCOVERY_ERRORS = 128
+MAX_DISCOVERY_ERROR_DETAIL_CHARS = 512
 
 
 def emit(message: Dict[str, Any]) -> None:
@@ -62,17 +65,36 @@ def emit(message: Dict[str, Any]) -> None:
         sys.stdout.flush()
 
 
+def classify_controller_result(status: int, error_code: int) -> Dict[str, Any]:
+    terminal_statuses = {
+        GoalStatus.STATUS_SUCCEEDED,
+        GoalStatus.STATUS_CANCELED,
+        GoalStatus.STATUS_ABORTED,
+    }
+    completed = status in terminal_statuses
+    succeeded = (
+        completed
+        and status == GoalStatus.STATUS_SUCCEEDED
+        and error_code == FollowJointTrajectory.Result.SUCCESSFUL
+    )
+    if not completed:
+        detail = "controller_result_status_unknown"
+    elif succeeded:
+        detail = "controller_succeeded"
+    else:
+        detail = "controller_reported_failure"
+    return {"completed": completed, "succeeded": succeeded, "detail": detail}
+
+
 class ReferenceTransportNode(NodeBase):
     def __init__(self, args: argparse.Namespace) -> None:
         super().__init__("rlsok_reference_gateway")
         self.args = args
         self.latest_state: Optional[Dict[str, Any]] = None
-        self.active_goal = None
         self.create_subscription(String, args.proposal_topic, self._proposal, 10)
         # JointState is sensor data. Request Best Effort so this subscriber is
-        # compatible with both Best Effort ros2_control publishers and
-        # Reliable publishers; requesting Reliable cannot match a Best Effort
-        # writer and previously produced a false "no valid sample" failure.
+        # compatible with both Best Effort ros2_control publishers and Reliable
+        # publishers; requesting Reliable cannot match a Best Effort writer.
         self.create_subscription(
             JointState,
             args.joint_state_topic,
@@ -136,9 +158,12 @@ class ReferenceTransportNode(NodeBase):
         future = self.action_client.send_goal_async(goal)
         self._wait_for_future(future, 2.0)
         handle = future.result()
-        if handle is None or not handle.accepted:
+        if handle is None:
+            # Absence of a goal response cannot prove rejection. The request may
+            # have crossed the transport boundary, so the caller must record unknown.
+            raise RuntimeError("goal_response_missing")
+        if not handle.accepted:
             return {"accepted": False, "detail": "goal_rejected"}
-        self.active_goal = handle
         result_future = handle.get_result_async()
         try:
             self._wait_for_future(result_future, self.args.result_timeout_seconds)
@@ -159,29 +184,14 @@ class ReferenceTransportNode(NodeBase):
             }
         result = wrapped.result
         error_code = int(result.error_code)
-        self.active_goal = None
+        status = int(wrapped.status)
+        classification = classify_controller_result(status, error_code)
         return {
             "accepted": True,
-            "completed": True,
-            "succeeded": error_code == 0,
-            "status": int(wrapped.status),
+            "status": status,
             "errorCode": error_code,
             "errorString": str(result.error_string),
-            "detail": "controller_succeeded" if error_code == 0 else "controller_reported_failure",
-        }
-
-    def cancel(self, _params: Dict[str, Any]) -> Dict[str, Any]:
-        if self.active_goal is None:
-            return {"requested": False, "detail": "no_active_goal"}
-        future = self.active_goal.cancel_goal_async()
-        self._wait_for_future(future, 2.0)
-        response = future.result()
-        requested = response is not None and len(response.goals_canceling) > 0
-        if requested:
-            self.active_goal = None
-        return {
-            "requested": requested,
-            "detail": "cancel_requested" if requested else "cancel_rejected",
+            **classification,
         }
 
     @staticmethod
@@ -245,6 +255,37 @@ class DiscoveryNode(NodeBase):
         self.joint_subscriptions = []
         self.subscribed_joint_topics = set()
         self.subscribed_robot_description_topics = set()
+        self.discovery_errors = []
+        self.discovery_error_keys = set()
+        self.discovery_errors_truncated = False
+
+    def _record_discovery_error(
+        self, operation: str, subject: str, error: Exception
+    ) -> None:
+        error_type = type(error).__name__[:128] or "Exception"
+        detail = str(error)[:MAX_DISCOVERY_ERROR_DETAIL_CHARS]
+        key = (operation, subject, error_type, detail)
+        if key in self.discovery_error_keys:
+            return
+        if len(self.discovery_errors) >= MAX_DISCOVERY_ERRORS:
+            self.discovery_errors_truncated = True
+            return
+        self.discovery_error_keys.add(key)
+        self.discovery_errors.append(
+            {
+                "operation": operation,
+                "subject": subject[:512],
+                "errorType": error_type,
+                "detail": detail,
+            }
+        )
+
+    def _safe_discovery_query(self, operation: str, subject: str, query: Any) -> Any:
+        try:
+            return query()
+        except Exception as error:
+            self._record_discovery_error(operation, subject, error)
+            return []
 
     def subscribe_graph_sources(self) -> None:
         for name, types in self.get_topic_names_and_types():
@@ -338,7 +379,14 @@ class DiscoveryNode(NodeBase):
         for service_name, future in list(self.controller_futures.items()):
             if not future.done():
                 continue
-            response = future.result()
+            try:
+                response = future.result()
+            except Exception as error:
+                self._record_discovery_error(
+                    "controller_manager_response", service_name, error
+                )
+                del self.controller_futures[service_name]
+                continue
             if response is not None:
                 self.controller_managers[service_name] = {
                     "namespace": self._namespace_for_controller_service(service_name),
@@ -353,6 +401,12 @@ class DiscoveryNode(NodeBase):
                         for controller in response.controller
                     ],
                 }
+            else:
+                self._record_discovery_error(
+                    "controller_manager_response",
+                    service_name,
+                    RuntimeError("controller_manager_response_missing"),
+                )
             del self.controller_futures[service_name]
 
     def publishers(self, topic: str) -> list[Dict[str, str]]:
@@ -361,17 +415,28 @@ class DiscoveryNode(NodeBase):
                 "nodeName": endpoint.node_name,
                 "nodeNamespace": endpoint.node_namespace,
             }
-            for endpoint in self.get_publishers_info_by_topic(topic)
+            for endpoint in self._safe_discovery_query(
+                "publisher_query",
+                topic,
+                lambda: self.get_publishers_info_by_topic(topic),
+            )
         ]
 
     def action_servers(self, action_name: str) -> list[Dict[str, str]]:
         servers = []
-        for node_name, node_namespace in self.get_node_names_and_namespaces():
+        for node_name, node_namespace in self._safe_discovery_query(
+            "node_graph_query", "all_nodes", self.get_node_names_and_namespaces
+        ):
             try:
                 actions = get_action_server_names_and_types_by_node(
                     self, node_name, node_namespace
                 )
-            except Exception:
+            except Exception as error:
+                self._record_discovery_error(
+                    "action_server_query",
+                    f"{node_namespace}/{node_name}:{action_name}",
+                    error,
+                )
                 continue
             if any(name == action_name for name, _types in actions):
                 servers.append(
@@ -382,24 +447,79 @@ class DiscoveryNode(NodeBase):
     def auxiliary_discovery_complete(self) -> bool:
         robot_description_topics = [
             name
-            for name, types in self.get_topic_names_and_types()
+            for name, types in self._safe_discovery_query(
+                "topic_graph_query", "robot_descriptions", self.get_topic_names_and_types
+            )
             if "std_msgs/msg/String" in types and name.endswith("/robot_description")
         ]
         return not self.controller_futures and all(
             topic in self.robot_descriptions for topic in robot_description_topics
         )
 
+    @staticmethod
+    def trajectory_controller_actions_complete(report: Dict[str, Any]) -> bool:
+        action_names = {
+            action["name"] for action in report["trajectoryActionServers"]
+        }
+        if not action_names:
+            return False
+        supported_controller_types = {
+            "joint_trajectory_controller/JointTrajectoryController",
+            "ur_controllers/ScaledJointTrajectoryController",
+        }
+        expected_actions = set()
+        for manager in report["controllerManagers"]:
+            namespace = manager["namespace"].rstrip("/")
+            for controller in manager["controllers"]:
+                if (
+                    controller["state"] == "active"
+                    and controller["type"] in supported_controller_types
+                ):
+                    expected_actions.add(
+                        f"{namespace}/{controller['name']}/follow_joint_trajectory"
+                    )
+        return expected_actions.issubset(action_names)
+
     def report(self) -> Dict[str, Any]:
+        topic_pairs = self._safe_discovery_query(
+            "topic_graph_query", "report", self.get_topic_names_and_types
+        )
+        action_pairs = self._safe_discovery_query(
+            "action_graph_query",
+            "report",
+            lambda: get_action_names_and_types(self),
+        )
+        node_pairs = self._safe_discovery_query(
+            "node_graph_query", "report", self.get_node_names_and_namespaces
+        )
+        service_pairs = self._safe_discovery_query(
+            "service_graph_query", "report", self.get_service_names_and_types
+        )
         topics = [
             {"name": name, "types": sorted(types)}
-            for name, types in self.get_topic_names_and_types()
+            for name, types in topic_pairs
         ]
         actions = [
             {"name": name, "types": sorted(types)}
-            for name, types in get_action_names_and_types(self)
+            for name, types in action_pairs
         ]
         self.collect_controller_responses()
-        return {
+        trajectory_action_servers = []
+        for action in actions:
+            if "control_msgs/action/FollowJointTrajectory" not in action["types"]:
+                continue
+            servers = self.action_servers(action["name"])
+            if servers:
+                trajectory_action_servers.append({**action, "servers": servers})
+        # A per-node graph query failure can hide another action server. Do not
+        # emit an apparently unique selectable endpoint unless every query used
+        # to prove its server set completed successfully.
+        if any(
+            error["operation"] == "action_server_query"
+            for error in self.discovery_errors
+        ):
+            trajectory_action_servers = []
+        report = {
             "rosAvailable": True,
             "rosDistro": os.environ.get("ROS_DISTRO"),
             "rmwImplementation": get_rmw_implementation_identifier(),
@@ -414,24 +534,17 @@ class DiscoveryNode(NodeBase):
                 for topic in topics
                 if "sensor_msgs/msg/JointState" in topic["types"]
             ],
-            "trajectoryActionServers": [
-                {
-                    **action,
-                    "servers": self.action_servers(action["name"]),
-                }
-                for action in actions
-                if "control_msgs/action/FollowJointTrajectory" in action["types"]
-            ],
+            "trajectoryActionServers": trajectory_action_servers,
             "nodes": sorted(
                 [
                     {"name": name, "namespace": namespace}
-                    for name, namespace in self.get_node_names_and_namespaces()
+                    for name, namespace in node_pairs
                 ],
                 key=lambda node: (node["namespace"], node["name"]),
             ),
             "services": [
                 {"name": name, "types": sorted(types)}
-                for name, types in self.get_service_names_and_types()
+                for name, types in service_pairs
             ],
             "controllerManagers": sorted(
                 self.controller_managers.values(),
@@ -446,6 +559,12 @@ class DiscoveryNode(NodeBase):
                 for topic, xml in sorted(self.robot_descriptions.items())
             ],
         }
+        report["discoveryErrors"] = list(self.discovery_errors)
+        report["discoveryErrorsTruncated"] = self.discovery_errors_truncated
+        report["discoveryComplete"] = (
+            not self.discovery_errors and self.auxiliary_discovery_complete()
+        )
+        return report
 
 def unavailable_report(args: argparse.Namespace) -> Dict[str, Any]:
     return {
@@ -556,14 +675,22 @@ def main() -> int:
             if (
                 sources
                 and all(source["sample"] for source in sources)
-                and report["trajectoryActionServers"]
+                and node.trajectory_controller_actions_complete(report)
                 and node.auxiliary_discovery_complete()
             ):
                 break
-        print(json.dumps(node.report(), indent=2))
+        report = node.report()
+        if not node.auxiliary_discovery_complete():
+            node._record_discovery_error(
+                "bounded_discovery",
+                "auxiliary_sources",
+                TimeoutError("discovery_deadline_elapsed"),
+            )
+            report = node.report()
+        print(json.dumps(report, indent=2))
         node.destroy_node()
         rclpy.shutdown()
-        return 0
+        return 0 if report["discoveryComplete"] else 3
 
     node = ReferenceTransportNode(args)
     if args.doctor:
@@ -596,8 +723,6 @@ def main() -> int:
                     result = node.inspect_graph()
                 elif operation == "dispatch":
                     result = node.dispatch(params)
-                elif operation == "cancel":
-                    result = node.cancel(params)
                 elif operation == "shutdown":
                     result = {"closed": True}
                 else:

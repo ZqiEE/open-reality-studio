@@ -7,8 +7,7 @@ import {
 } from '../core/execution-gate';
 import {
   canonicalJson,
-  sha256,
-  type ExecutionEvidence
+  sha256
 } from '../core/evidence';
 import {
   executablePolicyHash,
@@ -19,6 +18,20 @@ import type { ExecutionConfiguration } from '../core/execution-configuration';
 import type { RuntimeAttestation } from '../core/runtime-attestation';
 
 const isoTimestamp = z.string().datetime({ offset: true });
+function isUnicodeScalarText(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+const safeInteger = z.number().int().refine(Number.isSafeInteger, 'integer must be safe');
 
 const jointTrajectoryActionSchema = z.object({
   representation: z.literal('trajectory'),
@@ -48,7 +61,23 @@ export const ros2ProposalEnvelopeSchema = z.object({
 
 type Ros2ProposalEnvelope = z.infer<typeof ros2ProposalEnvelopeSchema>;
 
-const jointStateSnapshotSchema = z.object({
+export interface Ros2ProposalReplayIdentity {
+  releaseId: string;
+  executablePolicyHash: string;
+  deviceId: string;
+  proposerIdentity: string;
+  proposalId: string;
+}
+
+export interface Ros2ProposalReplayRegistry {
+  claim(identity: Ros2ProposalReplayIdentity):
+    | 'claimed'
+    | 'duplicate'
+    | 'capacity_exceeded'
+    | 'unavailable';
+}
+
+export const jointStateSnapshotSchema = z.object({
   names: z.array(z.string().min(1)).min(1).max(256),
   positions: z.array(z.number().finite()).min(1).max(256),
   observedAt: isoTimestamp,
@@ -72,21 +101,57 @@ const jointStateSnapshotSchema = z.object({
 
 export type JointStateSnapshot = z.infer<typeof jointStateSnapshotSchema>;
 
-export interface Ros2DoctorReport {
-  rosAvailable: boolean;
-  rosDistro: string | null;
-  rmwImplementation: string | null;
-  rosDomainId: string;
-  proposalTopic: string;
-  jointStateTopic: string;
-  controllerAction: string;
-  discoveryTimeoutSeconds?: number;
-  jointStateFresh: boolean;
-  actionServerAvailable: boolean;
-  sros2Enabled: boolean;
-  limitations: string[];
-  detail?: string;
+export const ros2ControllerResultSchema = z.object({
+  accepted: z.boolean(),
+  detail: z.string().min(1).max(500).refine(
+    isUnicodeScalarText,
+    'detail must contain only Unicode scalar values'
+  ),
+  completed: z.boolean().optional(),
+  succeeded: z.boolean().optional(),
+  status: safeInteger.optional(),
+  errorCode: safeInteger.optional(),
+  errorString: z.string().max(500).refine(
+    isUnicodeScalarText,
+    'errorString must contain only Unicode scalar values'
+  ).optional()
+}).strict();
+
+export type Ros2ControllerResult = z.infer<typeof ros2ControllerResultSchema>;
+
+function boundedDoctorText(maximumLength: number, label: string) {
+  return z.string().min(1).max(maximumLength).refine(
+    isUnicodeScalarText,
+    `${label} must contain only Unicode scalar values`
+  );
 }
+
+export const ros2DoctorReportSchema = z.object({
+  rosAvailable: z.boolean(),
+  rosDistro: boundedDoctorText(128, 'ROS distro').nullable(),
+  rmwImplementation: boundedDoctorText(256, 'RMW implementation').nullable(),
+  rosDomainId: z.string().min(1).max(64).refine(
+    isUnicodeScalarText,
+    'ROS domain ID must contain only Unicode scalar values'
+  ),
+  proposalTopic: boundedDoctorText(512, 'proposal topic'),
+  jointStateTopic: boundedDoctorText(512, 'joint-state topic'),
+  controllerAction: boundedDoctorText(512, 'controller action'),
+  discoveryTimeoutSeconds: z.number().finite().min(1).max(120).optional(),
+  jointStateFresh: z.boolean(),
+  actionServerAvailable: z.boolean(),
+  sros2Enabled: z.boolean(),
+  limitations: z.array(z.string().min(1).max(256).refine(
+    isUnicodeScalarText,
+    'doctor limitation must contain only Unicode scalar values'
+  )).max(32),
+  detail: z.string().max(8_192).refine(
+    isUnicodeScalarText,
+    'doctor detail must contain only Unicode scalar values'
+  ).optional()
+}).strict();
+
+export type Ros2DoctorReport = z.infer<typeof ros2DoctorReportSchema>;
 
 export interface Ros2ReferenceTransport {
   subscribeProposals(handler: (payload: string) => Promise<void>): Promise<void>;
@@ -94,16 +159,7 @@ export interface Ros2ReferenceTransport {
   dispatchTrajectory(
     action: JointTrajectoryAction,
     controllerIdentity: string
-  ): Promise<{
-    accepted: boolean;
-    detail: string;
-    completed?: boolean;
-    succeeded?: boolean;
-    status?: number;
-    errorCode?: number;
-    errorString?: string;
-  }>;
-  cancelActiveGoal(reason: string): Promise<{ requested: boolean; detail: string }>;
+  ): Promise<Ros2ControllerResult>;
   doctor(): Promise<Ros2DoctorReport>;
   close(): Promise<void>;
 }
@@ -147,7 +203,7 @@ export class InMemoryReleaseRecordStore {
   }
 }
 
-interface Ros2GatewayResult {
+export interface Ros2GatewayResult {
   proposalId: string;
   decision: 'allowed' | 'blocked' | 'failed';
   reason: string;
@@ -166,41 +222,13 @@ interface Ros2GatewayOptions {
   executionConfiguration?: () => Promise<ExecutionConfiguration | undefined>;
   /** Read-only facts supplied by a trusted runtime adapter or monitor. */
   runtimeAttestation?: () => Promise<RuntimeAttestation | undefined>;
+  /** Inject a crash-persistent implementation for restart-safe Run use. */
+  proposalReplayRegistry?: Ros2ProposalReplayRegistry;
   now?: () => Date;
 }
 
 function sameOrder(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function evidenceForLifecycle(
-  release: ExecutablePolicySpec,
-  proposalId: string,
-  deviceId: string,
-  reason: string,
-  at: string,
-  signalSent: boolean,
-  executionEvidence: string
-): ExecutionEvidence {
-  return {
-    releaseId: release.metadata.releaseId,
-    executablePolicyHash: executablePolicyHash(release),
-    modelHash: release.model.sha256,
-    actionContractHash: sha256(canonicalJson(release.actionContract)),
-    robotProfileHash: release.robot.profileSha256,
-    controllerProfileHash: release.robot.controllerConfigSha256,
-    runtimePolicyHash: release.runtimePolicy.policySha256,
-    deviceId,
-    proposalId,
-    proposedAction: null,
-    decision: 'blocked',
-    decisionReason: reason,
-    matchedRuleIds: ['release_revocation'],
-    decisionMadeAt: at,
-    hardwareSignalSent: signalSent,
-    hardwareSignalState: signalSent ? 'attempted_unconfirmed' : 'not_sent',
-    executionEvidence
-  };
 }
 
 /**
@@ -210,15 +238,13 @@ function evidenceForLifecycle(
 export class Ros2ReferenceGateway {
   private readonly mode: 'shadow' | 'run';
   private readonly seenProposalIds = new Set<string>();
-  private active?: {
-    release: ExecutablePolicySpec;
-    proposalId: string;
-    deviceId: string;
-  };
   private goalCount = 0;
 
   constructor(private readonly options: Ros2GatewayOptions) {
     this.mode = options.mode ?? 'shadow';
+    if (this.mode === 'run' && !options.proposalReplayRegistry) {
+      throw new Error('proposal_replay_registry_required');
+    }
   }
 
   private async observeExecutionConfiguration(): Promise<ExecutionConfiguration | undefined> {
@@ -240,9 +266,16 @@ export class Ros2ReferenceGateway {
   }
 
   async start(onResult?: (result: Ros2GatewayResult) => void): Promise<void> {
+    let processing = false;
     await this.options.transport.subscribeProposals(async (payload) => {
-      const result = await this.handlePayload(payload);
-      onResult?.(result);
+      if (processing) throw new Error('proposal_backpressure');
+      processing = true;
+      try {
+        const result = await this.handlePayload(payload);
+        onResult?.(result);
+      } finally {
+        processing = false;
+      }
     });
   }
 
@@ -259,13 +292,67 @@ export class Ros2ReferenceGateway {
     const parsed = ros2ProposalEnvelopeSchema.safeParse(raw);
     if (!parsed.success) throw new Error(`proposal_schema_invalid:${parsed.error.issues[0]?.message ?? 'unknown'}`);
     const proposal = parsed.data;
-    if (this.seenProposalIds.has(proposal.proposalId)) throw new Error('proposal_id_duplicate');
-    this.seenProposalIds.add(proposal.proposalId);
-
     const release = await this.options.releaseResolver.resolveActiveRelease(
       proposal.deviceId,
       proposal.proposerIdentity
     );
+    const replayIdentity = {
+      releaseId: proposal.releaseId,
+      executablePolicyHash: executablePolicyHash(release),
+      deviceId: proposal.deviceId,
+      proposerIdentity: proposal.proposerIdentity,
+      proposalId: proposal.proposalId
+    };
+    const replayClaim = this.options.proposalReplayRegistry
+      ? this.options.proposalReplayRegistry.claim(replayIdentity)
+      : this.seenProposalIds.has(proposal.proposalId)
+        ? 'duplicate'
+        : (() => {
+            this.seenProposalIds.add(proposal.proposalId);
+            return 'claimed' as const;
+          })();
+    if (replayClaim !== 'claimed') {
+      const reason = replayClaim === 'duplicate'
+        ? 'proposal_id_duplicate'
+        : replayClaim === 'capacity_exceeded'
+          ? 'proposal_replay_registry_capacity_exceeded'
+          : 'proposal_replay_registry_unavailable';
+      await this.options.evidence.append({
+        releaseId: release.metadata.releaseId,
+        executablePolicyHash: replayIdentity.executablePolicyHash,
+        modelHash: release.model.sha256,
+        actionContractHash: sha256(canonicalJson(release.actionContract)),
+        robotProfileHash: release.robot.profileSha256,
+        controllerProfileHash: release.robot.controllerConfigSha256,
+        expectedConfigurationDigest: release.approvedConfigurationDigest ?? null,
+        observedConfigurationDigest: null,
+        expectedConfigurationSchemaVersion:
+          release.executionConfiguration?.schemaVersion ?? null,
+        observedConfigurationSchemaVersion: null,
+        expectedRequiredCapabilities: [
+          ...(release.runtimePolicy.requiredCapabilities ?? []),
+        ],
+        observedAvailableCapabilities: null,
+        runtimePolicyHash: release.runtimePolicy.policySha256,
+        deviceId: proposal.deviceId,
+        proposalId: proposal.proposalId,
+        proposedAction: proposal.actionPayload,
+        decision: 'blocked',
+        decisionReason: reason,
+        matchedRuleIds: ['proposal_replay'],
+        decisionMadeAt: (this.options.now?.() ?? new Date()).toISOString(),
+        hardwareSignalSent: false,
+        hardwareSignalState: 'not_sent',
+        executionEvidence: 'not_executed'
+      });
+      return {
+        proposalId: proposal.proposalId,
+        decision: 'blocked',
+        reason,
+        hardwareSignalSent: false,
+        controllerGoalCount: this.goalCount
+      };
+    }
     if (proposal.releaseId !== release.metadata.releaseId) {
       return this.blocked(proposal, 'release_id_mismatch');
     }
@@ -348,23 +435,28 @@ export class Ros2ReferenceGateway {
     const gate = new ReleaseExecutionGate(
       {
         dispatch: async (candidate) => {
-          const result = await this.options.transport.dispatchTrajectory(
-            candidate,
-            this.options.controllerIdentity
-          );
-          if (!result.accepted) throw new Error(`controller_goal_rejected:${result.detail}`);
           this.goalCount += 1;
-          if (result.completed === false) {
+          let result;
+          try {
+            result = await this.options.transport.dispatchTrajectory(
+              candidate,
+              this.options.controllerIdentity
+            );
+          } catch (error) {
+            throw new Error(
+              `controller_dispatch_unknown:${error instanceof Error ? error.message : 'transport_failed'}`
+            );
+          }
+          const parsedResult = ros2ControllerResultSchema.safeParse(result);
+          if (!parsedResult.success) throw new Error('controller_result_invalid');
+          result = parsedResult.data;
+          if (!result.accepted) throw new Error(`controller_goal_rejected:${result.detail}`);
+          if (result.completed !== true) {
             throw new Error(`controller_result_unconfirmed:${result.detail}`);
           }
-          if (result.completed === true && result.succeeded !== true) {
+          if (result.succeeded !== true) {
             throw new Error(`controller_goal_failed:${result.errorCode ?? 'unknown'}:${result.detail}`);
           }
-          this.active = {
-            release,
-            proposalId: proposal.proposalId,
-            deviceId: proposal.deviceId
-          };
           return result;
         }
       },
@@ -429,26 +521,6 @@ export class Ros2ReferenceGateway {
   async revoke(releaseId: string, reason: string): Promise<void> {
     const at = (this.options.now?.() ?? new Date()).toISOString();
     await this.options.releaseRecords.revoke(releaseId, reason, at);
-    if (!this.active || this.active.release.metadata.releaseId !== releaseId) return;
-    let requested = false;
-    let detail = 'active_goal_cancel_not_requested';
-    try {
-      const cancellation = await this.options.transport.cancelActiveGoal(reason);
-      requested = cancellation.requested;
-      detail = cancellation.detail;
-    } catch (error) {
-      detail = error instanceof Error ? error.message : 'controller_cancel_failed';
-    }
-    await this.options.evidence.append(evidenceForLifecycle(
-      this.active.release,
-      this.active.proposalId,
-      this.active.deviceId,
-      `release_revoked:${detail}`,
-      at,
-      requested,
-      requested ? 'cancellation_requested' : 'cancellation_not_sent'
-    ));
-    this.active = undefined;
   }
 
   private async blocked(

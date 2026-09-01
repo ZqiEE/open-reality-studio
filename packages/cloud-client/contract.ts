@@ -122,7 +122,7 @@ export const cloudEvidenceDecisionSchema = z.enum([
   "failed",
 ]);
 
-export const submitEvidenceSchema = z
+const submitEvidenceObjectSchema = z
   .object({
     releaseId: z.string().min(1).max(200),
     permitId: z.string().uuid().nullable().optional(),
@@ -139,6 +139,11 @@ export const submitEvidenceSchema = z
         expectedConfigurationDigest: hash,
         observedConfigurationDigest: hash.nullable(),
         localPermitConsumed: z.boolean(),
+        cloudPermitConsumptionState: z.enum([
+          "not_consumed",
+          "consumed",
+          "unknown",
+        ]),
         controllerGoalsAttempted: z.number().int().min(0).max(1),
         reason: z.string().min(1).max(500),
         controllerResult: z.object({
@@ -154,6 +159,66 @@ export const submitEvidenceSchema = z
       .strict(),
   })
   .strict();
+
+export const submitEvidencePayloadSchema =
+  submitEvidenceObjectSchema.shape.payload;
+
+export const submitEvidenceSchema = submitEvidenceObjectSchema.superRefine(
+  (value, context) => {
+    const consumption = value.payload.cloudPermitConsumptionState;
+    if (
+      consumption !== "not_consumed" &&
+      (value.permitId == null || !value.payload.localPermitConsumed)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["payload", "cloudPermitConsumptionState"],
+        message: "initiated Cloud consumption requires a bound Permit and consumed local Permit",
+      });
+    }
+    if (
+      (value.decision === "allowed" || value.hardwareSignalSent) &&
+      consumption !== "consumed"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["payload", "cloudPermitConsumptionState"],
+        message: "allowed or hardware-attempted Evidence requires confirmed Cloud consumption",
+      });
+    }
+    if (
+      value.hardwareSignalSent !== (value.payload.controllerGoalsAttempted > 0)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["hardwareSignalSent"],
+        message: "hardware signal state must match controller goal attempts",
+      });
+    }
+    if (
+      value.payload.controllerResult !== undefined &&
+      value.payload.controllerGoalsAttempted !== 1
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["payload", "controllerResult"],
+        message: "controller result requires exactly one controller goal attempt",
+      });
+    }
+    if (
+      value.decision === "allowed" &&
+      value.payload.observedConfigurationDigest !==
+        value.payload.expectedConfigurationDigest
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["payload", "observedConfigurationDigest"],
+        message:
+          "allowed Evidence requires the observed configuration to match the approved configuration",
+      });
+    }
+  },
+);
 
 export const evidenceResponseSchema = z
   .object({
@@ -241,7 +306,7 @@ const normalizedEvidenceSchema = z
     permitId: z.string().uuid().nullable(),
     decision: cloudEvidenceDecisionSchema,
     hardwareSignalSent: z.boolean(),
-    payload: submitEvidenceSchema.shape.payload,
+    payload: submitEvidencePayloadSchema,
     previousHash: hash.nullable(),
     evidenceHash: hash,
     createdAt: timestamp,

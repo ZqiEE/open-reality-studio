@@ -328,7 +328,7 @@ test('v2 binding allows a match and execute-time provenance drift blocks before 
     kind: 'EvidenceBundle',
     releaseId: spec.metadata.releaseId,
     executablePolicyHash: executablePolicyHash(spec),
-    createdAt: NOW.toISOString(),
+    createdAt: evidence.decisionMadeAt,
     entries: [chained]
   }), { ok: true });
 });

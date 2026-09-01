@@ -1,18 +1,11 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { load } from 'js-yaml';
-import {
-  appendEvidence,
-  type ChainedEvidence,
-  type EvidenceBundle,
-  type ExecutionEvidence
-} from '../../packages/core/evidence';
 import {
   executablePolicyHash,
   executablePolicySpecSchema,
   type ExecutablePolicySpec
 } from '../../packages/core/exec-spec';
-import type { EvidenceSink } from '../../packages/core/execution-gate';
 import type { ReleaseRecord } from '../../packages/core/release-policy';
 import {
   HusarionRosbotGazeboGateway,
@@ -20,6 +13,7 @@ import {
 } from '../../packages/husarion-rosbot-gazebo';
 import { PythonHusarionRosbotTransport } from '../../packages/husarion-rosbot-gazebo/sidecar';
 import { observeTrustedHusarionConfiguration } from '../../packages/husarion-rosbot-gazebo/trusted-observation';
+import { FileEvidenceSink } from '../cli/ros2';
 
 type Options = Record<string, string>;
 
@@ -46,28 +40,6 @@ function readStructured(path: string): unknown {
   const resolved = resolve(path);
   if (!existsSync(resolved)) throw new Error(`input_not_found:${path}`);
   return load(readFileSync(resolved, 'utf8'));
-}
-
-class FileEvidenceSink implements EvidenceSink {
-  private entries: ChainedEvidence[] = [];
-
-  constructor(
-    private readonly release: ExecutablePolicySpec,
-    private readonly path: string
-  ) {}
-
-  append(evidence: ExecutionEvidence): void {
-    this.entries.push(appendEvidence(this.entries, evidence));
-    const bundle: EvidenceBundle = {
-      apiVersion: 'realitywarden.io/v1alpha1',
-      kind: 'EvidenceBundle',
-      releaseId: this.release.metadata.releaseId,
-      executablePolicyHash: executablePolicyHash(this.release),
-      createdAt: new Date().toISOString(),
-      entries: this.entries
-    };
-    writeFileSync(this.path, `${JSON.stringify(bundle, null, 2)}\n`, { mode: 0o600 });
-  }
 }
 
 function releaseRecord(spec: ExecutablePolicySpec): ReleaseRecord {

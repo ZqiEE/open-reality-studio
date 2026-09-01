@@ -151,12 +151,16 @@ async function testExecutionAndPermitBranches(): Promise<number> {
   let dispatches = 0;
   let refreshed = recordFor(release);
   let refreshFailure = false;
+  let monotonicNow = 100_000;
   const gate = new ReleaseExecutionGate(
     { async dispatch(value: typeof action) { dispatches += 1; if ((value as any).throw) throw new Error('controller_rejected'); if ((value as any).resultMode === 'primitive') return 'accepted' as any; if ((value as any).resultMode === 'null') return null as any; return (value as any).terminal === false ? { accepted: true } : { accepted: true, completed: true }; } },
     { append(value) { entries.push(value); } },
     async (value: typeof action) => ({ allowed: value.safe, reason: value.safe ? 'policy_allowed' : 'policy_denied', matchedRuleIds: ['safe-only'] }),
     hashAction,
-    async () => { if (refreshFailure) throw new Error('offline'); return refreshed; }
+    async () => { if (refreshFailure) throw new Error('offline'); return refreshed; },
+    undefined,
+    undefined,
+    () => monotonicNow
   );
   const base: ExecutionRequest<typeof action, { ready: true }> = { release, releaseRecord: refreshed, executionConfiguration: release.executionConfiguration, deviceId: 'reference-device', proposalId: 'oracle', action, actionHash: hashAction(action), state: { ready: true }, stateObservedAt: NOW.toISOString(), now: NOW };
 
@@ -194,14 +198,20 @@ async function testExecutionAndPermitBranches(): Promise<number> {
     if (result.status !== 'allowed') throw new Error(`expected permit:${id}`);
     return result.authorizedRequest;
   }
-  await gate.execute({ ...(await issued('expiry-minus-1')), now: new Date(NOW.getTime() + 999) });
+  const expiryMinusOne = await issued('expiry-minus-1');
+  monotonicNow += 999;
+  await gate.execute({ ...expiryMinusOne, now: new Date(NOW.getTime() + 999) });
   assert.equal(dispatches, 1);
-  await assert.rejects(gate.execute({ ...(await issued('expiry-exact')), now: new Date(NOW.getTime() + 1000) }), /execution_permit_invalid/);
+  const expiryExact = await issued('expiry-exact');
+  monotonicNow += 1000;
+  await assert.rejects(gate.execute({ ...expiryExact, now: new Date(NOW.getTime() + 1000) }), /execution_permit_invalid/);
   assert.equal(entries.at(-1)?.decisionReason, 'permit_expired');
-  await assert.rejects(gate.execute({ ...(await issued('expiry-plus-1')), now: new Date(NOW.getTime() + 1001) }), /execution_permit_invalid/);
-  assert.equal(entries.at(-1)?.decisionReason, 'state_stale_or_invalid');
-  assert.equal(entries.at(-1)?.decision, 'blocked');
-  assert.deepEqual(entries.at(-1)?.matchedRuleIds, ['state_freshness', 'single_use_permit']);
+  const expiryPlusOne = await issued('expiry-plus-1');
+  monotonicNow += 1001;
+  await assert.rejects(gate.execute({ ...expiryPlusOne, now: new Date(NOW.getTime() + 1001) }), /execution_permit_invalid/);
+  assert.equal(entries.at(-1)?.decisionReason, 'permit_expired');
+  assert.equal(entries.at(-1)?.decision, 'failed');
+  assert.deepEqual(entries.at(-1)?.matchedRuleIds, ['single_use_permit']);
   assert.equal(entries.at(-1)?.hardwareSignalSent, false);
   await assert.rejects(
     gate.execute({ ...(await issued('execute-state-missing')), state: undefined }),
@@ -237,6 +247,7 @@ async function testExecutionAndPermitBranches(): Promise<number> {
   });
   assert.equal(longTtlResult.status, 'allowed');
   if (longTtlResult.status !== 'allowed') throw new Error('expected long ttl permit');
+  monotonicNow += 1_000;
   await assert.rejects(gate.execute({ ...longTtlResult.authorizedRequest, now: new Date(NOW.getTime() + 1_000) }), /execution_permit_invalid/);
   assert.equal(entries.at(-1)?.decisionReason, 'permit_expired');
 
@@ -249,7 +260,7 @@ async function testExecutionAndPermitBranches(): Promise<number> {
 
   for (const [id, change, reason] of [
     ['action-binding', { actionHash: H('8') }, 'permit_action_binding_mismatch'],
-    ['release-binding', { release: { ...release, metadata: { ...release.metadata, releaseId: 'other' } } }, 'permit_release_binding_mismatch'],
+    ['release-binding', { release: { ...release, metadata: { ...release.metadata, releaseId: 'other' } } }, 'permit_release_content_binding_mismatch'],
     ['device-binding', { deviceId: 'other' }, 'permit_device_binding_mismatch'],
     ['controller-binding', { controllerIdentity: 'other-controller' }, 'permit_controller_binding_mismatch'],
     ['action-mutation', { action: { ...action, joints: [1, 0] } }, 'action_hash_mismatch']
@@ -368,11 +379,16 @@ async function testDecisionProperties(): Promise<number> {
   const action = { safe: true, joints: [0, 1] };
   const hashAction = (value: unknown) => sha256(canonicalJson(value));
   const entries: ExecutionEvidence[] = [];
+  let monotonicNow = 500_000;
   const gate = new ReleaseExecutionGate(
     { async dispatch() { return { accepted: true, completed: true }; } },
     { append(value) { entries.push(value); } },
     async () => ({ allowed: true, reason: 'property_policy_allowed', matchedRuleIds: ['property'] }),
-    hashAction
+    hashAction,
+    undefined,
+    undefined,
+    undefined,
+    () => monotonicNow
   );
   const base: ExecutionRequest<typeof action, { ready: true }> = {
     release, releaseRecord: record, executionConfiguration: release.executionConfiguration, deviceId: 'reference-device', proposalId: 'property', action,
@@ -418,13 +434,14 @@ async function testDecisionProperties(): Promise<number> {
 
     const expiryDelta = [999, 1000, 1001][index % 3]!;
     const expiring = await propertyPermit('expiry');
+    monotonicNow += expiryDelta;
     if (expiryDelta < 1000) {
       await gate.execute({ ...expiring, now: new Date(NOW.getTime() + expiryDelta) });
     } else {
       await assert.rejects(gate.execute({ ...expiring, now: new Date(NOW.getTime() + expiryDelta) }), /execution_permit_invalid/);
       assert.equal(
         entries.at(-1)?.decisionReason,
-        expiryDelta === 1000 ? 'permit_expired' : 'state_stale_or_invalid'
+        'permit_expired'
       );
     }
     samples += 7;

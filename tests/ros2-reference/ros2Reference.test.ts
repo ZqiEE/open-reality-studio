@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   appendEvidence,
   verifyEvidenceBundle,
@@ -15,6 +23,7 @@ import {
   type ExecutablePolicySpec,
 } from "../../packages/core/exec-spec";
 import type { ReleaseRecord } from "../../packages/core/release-policy";
+import type { EvidenceSink } from "../../packages/core/execution-gate";
 import {
   configurationDigest,
   executionConfigurationV1Schema,
@@ -27,14 +36,26 @@ import {
   InMemoryReleaseResolver,
   InMemoryReleaseRecordStore,
   Ros2ReferenceGateway,
+  ros2DoctorReportSchema,
   ros2ProposalEnvelopeSchema,
   type JointStateSnapshot,
   type JointTrajectoryAction,
   type Ros2DoctorReport,
   type Ros2ReferenceTransport,
+  type Ros2ProposalReplayRegistry,
 } from "../../packages/ros2-reference-gateway";
+import {
+  FileProposalReplayRegistry,
+  InMemoryProposalReplayRegistry,
+} from "../../packages/cloud-client/replay-registry";
 import { PythonRos2SidecarTransport } from "../../packages/ros2-reference-gateway/sidecar";
-import { observeGenericRosExecutionConfiguration } from "../../apps/cli/ros2";
+import {
+  FileEvidenceSink,
+  PrivateResultFile,
+  defaultRos2EvidencePath,
+  observeGenericRosExecutionConfiguration,
+  runRos2Command,
+} from "../../apps/cli/ros2";
 
 const H = (character: string) => character.repeat(64);
 const NOW = new Date("2026-07-26T12:00:00.000Z");
@@ -232,7 +253,6 @@ class SpyTransport implements Ros2ReferenceTransport {
     observedAt: NOW.toISOString(),
   };
   dispatches = 0;
-  cancellations = 0;
   accepted = true;
   dispatchError?: string;
 
@@ -257,10 +277,6 @@ class SpyTransport implements Ros2ReferenceTransport {
       detail: this.accepted ? "accepted" : "unavailable",
     };
   }
-  async cancelActiveGoal(): Promise<{ requested: boolean; detail: string }> {
-    this.cancellations += 1;
-    return { requested: true, detail: "cancel_requested" };
-  }
   async doctor(): Promise<Ros2DoctorReport> {
     return {
       rosAvailable: true,
@@ -279,7 +295,11 @@ class SpyTransport implements Ros2ReferenceTransport {
   async close(): Promise<void> {}
 }
 
-function setup(mode: "shadow" | "run") {
+function setup(
+  mode: "shadow" | "run",
+  proposalReplayRegistry?: Ros2ProposalReplayRegistry | null,
+  evidenceFactory?: (spec: ExecutablePolicySpec) => EvidenceSink,
+) {
   const spec = release(mode === "shadow" ? "shadow" : "released");
   const resolver = new InMemoryReleaseResolver();
   resolver.bind("arm-01", "planner@example.test", spec);
@@ -288,6 +308,11 @@ function setup(mode: "shadow" | "run") {
   );
   const transport = new SpyTransport();
   const entries: ExecutionEvidence[] = [];
+  const evidence = evidenceFactory?.(spec) ?? {
+    append: (entry: ExecutionEvidence) => {
+      entries.push(entry);
+    },
+  };
   let configurationObservations = [spec.executionConfiguration!];
   const gateway = new Ros2ReferenceGateway({
     mode,
@@ -295,11 +320,12 @@ function setup(mode: "shadow" | "run") {
     releaseResolver: resolver,
     releaseRecords: store,
     transport,
-    evidence: {
-      append: (entry) => {
-        entries.push(entry);
-      },
-    },
+    evidence,
+    proposalReplayRegistry: proposalReplayRegistry === null
+      ? undefined
+      : proposalReplayRegistry ?? (mode === "run"
+        ? new InMemoryProposalReplayRegistry()
+        : undefined),
     executionConfiguration: async () => (
       configurationObservations.length > 1
         ? configurationObservations.shift()
@@ -320,6 +346,128 @@ function setup(mode: "shadow" | "run") {
   };
 }
 
+async function testReplayPersistence(): Promise<void> {
+  const root = mkdtempSync(join(tmpdir(), "rlsok-standalone-replay-"));
+  try {
+    const replayPath = join(root, "replay", "nested");
+    const first = setup(
+      "run",
+      new FileProposalReplayRegistry(replayPath),
+    );
+    const firstResult = await first.gateway.handlePayload(proposal(first.spec));
+    assert.equal(firstResult.decision, "allowed", JSON.stringify(firstResult));
+    assert.equal(first.transport.dispatches, 1);
+
+    const restarted = setup(
+      "run",
+      new FileProposalReplayRegistry(replayPath),
+    );
+    const duplicate = await restarted.gateway.handlePayload(
+      proposal(restarted.spec),
+    );
+    assert.equal(duplicate.decision, "blocked");
+    assert.equal(duplicate.reason, "proposal_id_duplicate");
+    assert.equal(restarted.transport.dispatches, 0);
+    assert.equal(
+      restarted.entries.at(-1)?.decisionReason,
+      "proposal_id_duplicate",
+    );
+
+    const invalidRegistry = setup("run", {
+      claim: () => "unexpected" as never,
+    });
+    const unavailable = await invalidRegistry.gateway.handlePayload(
+      proposal(invalidRegistry.spec),
+    );
+    assert.equal(unavailable.decision, "blocked");
+    assert.equal(unavailable.reason, "proposal_replay_registry_unavailable");
+    assert.equal(invalidRegistry.transport.dispatches, 0);
+
+    const observed = setup("shadow");
+    await observed.gateway.handlePayload(proposal(observed.spec));
+    const entry = observed.entries[0];
+    assert.ok(entry);
+    const firstEvidencePath = join(root, "evidence", "run-one.json");
+    const firstSink = new FileEvidenceSink(observed.spec, firstEvidencePath);
+    firstSink.append(entry);
+    const originalBytes = readFileSync(firstEvidencePath);
+    assert.throws(
+      () => new FileEvidenceSink(observed.spec, firstEvidencePath),
+      /evidence_output_already_exists/,
+    );
+    assert.deepEqual(readFileSync(firstEvidencePath), originalBytes);
+
+    const secondEvidencePath = join(root, "evidence", "run-two.json");
+    const secondSink = new FileEvidenceSink(observed.spec, secondEvidencePath);
+    secondSink.append({ ...entry, proposalId: "second-run-proposal" });
+    for (const path of [firstEvidencePath, secondEvidencePath]) {
+      const bundle = JSON.parse(readFileSync(path, "utf8")) as EvidenceBundle;
+      assert.deepEqual(verifyEvidenceBundle(bundle), { ok: true });
+    }
+
+    const delayedEvidencePath = join(root, "evidence", "delayed.json");
+    const delayedSink = new FileEvidenceSink(observed.spec, delayedEvidencePath);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 5));
+    const delayedDecisionAt = new Date().toISOString();
+    delayedSink.append({
+      ...entry,
+      proposalId: "delayed-proposal",
+      decisionMadeAt: delayedDecisionAt,
+    });
+    const delayedBundle = JSON.parse(
+      readFileSync(delayedEvidencePath, "utf8"),
+    ) as EvidenceBundle;
+    assert.ok(Date.parse(delayedBundle.createdAt) >= Date.parse(delayedDecisionAt));
+    assert.deepEqual(
+      verifyEvidenceBundle(delayedBundle),
+      { ok: true },
+    );
+
+    const futureEvidencePath = join(root, "evidence", "future.json");
+    const futureSink = new FileEvidenceSink(observed.spec, futureEvidencePath);
+    assert.throws(
+      () => futureSink.append({
+        ...entry,
+        proposalId: "future-proposal",
+        decisionMadeAt: new Date(Date.now() + 1_000).toISOString(),
+      }),
+      /evidence_bundle_invalid:evidence_time_inconsistent/,
+    );
+    assert.equal(readFileSync(futureEvidencePath).length, 0);
+
+    const resultPath = join(root, "evidence", "cloud-result.json");
+    const resultOwner = new PrivateResultFile(resultPath);
+    resultOwner.write("first-run\n");
+    assert.throws(
+      () => new PrivateResultFile(resultPath),
+      /evidence_output_already_exists/,
+    );
+    assert.equal(readFileSync(resultPath, "utf8"), "first-run\n");
+
+    const unsafeIdSpec = executablePolicySpecSchema.parse({
+      ...observed.spec,
+      metadata: {
+        ...observed.spec.metadata,
+        releaseId: "/../../package",
+      },
+    });
+    const evidenceRoot = resolve("evidence");
+    for (const scope of ["standalone", "cloud"] as const) {
+      const path = defaultRos2EvidencePath(
+        scope,
+        "shadow",
+        unsafeIdSpec,
+        "00000000-0000-4000-8000-000000000001",
+      );
+      const withinRoot = relative(evidenceRoot, path);
+      assert.equal(isAbsolute(withinRoot), false);
+      assert.doesNotMatch(withinRoot, /^\.\.(?:[\\/]|$)/);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 async function testContract(): Promise<void> {
   const spec = release();
   assert.equal(
@@ -328,6 +476,10 @@ async function testContract(): Promise<void> {
     1,
   );
   assert.throws(() => ros2ProposalEnvelopeSchema.parse({}));
+  assert.throws(
+    () => setup("run", null),
+    /proposal_replay_registry_required/,
+  );
   await assert.rejects(
     setup("shadow").gateway.handlePayload("{"),
     /malformed_json/,
@@ -339,10 +491,11 @@ async function testContract(): Promise<void> {
 
   const duplicate = setup("shadow");
   await duplicate.gateway.handlePayload(proposal(duplicate.spec));
-  await assert.rejects(
-    duplicate.gateway.handlePayload(proposal(duplicate.spec)),
-    /proposal_id_duplicate/,
+  const duplicateResult = await duplicate.gateway.handlePayload(
+    proposal(duplicate.spec),
   );
+  assert.equal(duplicateResult.decision, "blocked");
+  assert.equal(duplicateResult.reason, "proposal_id_duplicate");
   const unknown = setup("shadow");
   const raw = JSON.parse(proposal(unknown.spec)) as Record<string, unknown>;
   raw.proposerIdentity = "unbound@example.test";
@@ -350,6 +503,35 @@ async function testContract(): Promise<void> {
     unknown.gateway.handlePayload(JSON.stringify(raw)),
     /active_release_not_found/,
   );
+
+  const serialized = setup("run");
+  let releaseState: (() => void) | undefined;
+  const stateHeld = new Promise<void>((resolveState) => {
+    releaseState = resolveState;
+  });
+  const stateRequested = new Promise<void>((resolveRequested) => {
+    serialized.transport.getFreshJointState = async () => {
+      resolveRequested();
+      await stateHeld;
+      return serialized.transport.state!;
+    };
+  });
+  const results: string[] = [];
+  await serialized.gateway.start((result) => results.push(result.reason));
+  const first = serialized.transport.handler!(
+    proposal(serialized.spec, "serialized-first"),
+  );
+  await stateRequested;
+  await assert.rejects(
+    serialized.transport.handler!(
+      proposal(serialized.spec, "serialized-concurrent"),
+    ),
+    /proposal_backpressure/,
+  );
+  releaseState?.();
+  await first;
+  assert.deepEqual(results, ["reference_goal_dispatched"]);
+  assert.equal(serialized.transport.dispatches, 1);
 }
 
 async function testShadow(): Promise<void> {
@@ -394,6 +576,28 @@ async function testShadow(): Promise<void> {
 }
 
 async function testReferenceRun(): Promise<void> {
+  const capacityRoot = mkdtempSync(join(tmpdir(), "rlsok-evidence-capacity-"));
+  try {
+    const atCapacity = setup(
+      "run",
+      undefined,
+      (spec) => new FileEvidenceSink(
+        spec,
+        join(capacityRoot, "full.json"),
+        { maxEntries: 0 },
+      ),
+    );
+    const capacityResult = await atCapacity.gateway.handlePayload(
+      proposal(atCapacity.spec, "capacity-block"),
+    );
+    assert.equal(capacityResult.decision, "failed");
+    assert.equal(capacityResult.reason, "evidence_entry_capacity_exceeded");
+    assert.equal(capacityResult.hardwareSignalSent, false);
+    assert.equal(atCapacity.transport.dispatches, 0);
+  } finally {
+    rmSync(capacityRoot, { recursive: true, force: true });
+  }
+
   const passing = setup("run");
   const result = await passing.gateway.handlePayload(proposal(passing.spec));
   assert.equal(result.decision, "allowed");
@@ -436,6 +640,41 @@ async function testReferenceRun(): Promise<void> {
   assert.equal(failed.decision, "failed");
   assert.match(failed.reason, /controller_goal_rejected/);
   assert.equal(unavailable.transport.dispatches, 1);
+  assert.equal(failed.hardwareSignalSent, true);
+  assert.equal(failed.controllerGoalCount, 1);
+
+  const acceptedOnly = setup("run");
+  acceptedOnly.transport.dispatchTrajectory = async () => {
+    acceptedOnly.transport.dispatches += 1;
+    return { accepted: true, detail: "accepted_without_terminal_result" };
+  };
+  const unconfirmed = await acceptedOnly.gateway.handlePayload(
+    proposal(acceptedOnly.spec, "accepted-only"),
+  );
+  assert.equal(unconfirmed.decision, "failed");
+  assert.match(unconfirmed.reason, /controller_result_unconfirmed/);
+  assert.equal(unconfirmed.hardwareSignalSent, true);
+  assert.equal(acceptedOnly.transport.dispatches, 1);
+
+  const malformedResult = setup("run");
+  malformedResult.transport.dispatchTrajectory = async () => {
+    malformedResult.transport.dispatches += 1;
+    return {
+      accepted: true,
+      completed: true,
+      succeeded: true,
+      status: Number.MAX_SAFE_INTEGER + 1,
+      detail: "x".repeat(501),
+    };
+  };
+  const malformedFailure = await malformedResult.gateway.handlePayload(
+    proposal(malformedResult.spec, "malformed-controller-result"),
+  );
+  assert.equal(malformedFailure.decision, "failed");
+  assert.equal(malformedFailure.reason, "controller_result_invalid");
+  assert.equal(malformedFailure.hardwareSignalSent, true);
+  assert.equal(malformedResult.entries.at(-1)?.decisionReason, "controller_result_invalid");
+  assert.equal(malformedResult.transport.dispatches, 1);
 }
 
 async function testV2ObservationBoundary(): Promise<void> {
@@ -497,19 +736,20 @@ async function testV2ObservationBoundary(): Promise<void> {
 async function testRevocation(): Promise<void> {
   const active = setup("run");
   await active.gateway.handlePayload(proposal(active.spec));
+  assert.equal(active.entries.at(-1)?.hardwareSignalState, "attempted_unconfirmed");
+  const entriesBeforeRevocation = active.entries.length;
   await active.gateway.revoke(active.spec.metadata.releaseId, "operator_stop");
-  assert.equal(active.transport.cancellations, 1);
-  assert.match(
-    active.entries.at(-1)?.decisionReason ?? "",
-    /release_revoked:cancel_requested/,
+  assert.equal(active.entries.length, entriesBeforeRevocation);
+  assert.doesNotMatch(
+    readFileSync(join(process.cwd(), "packages/ros2-reference-gateway/index.ts"), "utf8"),
+    /cancelActiveGoal/,
   );
-  assert.equal(
-    active.entries.at(-1)?.hardwareSignalState,
-    "attempted_unconfirmed",
-  );
-  assert.equal(
-    active.entries.at(-1)?.executionEvidence,
-    "cancellation_requested",
+  assert.doesNotMatch(
+    readFileSync(
+      join(process.cwd(), "experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py"),
+      "utf8",
+    ),
+    /operation == ["']cancel["']/,
   );
   const next = JSON.parse(proposal(active.spec, "proposal-2")) as Record<
     string,
@@ -518,6 +758,8 @@ async function testRevocation(): Promise<void> {
   const blocked = await active.gateway.handlePayload(JSON.stringify(next));
   assert.equal(blocked.decision, "blocked");
   assert.equal(active.transport.dispatches, 1);
+  assert.equal(active.entries.at(-1)?.decisionReason, "release_revoked");
+  assert.equal(active.entries.at(-1)?.hardwareSignalSent, false);
 }
 
 async function testEvidence(): Promise<void> {
@@ -533,10 +775,16 @@ async function testEvidence(): Promise<void> {
 
   const timeout = setup("run");
   timeout.transport.dispatchError = "ros_action_request_timeout";
-  await timeout.gateway.handlePayload(proposal(timeout.spec));
+  const timeoutResult = await timeout.gateway.handlePayload(proposal(timeout.spec));
+  assert.equal(timeoutResult.hardwareSignalSent, true);
+  assert.equal(timeoutResult.controllerGoalCount, 1);
+  assert.equal(
+    timeoutResult.reason,
+    "controller_dispatch_unknown:ros_action_request_timeout",
+  );
   assert.equal(
     timeout.entries.at(-1)?.decisionReason,
-    "ros_action_request_timeout",
+    "controller_dispatch_unknown:ros_action_request_timeout",
   );
   assert.equal(
     timeout.entries.at(-1)?.hardwareSignalState,
@@ -552,7 +800,7 @@ async function testEvidence(): Promise<void> {
     kind: "EvidenceBundle",
     releaseId: rejected.spec.metadata.releaseId,
     executablePolicyHash: executablePolicyHash(rejected.spec),
-    createdAt: NOW.toISOString(),
+    createdAt: chain.at(-1)!.evidence.decisionMadeAt,
     entries: chain,
   };
   assert.deepEqual(verifyEvidenceBundle(bundle), { ok: true });
@@ -572,6 +820,25 @@ function sourceFiles(path: string): string[] {
 
 async function testNoBypass(): Promise<void> {
   const root = process.cwd();
+  const validDoctorReport = await new SpyTransport().doctor();
+  assert.deepEqual(
+    ros2DoctorReportSchema.parse(validDoctorReport),
+    validDoctorReport,
+  );
+  assert.throws(
+    () => ros2DoctorReportSchema.parse({
+      ...validDoctorReport,
+      unexpectedAuthority: true,
+    }),
+    /Unrecognized key/,
+  );
+  assert.throws(
+    () => ros2DoctorReportSchema.parse({
+      ...validDoctorReport,
+      limitations: ["x".repeat(257)],
+    }),
+    /String must contain at most 256 character/,
+  );
   const sidecar = readFileSync(
     join(root, "experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py"),
     "utf8",
@@ -625,6 +892,22 @@ async function testNoBypass(): Promise<void> {
     discoveryNode,
     /def start_ready_controller_requests\([\s\S]+client\.service_is_ready\(\)[\s\S]+client\.call_async\(/,
     "controller-manager discovery must wait for DDS service matching before its one read-only request",
+  );
+  const sidecarTestPython = process.platform === "win32" ? "python" : "python3";
+  const sidecarTests = spawnSync(
+    sidecarTestPython,
+    [
+      join(
+        root,
+        "experimental/ros2-reference-sidecar/test_rlsok_ros2_sidecar.py",
+      ),
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(
+    sidecarTests.status,
+    0,
+    `Python sidecar regressions failed: ${sidecarTests.stderr || sidecarTests.stdout}`,
   );
   assert.doesNotMatch(
     discoveryNode,
@@ -689,6 +972,93 @@ async function testNoBypass(): Promise<void> {
     /joint_state_stale/,
     "future timestamps still fail closed",
   );
+  const hangingTransport = new PythonRos2SidecarTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: join(__dirname, "hangingSidecar.js"),
+    discoveryTimeoutMs: 1_000,
+  });
+  const hangStartedAt = Date.now();
+  await assert.rejects(
+    hangingTransport.doctor(),
+    /ros2_sidecar_doctor_timeout/,
+  );
+  assert.ok(Date.now() - hangStartedAt < 3_000);
+  await assert.rejects(
+    hangingTransport.doctor(),
+    /ros2_sidecar_doctor_timeout/,
+    "a poisoned sidecar channel must never auto-restart",
+  );
+  await hangingTransport.close();
+
+  const oversizedTransport = new PythonRos2SidecarTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: join(__dirname, "oversizedSidecar.js"),
+    discoveryTimeoutMs: 1_000,
+  });
+  await assert.rejects(
+    oversizedTransport.doctor(),
+    /ros2_sidecar_response_too_large/,
+  );
+  await oversizedTransport.close();
+
+  const unsolicitedTransport = new PythonRos2SidecarTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: join(__dirname, "unsolicitedSidecar.js"),
+    discoveryTimeoutMs: 1_000,
+  });
+  await assert.rejects(
+    unsolicitedTransport.doctor(),
+    /ros2_sidecar_unsolicited_response/,
+  );
+  await unsolicitedTransport.close();
+
+  const primitiveReplyTransport = new PythonRos2SidecarTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: join(__dirname, "invalidProtocolSidecar.js"),
+    proposalTopic: "/primitive-doctor-reply",
+    discoveryTimeoutMs: 1_000,
+  });
+  await assert.rejects(
+    primitiveReplyTransport.doctor(),
+    /ros2_sidecar_response_malformed/,
+  );
+  await assert.rejects(
+    primitiveReplyTransport.doctor(),
+    /ros2_sidecar_response_malformed/,
+    "a primitive JSON response must poison the sidecar channel",
+  );
+  await primitiveReplyTransport.close();
+
+  const invalidDoctorTransport = new PythonRos2SidecarTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: join(__dirname, "invalidProtocolSidecar.js"),
+    discoveryTimeoutMs: 1_000,
+  });
+  await assert.rejects(
+    invalidDoctorTransport.doctor(),
+    /ros2_sidecar_doctor_report_invalid/,
+  );
+  await assert.rejects(
+    invalidDoctorTransport.doctor(),
+    /ros2_sidecar_doctor_report_invalid/,
+    "an invalid Doctor report must poison the sidecar channel",
+  );
+  await invalidDoctorTransport.close();
+
+  const oneShotStartedAt = Date.now();
+  await assert.rejects(
+    runRos2Command([
+      "doctor",
+      "--python",
+      process.execPath,
+      "--sidecar",
+      join(__dirname, "hangingOneShotSidecar.js"),
+      "--discovery-timeout-ms",
+      "1000",
+    ]),
+    /ros2_sidecar_one_shot_timeout/,
+  );
+  assert.ok(Date.now() - oneShotStartedAt < 5_000);
   assert(
     !sidecar.includes("trajectory_msgs.action"),
     "trajectory_msgs does not define an action",
@@ -701,7 +1071,7 @@ async function testNoBypass(): Promise<void> {
   assert(cli.includes("ROS_SECURITY_STRATEGY=Enforce"));
   assert(
     cli.indexOf("const report = await transport.doctor()") <
-      cli.indexOf("await gateway.start("),
+      cli.indexOf("await transport.subscribeProposals("),
     "Run preflight must complete before proposal subscription",
   );
 
@@ -771,6 +1141,7 @@ const suites: Record<string, () => Promise<void>> = {
   "ros2-v2-observation-boundary": testV2ObservationBoundary,
   "ros2-revocation": testRevocation,
   "ros2-evidence": testEvidence,
+  "ros2-replay-persistence": testReplayPersistence,
   "ros2-no-bypass": testNoBypass,
 };
 

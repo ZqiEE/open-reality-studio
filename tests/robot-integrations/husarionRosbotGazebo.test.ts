@@ -22,6 +22,7 @@ import {
   type ExecutionConfigurationV2
 } from '../../packages/core/execution-configuration';
 import type { ReleaseRecord } from '../../packages/core/release-policy';
+import type { EvidenceSink } from '../../packages/core/execution-gate';
 import {
   HUSARION_ROSBOT_COMMAND_TOPIC,
   HUSARION_ROSBOT_MESSAGE_TYPE,
@@ -41,6 +42,7 @@ import {
   HUSARION_ROSBOT_CONTROLLERS_SOURCE,
   observeTrustedHusarionConfiguration
 } from '../../packages/husarion-rosbot-gazebo/trusted-observation';
+import { PythonHusarionRosbotTransport } from '../../packages/husarion-rosbot-gazebo/sidecar';
 
 const NOW = new Date('2026-08-23T00:00:00.000Z');
 const H = (character: string) => character.repeat(64);
@@ -198,6 +200,7 @@ class FakeTransport implements HusarionRosbotTransport {
   readinessChecks = 0;
   beforeReadiness?: () => void;
   beforePublish?: () => void;
+  afterPublish?: () => void;
 
   async getOdometryObservation(): Promise<unknown | undefined> {
     this.beforeObservation?.();
@@ -214,6 +217,7 @@ class FakeTransport implements HusarionRosbotTransport {
     this.beforePublish?.();
     if (!this.commandPathReady) throw new Error('command_path_unavailable');
     this.publications.push(candidate);
+    this.afterPublish?.();
     return {
       published: true as const,
       topic: '/cmd_vel',
@@ -230,6 +234,7 @@ function setup(mode: 'shadow' | 'run', options: {
   state?: unknown;
   controllerIdentity?: string;
   stateReadAt?: Date;
+  evidence?: EvidenceSink;
 } = {}) {
   let currentNow = NOW;
   const spec = release(mode === 'shadow' ? 'shadow' : 'released');
@@ -264,7 +269,7 @@ function setup(mode: 'shadow' | 'run', options: {
       return observed;
     },
     transport,
-    evidence: { append: (entry) => { entries.push(entry); } },
+    evidence: options.evidence ?? { append: (entry) => { entries.push(entry); } },
     now: () => currentNow
   });
   return {
@@ -354,7 +359,9 @@ test('live state freshness uses time after a blocking observation', async () => 
   assert.equal(result.hardwareSignalSent, true);
   assert.equal(current.transport.publications.length, 1);
   assert.equal(current.entries.at(-1)?.stateObservedAt, new Date(NOW.getTime() + 2_000).toISOString());
-  assert.equal(current.entries.at(-1)?.decisionMadeAt, new Date(NOW.getTime() + 2_000).toISOString());
+  const decisionMadeAt = Date.parse(current.entries.at(-1)!.decisionMadeAt);
+  assert.ok(decisionMadeAt >= NOW.getTime() + 2_000);
+  assert.ok(decisionMadeAt < NOW.getTime() + 2_500);
 });
 
 test('configuration mismatch and execute-time drift block before publication', async () => {
@@ -508,9 +515,22 @@ test('allowed Shadow evaluates the contract but publishes exactly zero commands'
   assert.equal(result.hardwareSignalSent, false);
   assert.equal(result.publicationCount, 0);
   assert.equal(current.transport.publications.length, 0);
-  assert.equal(current.transport.readinessChecks, 0);
+  assert.equal(current.transport.readinessChecks, 1);
   assert.equal(current.entries.at(-1)?.hardwareSignalSent, false);
   assert.equal(current.entries.at(-1)?.executionEvidence, 'shadow_not_dispatched');
+});
+
+test('Shadow fails closed when its independent command-path observer is not ready', async () => {
+  const current = setup('shadow');
+  current.transport.commandPathReady = false;
+  const result = await current.gateway.handleProposal(proposal(current.spec));
+  assert.equal(result.decision, 'failed');
+  assert.equal(result.reason, 'command_path_unavailable');
+  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(result.publicationCount, 0);
+  assert.equal(current.transport.readinessChecks, 1);
+  assert.equal(current.transport.publications.length, 0);
+  assert.equal(current.entries.length, 0);
 });
 
 test('missing command-path subscriber fails closed before publication', async () => {
@@ -539,7 +559,7 @@ test('command path becoming ready within the bounded startup publishes exactly o
   assert.equal(current.transport.publications.length, 1);
 });
 
-test('subscriber disappearing immediately before dispatch fails closed with zero publication', async () => {
+test('subscriber disappearing at the transport boundary is reported as attempted but unconfirmed', async () => {
   const current = setup('run');
   current.transport.beforePublish = () => {
     current.transport.commandPathReady = false;
@@ -547,10 +567,44 @@ test('subscriber disappearing immediately before dispatch fails closed with zero
   const result = await current.gateway.handleProposal(proposal(current.spec));
   assert.equal(result.decision, 'failed');
   assert.equal(result.reason, 'command_path_unavailable');
-  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(result.hardwareSignalSent, true);
   assert.equal(result.publicationCount, 0);
   assert.equal(current.transport.readinessChecks, 1);
   assert.equal(current.transport.publications.length, 0);
+  assert.equal(current.entries.at(-1)?.hardwareSignalState, 'attempted_unconfirmed');
+  assert.equal(current.entries.at(-1)?.hardwareSignalSent, true);
+});
+
+test('Evidence preflight failure blocks before the transport boundary', async () => {
+  const current = setup('run', {
+    evidence: {
+      append() {},
+      assertWritableBeforeDispatch() {
+        throw new Error('evidence_output_unwritable');
+      }
+    }
+  });
+  const result = await current.gateway.handleProposal(proposal(current.spec));
+  assert.equal(result.decision, 'failed');
+  assert.equal(result.reason, 'evidence_output_unwritable');
+  assert.equal(result.hardwareSignalSent, false);
+  assert.equal(result.publicationCount, 0);
+  assert.equal(current.transport.publications.length, 0);
+});
+
+test('lost acknowledgement after publication remains conservatively attempted and unconfirmed', async () => {
+  const current = setup('run');
+  current.transport.afterPublish = () => {
+    throw new Error('sidecar_acknowledgement_lost');
+  };
+  const result = await current.gateway.handleProposal(proposal(current.spec));
+  assert.equal(result.decision, 'failed');
+  assert.equal(result.reason, 'sidecar_acknowledgement_lost');
+  assert.equal(result.hardwareSignalSent, true);
+  assert.equal(result.publicationCount, 0);
+  assert.equal(current.transport.publications.length, 1);
+  assert.equal(current.entries.at(-1)?.hardwareSignalState, 'attempted_unconfirmed');
+  assert.equal(current.entries.at(-1)?.hardwareSignalSent, true);
 });
 
 test('allowed Run publishes once and the single-use permit cannot publish twice', async () => {
@@ -586,7 +640,7 @@ test('Evidence binds action/configuration and verifies as a hash chain', async (
     kind: 'EvidenceBundle',
     releaseId: current.spec.metadata.releaseId,
     executablePolicyHash: executablePolicyHash(current.spec),
-    createdAt: NOW.toISOString(),
+    createdAt: evidence.decisionMadeAt,
     entries: chain
   }), { ok: true });
 });
@@ -612,6 +666,57 @@ test('Python sidecar protocol self-test does not require ROS installation', () =
   const result = spawnSync(python, ['-S', sidecar, '--self-test'], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /sidecar_self_test_passed/);
+  const bundleBuilder = readFileSync(
+    join(process.cwd(), 'scripts/build-linux-x64-bundle.cjs'),
+    'utf8'
+  );
+  assert.match(
+    bundleBuilder,
+    /experimental["'],\s*["']husarion-rosbot-gazebo/
+  );
+  assert.match(bundleBuilder, /bundle_husarion_sidecar_self_test_failed/);
+});
+
+test('Husarion sidecar IPC is bounded and poisons uncertain response channels', async () => {
+  const fixture = (name: string) => join(__dirname, '..', 'ros2-reference', name);
+  const hanging = new PythonHusarionRosbotTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: fixture('hangingSidecar.js'),
+    discoveryTimeoutMs: 1_000
+  });
+  const startedAt = Date.now();
+  await assert.rejects(
+    (hanging as any).request('doctor', {}),
+    /rosbot_sidecar_doctor_timeout/
+  );
+  assert.ok(Date.now() - startedAt < 3_000);
+  await assert.rejects(
+    (hanging as any).request('doctor', {}),
+    /rosbot_sidecar_doctor_timeout/
+  );
+  await hanging.close();
+
+  const oversized = new PythonHusarionRosbotTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: fixture('oversizedSidecar.js'),
+    discoveryTimeoutMs: 1_000
+  });
+  await assert.rejects(
+    (oversized as any).request('doctor', {}),
+    /rosbot_sidecar_response_too_large/
+  );
+  await oversized.close();
+
+  const unsolicited = new PythonHusarionRosbotTransport({
+    pythonExecutable: process.execPath,
+    sidecarPath: fixture('unsolicitedSidecar.js'),
+    discoveryTimeoutMs: 1_000
+  });
+  await assert.rejects(
+    (unsolicited as any).request('doctor', {}),
+    /rosbot_sidecar_unsolicited_response/
+  );
+  await unsolicited.close();
 });
 
 test('Husarion sidecar readiness requires the intended mux rather than an observer', () => {
@@ -635,9 +740,35 @@ test('Husarion sidecar readiness requires the intended mux rather than an observ
   ), 'utf8');
   assert.match(
     acceptance,
-    /run_monitor run 30/,
-    'independent Run observation must outlive the 2 s arm and 15 s bounded readiness window'
+    /--duration 180/,
+    'every independent observer must outlive the full bounded runtime window'
   );
+  assert.match(acceptance, /stop_monitor shadow/);
+  assert.match(acceptance, /stop_monitor run/);
+  assert.match(acceptance, /stop_monitor mismatch/);
+  assert.match(acceptance, /observer_ended_before_command/);
+  assert.match(acceptance, /observer_ended_before_settle/);
+  assert.match(acceptance, /--stop-file/);
+  assert.match(acceptance, /RLSOK_HUSARION_RUN_ID/);
+  assert.match(acceptance, /proof directory must not already exist/);
+  assert.match(acceptance, /RLSOK_HUSARION_NAMESPACE/);
+  assert.match(acceptance, /rlsok\.io\/husarion-gazebo-artifact-manifest\/v1/);
+  assert.match(acceptance, /sha256sum -c SHA256SUMS/);
+  assert.match(acceptance, /kill -KILL -- "-\$process_group"/);
+  assert.match(acceptance, /setsid ros2 launch/);
+  assert.match(acceptance, /setsid python3/);
+  assert.match(acceptance, /wait_for_process_group/);
+  assert.match(acceptance, /background_process_group_cleanup_failed/);
+  assert.match(acceptance, /observer_did_not_stop_after_request/);
+  const monitor = readFileSync(join(
+    process.cwd(),
+    'scripts/husarion-gazebo-monitor.py'
+  ), 'utf8');
+  assert.match(monitor, /termination_reason = "timeout"/);
+  assert.match(monitor, /termination_reason = "stop_requested"/);
+  assert.match(monitor, /"observerCompleted": termination_reason == "stop_requested"/);
+  assert.match(monitor, /"resolvedTopics"/);
+  assert.match(monitor, /def normalized_namespace/);
 });
 
 test('checked-in example fixtures retain their strict v2 approval binding', () => {

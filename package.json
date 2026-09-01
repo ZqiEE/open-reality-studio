@@ -2,7 +2,7 @@
   "name": "@realitywarden/rlsok",
   "version": "1.4.5",
   "private": false,
-  "description": "Release control and execution gating for learned robot policies.",
+  "description": "Robot Software Execution Authorization for learned robot policies.",
   "engines": {
     "node": ">=22.12.0",
     "npm": ">=10.5.1"
@@ -44,8 +44,9 @@
     "test:e2e-demo": "node scripts/run-rlsok.cjs --test tests/e2e/deploymentVsExecutionDemo.test.ts",
     "demo:deployment-execution": "node scripts/run-rlsok.cjs --test apps/demo/deployment-vs-execution.ts",
     "demo:husarion-rosbot-gazebo": "node scripts/run-rlsok.cjs --test apps/demo/husarion-rosbot-gazebo.ts",
-    "test:integrations": "node scripts/run-rlsok.cjs --test tests/robot-integrations/ur5e.test.ts && node scripts/run-rlsok.cjs --test tests/robot-integrations/ur5eValidation.test.ts && npm run test:husarion-rosbot",
+    "test:integrations": "node scripts/run-rlsok.cjs --test tests/robot-integrations/ur5e.test.ts && node scripts/run-rlsok.cjs --test tests/robot-integrations/ur5eValidation.test.ts && npm run test:husarion-rosbot && npm run test:external-ros2-validation",
     "test:husarion-rosbot": "node scripts/run-rlsok.cjs --test tests/robot-integrations/husarionRosbotGazebo.test.ts",
+    "test:external-ros2-validation": "node scripts/run-rlsok.cjs --test tests/robot-integrations/externalRos2Validation.test.ts",
     "test:official-ur5e": "node scripts/run-rlsok.cjs --test tests/robot-integrations/officialUr5eGraph.test.ts",
     "test:python-sdk": "node scripts/test-python-sdk.cjs",
     "ros2:test": "node scripts/run-rlsok.cjs --test tests/ros2-reference/ros2Reference.test.ts",

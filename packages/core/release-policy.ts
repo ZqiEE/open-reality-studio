@@ -80,6 +80,9 @@ export function executionEligibility(
   deviceId: string,
   now: Date = new Date()
 ): { allowed: true } | { allowed: false; reason: string } {
+  if (!Number.isFinite(now.getTime())) {
+    return { allowed: false, reason: 'current_time_invalid' };
+  }
   if (record.releaseId !== spec.metadata.releaseId) {
     return { allowed: false, reason: 'release_id_mismatch' };
   }

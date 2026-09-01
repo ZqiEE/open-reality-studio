@@ -50,6 +50,18 @@ generated source binds the source-input digest plus generator identity and
 version; the generated output does not need a second independent digest.
 Provenance entries are unordered and canonicalized by unique source identity.
 Duplicate source identities are rejected rather than resolved by precedence.
+An adapter selects provenance per approved execution dependency. A semantic
+contract for an IMU, controller, or other interface is a content/software source
+with an interface-scoped identity when that approval consumes it; unrelated
+interfaces are omitted rather than globally ignored. Thus a selected sign,
+timing, lifecycle, resource, or failure-semantics change invalidates approval
+even when its ROS topic/type or controller/action surface is unchanged.
+
+Lower-level ros2_control and hardware_interface behavior follows the same
+provenance rule. A runtime/API/configuration change is execution-relevant unless
+the integration explicitly qualifies a compatibility envelope and normalizes
+the observed runtime to that stable envelope identity. Merely retaining the
+same public interface is not evidence of compatibility.
 
 The version 2 digest excludes the observation timestamp, ROS/RMW environment
 observations, incidental discovery and diagnostic values, and display/UI
@@ -57,6 +69,13 @@ metadata. These fields describe when and where the configuration was observed;
 they do not silently redefine execution semantics. There are no configurable
 ignore paths: every field is assigned to the schema's semantic or observational
 side explicitly.
+
+For physical execution, adapters should select the base robot description,
+actuator/sensor configuration, controller interfaces, command semantics, and
+execution-relevant runtime/software/configuration sources. Simulator worlds,
+visual assets, incidental plugins, and unrelated environment noise stay outside
+the digest by default. A simulator-specific source is included only when it
+actually defines a selected execution semantic.
 
 The existing configuration gate remains the only authorization path:
 approved digest, observed digest, evaluate, execute-time refresh, then dispatch.
@@ -108,12 +127,12 @@ security layer authenticates them.
 ## ROS 2 boundary
 
 `packages/ros2-reference-gateway/` validates proposal and joint-state
-contracts, resolves the active release, invokes Core, and records dispatch or
-cancellation evidence.
+contracts, resolves the active release, invokes Core, and records dispatch
+evidence.
 
 `experimental/ros2-reference-sidecar/rlsok_ros2_sidecar.py` is an untrusted
 transport process. It subscribes to proposal and `JointState` topics and uses
-`FollowJointTrajectory` for goals and cancellation. JSONL IPC is the only
+`FollowJointTrajectory` for goals. JSONL IPC is the only
 boundary between it and TypeScript. Python cannot approve a release or issue a
 permit.
 
@@ -134,10 +153,13 @@ Reference Run requires:
 
 ## Evidence
 
-Evidence distinguishes `not_sent` from `attempted_unconfirmed`. Controller goal
-acceptance and cancellation requests do not prove physical motion or a physical
-stop. Entries are canonicalized, SHA-256 hash-chained, and verified against the
-bundle release identity.
+Evidence distinguishes `not_sent` from `attempted_unconfirmed`. A queued
+pre-dispatch rejection is `not_sent`; controller goal acceptance begins the
+execution-side boundary and remains `attempted_unconfirmed` unless a terminal
+result is recorded. Revocation prevents a later dispatch but sends no cancel,
+stop, hold, zero, or retry command. Controlled or safety-rated stopping of an
+already executing trajectory is outside RLSOK. Entries are canonicalized,
+SHA-256 hash-chained, and verified against the bundle release identity.
 
 ## Security limits
 

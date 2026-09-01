@@ -56,6 +56,10 @@ authority remain in the RLSOK gate.
 
 Re-run the installer to upgrade. Remove the runtime with
 `sudo /opt/rlsok/uninstall.sh`; user configuration and Evidence are preserved.
+Installer activation is transactional: if verification fails, the previous
+runtime and CLI/Python registrations are restored. This installation rollback
+does not restore execution authority; release revocation and approval remain
+Cloud-controlled.
 
 ## Development verification
 
@@ -79,6 +83,11 @@ See [Product quickstart](docs/PRODUCT_QUICKSTART.md),
 [Cloud contract](docs/CLOUD_CONTRACT_V1.md). Integrators should also read the
 [Fleet/OTA authorization boundary](docs/FLEET_OTA_AUTHORIZATION_BOUNDARY.md)
 and [external compatibility runbook](docs/EXTERNAL_COMPATIBILITY_RUNBOOK.md).
+
+People who explicitly opted in to public attribution are listed in
+[Technical contributors and reviewers](TECHNICAL_CONTRIBUTORS.md). Attribution
+does not imply endorsement, partnership, customer status, official support, or
+vendor certification.
 
 Physical UR5e validation remains pending. External hardware operators should
 use the [authoritative physical UR5e validation runbook](docs/PHYSICAL_UR5E_VALIDATION.md),

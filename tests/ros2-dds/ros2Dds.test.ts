@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import test from 'node:test';
 import {
   InMemoryReleaseResolver,
@@ -10,6 +11,7 @@ import {
   Ros2ReferenceGateway
 } from '../../packages/ros2-reference-gateway';
 import { PythonRos2SidecarTransport } from '../../packages/ros2-reference-gateway/sidecar';
+import { FileProposalReplayRegistry } from '../../packages/cloud-client/replay-registry';
 import type { EvidenceSink } from '../../packages/core/execution-gate';
 import type { ExecutionEvidence } from '../../packages/core/evidence';
 import {
@@ -102,6 +104,9 @@ async function runCase(
     controllerAction: `${topicPrefix}/follow_joint_trajectory`
   });
   const evidence = new CollectingEvidence();
+  const replayRoot = mode === 'run'
+    ? mkdtempSync(join(tmpdir(), `rlsok-dds-replay-${name}-`))
+    : undefined;
   let configurationReads = 0;
   const gateway = new Ros2ReferenceGateway({
     mode,
@@ -110,6 +115,9 @@ async function runCase(
     releaseRecords: records,
     transport,
     evidence,
+    proposalReplayRegistry: replayRoot
+      ? new FileProposalReplayRegistry(replayRoot)
+      : undefined,
     executionConfiguration: async () => {
       configurationReads += 1;
       const observed = configurationDrift && configurationReads >= 2
@@ -152,29 +160,36 @@ async function runCase(
   });
   let caseTimeout: NodeJS.Timeout | undefined;
   try {
-    const result = await Promise.race([
+    const selected = await Promise.race([
       new Promise<{
-        decision: string;
-        hardwareSignalSent: boolean;
-        controllerGoalCount: number;
+        result: {
+          decision: string;
+          reason: string;
+          hardwareSignalSent: boolean;
+          controllerGoalCount: number;
+        };
+        evidence: ExecutionEvidence[];
       }>(async (resolveResult) => {
-        await gateway.start(resolveResult);
+        await gateway.start((result) => {
+          if (result.reason === 'proposal_id_duplicate') return;
+          resolveResult({ result, evidence: [...evidence.entries] });
+        });
       }),
       new Promise<never>((_, reject) =>
         { caseTimeout = setTimeout(() => reject(new Error(`dds_${name}_timeout`)), 20_000); }
       )
     ]);
-    const sanitizedEvidence = evidence.entries.map((entry) => ({
+    const sanitizedEvidence = selected.evidence.map((entry) => ({
       ...entry,
       proposedAction: '[sanitized fixture action]'
     }));
     await mkdir('artifacts/ros2-dds', { recursive: true });
     await writeFile(
       `artifacts/ros2-dds/${name}.json`,
-      `${JSON.stringify({ case: name, result, evidence: sanitizedEvidence }, null, 2)}\n`,
+      `${JSON.stringify({ case: name, result: selected.result, evidence: sanitizedEvidence }, null, 2)}\n`,
       'utf8'
     );
-    return { result, evidence: evidence.entries };
+    return selected;
   } finally {
     if (caseTimeout) clearTimeout(caseTimeout);
     fixtureNode.kill('SIGTERM');
@@ -190,6 +205,7 @@ async function runCase(
     }
     if (fixtureNode.exitCode === null) fixtureNode.kill('SIGKILL');
     await transport.close();
+    if (replayRoot) rmSync(replayRoot, { recursive: true, force: true });
   }
 }
 
@@ -204,7 +220,7 @@ test('real DDS Best Effort JointState supports Shadow with zero dispatch', async
 
 test('real DDS eligible reference run reaches one fake controller goal', async () => {
   const { result, evidence } = await runCase('reference', 'run');
-  assert.equal(result.decision, 'allowed');
+  assert.equal(result.decision, 'allowed', result.reason);
   assert.equal(result.controllerGoalCount, 1);
   assert.equal(result.hardwareSignalSent, true);
   assert.equal(evidence.at(-1)?.executionEvidence, 'controller_result_recorded');

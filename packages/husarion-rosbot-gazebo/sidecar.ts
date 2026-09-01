@@ -1,10 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
 import {
   HUSARION_ROSBOT_COMMAND_TOPIC,
   HUSARION_ROSBOT_MESSAGE_TYPE,
   HUSARION_ROSBOT_STATE_TOPIC,
   normalizeRosNamespace,
+  rosbotOdometryObservationSchema,
   resolveRosbotTopic,
   type HusarionRosbotTransport,
   type RosbotOdometryObservation,
@@ -18,6 +18,9 @@ interface SidecarReply {
   error?: string;
 }
 
+const MAXIMUM_PENDING_REQUESTS = 16;
+const MAXIMUM_SIDECAR_FRAME_BYTES = 256 * 1024;
+
 interface PythonHusarionRosbotTransportOptions {
   pythonExecutable: string;
   sidecarPath: string;
@@ -30,15 +33,17 @@ interface PythonHusarionRosbotTransportOptions {
 /** JSONL IPC transport. Policy, release state, permits, and Evidence stay in TypeScript Core. */
 export class PythonHusarionRosbotTransport implements HusarionRosbotTransport {
   private child?: ChildProcessWithoutNullStreams;
-  private lines?: ReadlineInterface;
+  private stdoutBuffer = Buffer.alloc(0);
   private state?: RosbotOdometryObservation;
   private nextId = 1;
   private readonly pending = new Map<number, {
     resolve(value: unknown): void;
     reject(error: Error): void;
+    timeout: ReturnType<typeof setTimeout>;
   }>();
   private readonly namespace: string;
   private readonly discoveryTimeoutMs: number;
+  private terminalError?: Error;
 
   constructor(private readonly options: PythonHusarionRosbotTransportOptions) {
     this.namespace = normalizeRosNamespace(options.namespace);
@@ -93,22 +98,18 @@ export class PythonHusarionRosbotTransport implements HusarionRosbotTransport {
   }
 
   async close(): Promise<void> {
-    const child = this.child;
-    if (!child) return;
+    if (!this.child) return;
     try {
-      await this.request('shutdown', {});
+      await this.request('shutdown', {}, Math.min(this.discoveryTimeoutMs, 5_000));
     } catch {
-      child.kill();
+      // The request path already poisoned and terminated an uncertain channel.
+    } finally {
+      this.failChannel(new Error('rosbot_sidecar_closed'));
     }
-    this.lines?.close();
-    this.child = undefined;
-    for (const pending of this.pending.values()) {
-      pending.reject(new Error('rosbot_sidecar_closed'));
-    }
-    this.pending.clear();
   }
 
   private async ensureStarted(): Promise<void> {
+    if (this.terminalError) throw this.terminalError;
     if (this.child) return;
     const child = spawn(this.options.pythonExecutable, [
       this.options.sidecarPath,
@@ -120,8 +121,7 @@ export class PythonHusarionRosbotTransport implements HusarionRosbotTransport {
       windowsHide: true
     });
     this.child = child;
-    this.lines = createInterface({ input: child.stdout });
-    this.lines.on('line', (line) => this.handleLine(line));
+    child.stdout.on('data', (chunk: Buffer) => this.handleStdoutChunk(chunk));
     let stderr = '';
     child.stderr.on('data', (chunk: Buffer) => {
       stderr = `${stderr}${chunk.toString('utf8')}`.slice(-8_192);
@@ -130,58 +130,134 @@ export class PythonHusarionRosbotTransport implements HusarionRosbotTransport {
       const error = new Error(
         `rosbot_sidecar_exited:${code ?? 'signal'}${stderr.trim() ? `:${stderr.trim()}` : ''}`
       );
-      for (const pending of this.pending.values()) pending.reject(error);
-      this.pending.clear();
-      this.child = undefined;
+      this.failChannel(error, false);
     });
     child.on('error', (error) => {
-      for (const pending of this.pending.values()) pending.reject(error);
-      this.pending.clear();
+      this.failChannel(error);
     });
-    await Promise.race([
-      this.request('ping', {}),
-      new Promise((_, reject) => setTimeout(
-        () => reject(new Error('rosbot_sidecar_startup_timeout')),
-        this.discoveryTimeoutMs
-      ))
-    ]);
+    await this.request('ping', {}, this.discoveryTimeoutMs);
   }
 
-  private request(operation: string, params: Record<string, unknown>): Promise<unknown> {
+  private request(
+    operation: string,
+    params: Record<string, unknown>,
+    timeoutMs = operation === 'publish'
+      ? Math.min(300_000, this.discoveryTimeoutMs + 35_000)
+      : this.discoveryTimeoutMs
+  ): Promise<unknown> {
+    if (this.terminalError) return Promise.reject(this.terminalError);
     if (!this.child && operation !== 'ping') {
-      return this.ensureStarted().then(() => this.request(operation, params));
+      return this.ensureStarted().then(() => this.request(operation, params, timeoutMs));
     }
     const child = this.child;
     if (!child) return Promise.reject(new Error('rosbot_sidecar_not_started'));
+    if (this.pending.size >= MAXIMUM_PENDING_REQUESTS) {
+      return Promise.reject(new Error('rosbot_sidecar_request_capacity_exceeded'));
+    }
     const id = this.nextId++;
+    const frame = `${JSON.stringify({ id, operation, params })}\n`;
+    if (Buffer.byteLength(frame, 'utf8') > MAXIMUM_SIDECAR_FRAME_BYTES) {
+      return Promise.reject(new Error('rosbot_sidecar_request_too_large'));
+    }
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      child.stdin.write(`${JSON.stringify({ id, operation, params })}\n`, (error) => {
-        if (!error) return;
+      const timeout = setTimeout(() => {
+        const pending = this.pending.get(id);
+        if (!pending) return;
         this.pending.delete(id);
-        reject(error);
+        const error = new Error(`rosbot_sidecar_${operation}_timeout`);
+        pending.reject(error);
+        this.failChannel(error);
+      }, timeoutMs);
+      this.pending.set(id, { resolve, reject, timeout });
+      child.stdin.write(frame, (error) => {
+        if (!error) return;
+        const pending = this.pending.get(id);
+        if (!pending) return;
+        clearTimeout(pending.timeout);
+        this.pending.delete(id);
+        pending.reject(error);
+        this.failChannel(error);
       });
     });
+  }
+
+  private failChannel(error: Error, kill = true): void {
+    this.terminalError ??= error;
+    const child = this.child;
+    this.child = undefined;
+    this.stdoutBuffer = Buffer.alloc(0);
+    for (const pending of Array.from(this.pending.values())) {
+      clearTimeout(pending.timeout);
+      pending.reject(this.terminalError);
+    }
+    this.pending.clear();
+    if (kill) child?.kill();
+  }
+
+  private handleStdoutChunk(chunk: Buffer): void {
+    let offset = 0;
+    while (offset < chunk.length) {
+      const newline = chunk.indexOf(0x0a, offset);
+      const end = newline === -1 ? chunk.length : newline;
+      const fragment = chunk.subarray(offset, end);
+      if (this.stdoutBuffer.length + fragment.length > MAXIMUM_SIDECAR_FRAME_BYTES) {
+        this.failChannel(new Error('rosbot_sidecar_response_too_large'));
+        return;
+      }
+      if (fragment.length > 0) {
+        this.stdoutBuffer = this.stdoutBuffer.length === 0
+          ? Buffer.from(fragment)
+          : Buffer.concat([this.stdoutBuffer, fragment]);
+      }
+      if (newline === -1) return;
+      const line = this.stdoutBuffer.toString('utf8');
+      this.stdoutBuffer = Buffer.alloc(0);
+      this.handleLine(line);
+      offset = newline + 1;
+    }
   }
 
   private handleLine(line: string): void {
     let message: Record<string, unknown>;
     try {
-      message = JSON.parse(line) as Record<string, unknown>;
+      const parsed = JSON.parse(line) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+      message = parsed as Record<string, unknown>;
     } catch {
+      this.failChannel(new Error('rosbot_sidecar_response_malformed'));
       return;
     }
     if (message.event === 'odometry') {
-      this.state = message.state as RosbotOdometryObservation;
+      const state = rosbotOdometryObservationSchema.safeParse(message.state);
+      if (!state.success) {
+        this.failChannel(new Error('rosbot_sidecar_odometry_invalid'));
+        return;
+      }
+      this.state = state.data;
       return;
     }
-    if (typeof message.id !== 'number') return;
+    if (
+      typeof message.id !== 'number'
+      || !Number.isSafeInteger(message.id)
+      || typeof message.ok !== 'boolean'
+    ) {
+      this.failChannel(new Error('rosbot_sidecar_response_invalid'));
+      return;
+    }
     const pending = this.pending.get(message.id);
-    if (!pending) return;
+    if (!pending) {
+      this.failChannel(new Error('rosbot_sidecar_unsolicited_response'));
+      return;
+    }
+    clearTimeout(pending.timeout);
     this.pending.delete(message.id);
     const reply = message as unknown as SidecarReply;
     if (reply.ok) pending.resolve(reply.result);
-    else pending.reject(new Error(reply.error ?? 'rosbot_sidecar_request_failed'));
+    else pending.reject(new Error(
+      typeof reply.error === 'string' && reply.error.length > 0
+        ? reply.error
+        : 'rosbot_sidecar_request_failed'
+    ));
   }
 }
 

@@ -2,9 +2,36 @@ import { sign, verify, type KeyObject } from 'node:crypto';
 import { z } from 'zod';
 import { canonicalJson, sha256 } from '../core/evidence';
 
-const identity = z.string().trim().min(1).max(512);
+function isUnicodeScalarString(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const identity = z.string().trim().min(1).max(512).refine(
+  isUnicodeScalarString,
+  'identity must contain only Unicode scalar values'
+);
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
-const timestamp = z.string().datetime({ offset: true });
+const timestamp = z.string().datetime({ offset: true }).refine(
+  (value) => /(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value)),
+  'timestamp must be a finite RFC3339 instant with a canonical offset'
+);
+const canonicalEd25519Signature = z.string().regex(/^[A-Za-z0-9_-]{86}$/).refine(
+  (value) => {
+    const decoded = Buffer.from(value, 'base64url');
+    return decoded.byteLength === 64 && decoded.toString('base64url') === value;
+  },
+  'signature must be canonical unpadded base64url Ed25519 bytes'
+);
 
 export const edgeAuthorizationPayloadSchema = z.object({
   schemaVersion: z.literal(1),
@@ -18,12 +45,12 @@ export const edgeAuthorizationPayloadSchema = z.object({
   controllerIdentity: identity,
   issuedAt: timestamp,
   expiresAt: timestamp,
-  revocationEpoch: z.number().int().nonnegative()
+  revocationEpoch: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 }).strict();
 
 export const signedEdgeAuthorizationSchema = z.object({
   payload: edgeAuthorizationPayloadSchema,
-  signature: z.string().min(1).max(2_048)
+  signature: canonicalEd25519Signature
 }).strict();
 
 export type EdgeAuthorizationPayload = z.infer<typeof edgeAuthorizationPayloadSchema>;
@@ -132,9 +159,25 @@ export function verifyEdgeAuthorization(input: {
   }
   const now = (input.now ?? new Date()).getTime();
   const skew = input.maximumClockSkewMs ?? 5_000;
+  const maximumLifetimeMs = input.maximumLifetimeMs ?? 300_000;
+  if (
+    !Number.isFinite(now)
+    || !Number.isSafeInteger(skew)
+    || skew < 0
+    || !Number.isSafeInteger(maximumLifetimeMs)
+    || maximumLifetimeMs < 0
+    || !Number.isSafeInteger(input.minimumRevocationEpoch)
+    || input.minimumRevocationEpoch < 0
+  ) {
+    return {
+      allowed: false,
+      reason: 'edge_authorization_invalid',
+      payload: parsed.data.payload
+    };
+  }
   const lifetime = Date.parse(parsed.data.payload.expiresAt)
     - Date.parse(parsed.data.payload.issuedAt);
-  if (!Number.isFinite(lifetime) || lifetime <= 0 || lifetime > (input.maximumLifetimeMs ?? 300_000)) {
+  if (!Number.isFinite(lifetime) || lifetime <= 0 || lifetime > maximumLifetimeMs) {
     return {
       allowed: false,
       reason: 'edge_authorization_invalid',
@@ -162,8 +205,14 @@ export function verifyEdgeAuthorization(input: {
       payload: parsed.data.payload
     };
   }
-  const bindingMatches = (Object.keys(input.binding) as (keyof EdgeAuthorizationBinding)[])
-    .every((field) => parsed.data.payload[field] === input.binding[field]);
+  const bindingMatches = ([
+    'releaseId',
+    'contentHash',
+    'actionHash',
+    'configurationDigest',
+    'deviceId',
+    'controllerIdentity'
+  ] as const).every((field) => parsed.data.payload[field] === input.binding[field]);
   if (!bindingMatches) {
     return {
       allowed: false,
@@ -194,13 +243,16 @@ export class EdgeAuthorizedDispatchBoundary<TAction, TResult> {
   private consumed = false;
   private prepared: SignedEdgeAuthorization | null = null;
   private authorizationEvidence: EdgeAuthorizationEvidence | null = null;
+  private readonly binding: EdgeAuthorizationBinding;
 
   constructor(
     private readonly publicKeys: ReadonlyMap<string, KeyObject | string | Buffer>,
-    private readonly binding: EdgeAuthorizationBinding,
+    binding: EdgeAuthorizationBinding,
     private readonly minimumRevocationEpoch: () => number,
     private readonly dispatcher: { dispatch(action: TAction, permit: object): Promise<TResult> }
-  ) {}
+  ) {
+    this.binding = Object.freeze({ ...binding });
+  }
 
   prepare(snapshot: SignedEdgeAuthorization): void {
     if (this.consumed) throw new Error('edge_dispatch_boundary_reused');
@@ -217,6 +269,14 @@ export class EdgeAuthorizedDispatchBoundary<TAction, TResult> {
   }> {
     if (this.consumed) throw new Error('edge_dispatch_boundary_reused');
     this.consumed = true;
+    const actionCanonical = canonicalJson(action);
+    if (sha256(actionCanonical) !== this.binding.actionHash) {
+      throw new Error('edge_dispatch_action_binding_mismatch');
+    }
+    // Dispatch a detached JSON value so caller-owned references cannot mutate
+    // the action after the binding check but before an asynchronous adapter
+    // consumes it.
+    const preparedAction = JSON.parse(actionCanonical) as TAction;
     const snapshot = this.prepared;
     this.prepared = null;
     const verification = verifyEdgeAuthorization({
@@ -230,7 +290,7 @@ export class EdgeAuthorizedDispatchBoundary<TAction, TResult> {
       throw new Error(verification.reason);
     }
     this.authorizationEvidence = verification.evidence;
-    const result = await this.dispatcher.dispatch(action, Object.freeze({}));
+    const result = await this.dispatcher.dispatch(preparedAction, Object.freeze({}));
     return { result, authorizationEvidence: verification.evidence };
   }
 }

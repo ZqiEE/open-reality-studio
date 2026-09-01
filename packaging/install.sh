@@ -55,10 +55,13 @@ PYTHON_PTH="$PYTHON_SITE/rlsok.pth"
 PYTHON_PTH_PATH="$INSTALL_ROOT/.python-pth-path"
 CLI_LINK="$BIN_DIR/rlsok"
 UNINSTALL_LINK="$INSTALL_ROOT/uninstall.sh"
-BACKUP_ROOT="$TEMP_DIR/activation-backup"
-mkdir -p "$INSTALL_ROOT" "$BIN_DIR" "$BACKUP_ROOT"
+BACKUP_ROOT="$INSTALL_ROOT/$RLSOK_RUNTIME_VERSION.activation-backup"
+mkdir -p "$INSTALL_ROOT" "$BIN_DIR"
 [ ! -e "$ROLLBACK_ROOT" ] ||
-  fail "an unfinished rollback exists at $ROLLBACK_ROOT; restore or remove it before retrying."
+  fail "an unfinished rollback exists at $ROLLBACK_ROOT. Do not retry or remove it; restore the previous runtime and registrations from the retained recovery paths."
+[ ! -e "$BACKUP_ROOT" ] ||
+  fail "unfinished activation recovery exists at $BACKUP_ROOT. Do not retry or remove it; restore the previous runtime and registrations from the retained recovery paths."
+mkdir -p "$BACKUP_ROOT"
 rm -rf "$VERSION_ROOT.new"
 mv "$TEMP_DIR/rlsok-runtime-$RLSOK_RUNTIME_VERSION" "$VERSION_ROOT.new"
 
@@ -142,16 +145,17 @@ rollback_install() {
     mv "$ROLLBACK_ROOT" "$VERSION_ROOT" || return 1
   fi
   rm -rf "$ROLLBACK_ROOT"
+  rm -rf "$BACKUP_ROOT"
 }
 
 if ! activate_install; then
   if rollback_install; then
     fail "activation or finalization failed; the previous runtime and registrations were restored."
   fi
-  fail "activation or finalization failed and rollback was incomplete; recovery remains at $ROLLBACK_ROOT."
+  fail "activation or finalization failed and rollback was incomplete; recovery remains at $ROLLBACK_ROOT and $BACKUP_ROOT."
 fi
 
-rm -rf "$ROLLBACK_ROOT"
+rm -rf "$ROLLBACK_ROOT" "$BACKUP_ROOT"
 
 echo "RLSOK runtime $RLSOK_RUNTIME_VERSION (product v$RLSOK_PRODUCT_VERSION) installed at $VERSION_ROOT"
 echo "Python proposal SDK installed for: $PYTHON_SITE"

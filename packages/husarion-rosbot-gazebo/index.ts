@@ -194,6 +194,7 @@ function commandContractReason(
 export class HusarionRosbotGazeboGateway {
   private readonly seenProposalIds = new Set<string>();
   private publicationCount = 0;
+  private dispatchAttemptCount = 0;
 
   constructor(private readonly options: HusarionRosbotGatewayOptions) {}
 
@@ -229,22 +230,20 @@ export class HusarionRosbotGazeboGateway {
     const record = await this.options.releaseRecord();
     const configuration = await this.observeConfiguration();
     const runtimeAttestation = await this.observeAttestation();
-    if (this.options.mode === 'run') {
-      let commandPathReady = false;
-      try {
-        commandPathReady = await this.options.transport.waitForCommandPathReady();
-      } catch {
-        commandPathReady = false;
-      }
-      if (!commandPathReady) {
-        return { result: {
-          proposalId: proposal.proposalId,
-          decision: 'failed',
-          reason: 'command_path_unavailable',
-          hardwareSignalSent: false,
-          publicationCount: this.publicationCount
-        } };
-      }
+    let commandPathReady = false;
+    try {
+      commandPathReady = await this.options.transport.waitForCommandPathReady();
+    } catch {
+      commandPathReady = false;
+    }
+    if (!commandPathReady) {
+      return { result: {
+        proposalId: proposal.proposalId,
+        decision: 'failed',
+        reason: 'command_path_unavailable',
+        hardwareSignalSent: false,
+        publicationCount: this.publicationCount
+      } };
     }
     let state: RosbotOdometryObservation | undefined;
     try {
@@ -312,6 +311,10 @@ export class HusarionRosbotGazeboGateway {
       {
         dispatch: async (candidate) => {
           if (!actionResult.success) throw new Error('invalid_twist_dispatch_forbidden');
+          // Crossing the transport boundary makes a thrown outcome ambiguous:
+          // the ROS publication may have committed before its acknowledgement
+          // was lost. Track attempts separately from confirmed publications.
+          this.dispatchAttemptCount += 1;
           const published = await this.options.transport.publishVelocity(actionResult.data);
           this.publicationCount += 1;
           return published;
@@ -339,7 +342,7 @@ export class HusarionRosbotGazeboGateway {
 
     return {
       execute: async () => {
-        const publicationsBefore = this.publicationCount;
+        const attemptsBefore = this.dispatchAttemptCount;
         try {
           await gate.execute({
             ...decision.authorizedRequest,
@@ -357,7 +360,7 @@ export class HusarionRosbotGazeboGateway {
             proposalId: proposal.proposalId,
             decision: 'failed',
             reason: error instanceof Error ? error.message : 'rosbot_velocity_publish_failed',
-            hardwareSignalSent: this.publicationCount > publicationsBefore,
+            hardwareSignalSent: this.dispatchAttemptCount > attemptsBefore,
             publicationCount: this.publicationCount
           };
         }
