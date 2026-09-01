@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { EventEmitter } from "node:events";
-import { resolve } from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { EventEmitter, once } from "node:events";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 import {
   launchBrowser,
@@ -76,6 +86,224 @@ function pairDependencies(
     now: () => 0,
     ...overrides,
   };
+}
+
+type PairingTerminal = "approved" | "auth" | "expired" | "network" | "revoked";
+
+interface PairingProcessResult {
+  status: number | null;
+  signal: NodeJS.Signals | null;
+  stderr: string;
+  stdout: string;
+}
+
+interface LoopbackPairingServer {
+  baseUrl: string;
+  close: () => Promise<void>;
+  pollCount: () => number;
+}
+
+const PROCESS_PAIRING_TOKEN = `rlsok_${"T".repeat(43)}`;
+const PROCESS_USER_CODE = "LOCAL-PAIR-CODE";
+
+async function startLoopbackPairingServer(
+  terminal: PairingTerminal,
+): Promise<LoopbackPairingServer> {
+  let polls = 0;
+  let origin = "";
+  const server = createServer((request, response) => {
+    const sendJson = (status: number, body: Record<string, unknown>): void => {
+      response.writeHead(status, { "content-type": "application/json" });
+      response.end(JSON.stringify(body));
+    };
+
+    if (request.method === "POST" && request.url === "/v1/runtime-pairings") {
+      sendJson(200, {
+        pairingId: "local-pairing-id",
+        pairingToken: PROCESS_PAIRING_TOKEN,
+        userCode: PROCESS_USER_CODE,
+        verificationUri: `${origin}/verify-runtime`,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+      return;
+    }
+
+    if (
+      request.method === "GET" &&
+      request.url === "/v1/runtime-pairings/local-pairing-id"
+    ) {
+      polls += 1;
+      if (request.headers.authorization !== `Bearer ${PROCESS_PAIRING_TOKEN}`) {
+        sendJson(403, { error: "test_auth_missing" });
+        return;
+      }
+      if (terminal !== "approved" && polls === 1) {
+        sendJson(200, { status: "pending" });
+        return;
+      }
+      if (terminal === "network") {
+        request.socket.destroy();
+        return;
+      }
+      if (terminal === "auth") {
+        sendJson(403, { error: "test_auth_rejected" });
+        return;
+      }
+      sendJson(200, { status: terminal });
+      return;
+    }
+
+    sendJson(404, { error: "test_route_not_found" });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert(address && typeof address === "object");
+  origin = `http://127.0.0.1:${address.port}`;
+
+  return {
+    baseUrl: origin,
+    close: async () => {
+      server.closeAllConnections();
+      await new Promise<void>((resolveClose, rejectClose) => {
+        server.close((error) => {
+          if (error) rejectClose(error);
+          else resolveClose();
+        });
+      });
+    },
+    pollCount: () => polls,
+  };
+}
+
+function processEnvironment(configRoot: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    LOCALAPPDATA: configRoot,
+    XDG_CONFIG_HOME: configRoot,
+  };
+}
+
+async function runPairingProcess(
+  server: LoopbackPairingServer,
+  options: {
+    noBrowser?: boolean;
+    unavailableBrowser?: boolean;
+  } = {},
+): Promise<{
+  browserSpawnRecord: string;
+  configRoot: string;
+  result: PairingProcessResult;
+  temporary: string;
+}> {
+  const temporary = mkdtempSync(join(tmpdir(), "rlsok-cli-process-"));
+  const configRoot = join(temporary, "config");
+  const browserSpawnRecord = join(temporary, "browser-spawn.jsonl");
+  const cli = resolve(__dirname, "../../apps/cli/rlsok.js");
+  const spawnObserver = resolve(
+    process.cwd(),
+    "tests/cli/browser-spawn-observer.cjs",
+  );
+  const environment = processEnvironment(configRoot);
+  environment.RLSOK_TEST_BROWSER_SPAWN_RECORD = browserSpawnRecord;
+
+  if (options.unavailableBrowser) {
+    environment.PATH = temporary;
+    if (process.platform === "win32") {
+      // Windows searches System32 independently of PATH. An invalid current-directory
+      // executable proves the launch attempt fails before the real system opener.
+      writeFileSync(join(temporary, "rundll32.exe"), "not-an-executable\n");
+    } else {
+      chmodSync(temporary, 0o700);
+    }
+  }
+
+  const args = [
+    "--require",
+    spawnObserver,
+    cli,
+    "pair",
+    "--cloud",
+    server.baseUrl,
+  ];
+  if (options.noBrowser) args.push("--no-browser");
+
+  let result: PairingProcessResult;
+  try {
+    result = await new Promise<PairingProcessResult>(
+      (resolveResult, reject) => {
+        const child = spawn(process.execPath, args, {
+          cwd: temporary,
+          env: environment,
+          stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout.setEncoding("utf8");
+        child.stderr.setEncoding("utf8");
+        child.stdout.on("data", (chunk: string) => {
+          stdout += chunk;
+        });
+        child.stderr.on("data", (chunk: string) => {
+          stderr += chunk;
+        });
+        child.once("error", reject);
+        const timeout = setTimeout(() => {
+          child.kill();
+          reject(new Error("real CLI pairing process timed out"));
+        }, 20_000);
+        child.once("close", (status, signal) => {
+          clearTimeout(timeout);
+          resolveResult({ status, signal, stderr, stdout });
+        });
+      },
+    );
+  } catch (error) {
+    removeProcessFixture(temporary);
+    throw error;
+  }
+
+  return { browserSpawnRecord, configRoot, result, temporary };
+}
+
+function browserSpawnCount(path: string): number {
+  if (!existsSync(path)) return 0;
+  return readFileSync(path, "utf8").trim().split("\n").filter(Boolean).length;
+}
+
+function removeProcessFixture(temporary: string): void {
+  rmSync(temporary, { force: true, recursive: true });
+}
+
+async function exercisePairingProcess(
+  terminal: PairingTerminal,
+  options: {
+    noBrowser?: boolean;
+    unavailableBrowser?: boolean;
+  } = {},
+): Promise<{
+  browserSpawns: number;
+  credentialsStored: boolean;
+  polls: number;
+  result: PairingProcessResult;
+}> {
+  const server = await startLoopbackPairingServer(terminal);
+  let fixture: Awaited<ReturnType<typeof runPairingProcess>> | undefined;
+  try {
+    fixture = await runPairingProcess(server, options);
+    return {
+      browserSpawns: browserSpawnCount(fixture.browserSpawnRecord),
+      credentialsStored: existsSync(
+        join(fixture.configRoot, "rlsok", "cloud-credentials.json"),
+      ),
+      polls: server.pollCount(),
+      result: fixture.result,
+    };
+  } finally {
+    await server.close();
+    if (fixture) removeProcessFixture(fixture.temporary);
+  }
 }
 
 test("help preflight returns exact ROS 2 usage before operation parsing or release I/O", async () => {
@@ -272,7 +500,10 @@ test("browser failure preserves printed pairing instructions and polling order",
   assert.equal(result.exitCode, 0);
   assert.deepEqual(events, ["start", "browser", "poll", "poll"]);
   assert.match(result.stdout, /Pairing code: SAFE-CODE/);
-  assert.match(result.stdout, /Open: https:\/\/example\.invalid\/pair\?code=SAFE-CODE/);
+  assert.match(
+    result.stdout,
+    /Open: https:\/\/example\.invalid\/pair\?code=SAFE-CODE/,
+  );
   assert.match(result.stdout, /Waiting for approval/);
   assert.doesNotMatch(result.stdout, /SECRET-PAIRING-TOKEN/);
   assert.equal(warnings.length, 1);
@@ -330,8 +561,99 @@ test("--no-browser and setup manual approval paths perform zero launches", async
   );
 });
 
+test("real CLI process pairs only after explicit loopback approval and preserves headless fallback", async () => {
+  const [headless, unavailableBrowser] = await Promise.all([
+    exercisePairingProcess("approved", { noBrowser: true }),
+    exercisePairingProcess("approved", { unavailableBrowser: true }),
+  ]);
+
+  for (const scenario of [headless, unavailableBrowser]) {
+    assert.equal(scenario.result.status, 0, scenario.result.stderr);
+    assert.equal(scenario.result.signal, null);
+    assert.equal(scenario.polls, 1);
+    assert.equal(scenario.credentialsStored, true);
+    assert.match(scenario.result.stdout, /Pairing code: LOCAL-PAIR-CODE/);
+    assert.match(
+      scenario.result.stdout,
+      /Open: http:\/\/127\.0\.0\.1:\d+\/verify-runtime\?code=LOCAL-PAIR-CODE/,
+    );
+    assert.match(scenario.result.stdout, /Waiting for approval/);
+    assert.match(
+      scenario.result.stdout,
+      /Paired with Hosted RLSOK Cloud\. Credentials stored at/,
+    );
+    assert.doesNotMatch(
+      `${scenario.result.stdout}\n${scenario.result.stderr}`,
+      new RegExp(PROCESS_PAIRING_TOKEN),
+    );
+    assert.doesNotMatch(
+      scenario.result.stdout,
+      /signed[ -]?in|sign[ -]?in (?:complete|succeeded|successful)/i,
+    );
+  }
+
+  assert.equal(headless.browserSpawns, 0);
+  assert.equal(headless.result.stderr, "");
+
+  assert.equal(unavailableBrowser.browserSpawns, 1);
+  assert.match(
+    unavailableBrowser.result.stderr,
+    /Browser launch unavailable\. Continue manually with the URL printed above/,
+  );
+  assert.doesNotMatch(
+    unavailableBrowser.result.stderr,
+    /LOCAL-PAIR-CODE|127\.0\.0\.1|verify-runtime|token|rlsok_T/i,
+  );
+});
+
+test("real CLI process keeps pending terminal failures nonzero and never invents success", async () => {
+  const terminals = ["expired", "revoked", "auth", "network"] as const;
+  const scenarios = await Promise.all(
+    terminals.map(async (terminal) => ({
+      terminal,
+      outcome: await exercisePairingProcess(terminal, { noBrowser: true }),
+    })),
+  );
+
+  const expectedGuidance: Record<(typeof terminals)[number], RegExp> = {
+    auth: /Hosted RLSOK Cloud rejected the pairing request/,
+    expired: /Cloud pairing expired before approval/,
+    network: /Could not reach Hosted RLSOK Cloud/,
+    revoked: /Cloud pairing was revoked/,
+  };
+  for (const { terminal, outcome } of scenarios) {
+    assert.equal(
+      outcome.result.status,
+      2,
+      `${terminal}\n${outcome.result.stderr}`,
+    );
+    assert.equal(outcome.result.signal, null);
+    assert(outcome.polls >= 2, `${terminal} did not pass through pending`);
+    assert.equal(outcome.credentialsStored, false);
+    assert.equal(outcome.browserSpawns, 0);
+    assert.match(outcome.result.stdout, /Waiting for approval/);
+    assert.doesNotMatch(
+      outcome.result.stdout,
+      /Paired with Hosted RLSOK Cloud|signed[ -]?in|sign[ -]?in (?:complete|succeeded|successful)/i,
+    );
+    assert.match(outcome.result.stderr, expectedGuidance[terminal]);
+    assert.doesNotMatch(
+      `${outcome.result.stdout}\n${outcome.result.stderr}`,
+      new RegExp(PROCESS_PAIRING_TOKEN),
+    );
+    assert.doesNotMatch(
+      outcome.result.stderr,
+      /test_auth_rejected|authorization|Bearer|rlsok_T/i,
+    );
+  }
+});
+
 test("pair transport and server outcomes use stable safe classifications", async () => {
-  const cases: Array<{ name: string; fetchRequest: typeof fetch; code: string }> = [
+  const cases: Array<{
+    name: string;
+    fetchRequest: typeof fetch;
+    code: string;
+  }> = [
     {
       name: "network",
       fetchRequest: (async () => {
@@ -341,17 +663,20 @@ test("pair transport and server outcomes use stable safe classifications", async
     },
     {
       name: "auth",
-      fetchRequest: (async () => response({ error: "SECRET" }, 401)) as typeof fetch,
+      fetchRequest: (async () =>
+        response({ error: "SECRET" }, 401)) as typeof fetch,
       code: "pairing_auth_failed",
     },
     {
       name: "invalid JSON",
-      fetchRequest: (async () => new Response("SECRET not json")) as typeof fetch,
+      fetchRequest: (async () =>
+        new Response("SECRET not json")) as typeof fetch,
       code: "pairing_response_invalid",
     },
     {
       name: "server",
-      fetchRequest: (async () => response({ error: "SECRET" }, 503)) as typeof fetch,
+      fetchRequest: (async () =>
+        response({ error: "SECRET" }, 503)) as typeof fetch,
       code: "pairing_server_failed",
     },
   ];
@@ -379,7 +704,10 @@ test("pair polling distinguishes auth, expiry, revocation, and invalid status", 
     { result: response({ error: "hidden" }, 403), code: "pairing_auth_failed" },
     { result: response({ status: "expired" }), code: "pairing_expired" },
     { result: response({ status: "revoked" }), code: "pairing_revoked" },
-    { result: response({ status: "mystery" }), code: "pairing_response_invalid" },
+    {
+      result: response({ status: "mystery" }),
+      code: "pairing_response_invalid",
+    },
   ]) {
     let request = 0;
     const fetchRequest = (async () => {
@@ -404,7 +732,10 @@ test("unsupported JSON and unknown CLI options exit two without stdout", () => {
     { args: ["setup", "--json"], message: /not supported/ },
     { args: ["setup", "--unknown", "value"], message: /Unknown option/ },
     { args: ["pair", "--unknown"], message: /usage: rlsok pair/ },
-    { args: ["ros2", "doctor", "--unknown"], message: /expected --option value/ },
+    {
+      args: ["ros2", "doctor", "--unknown"],
+      message: /expected --option value/,
+    },
   ]) {
     const { args } = item;
     const result = spawnSync(process.execPath, [cli, ...args], {

@@ -11,6 +11,18 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact source checkout
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          actual_source_sha="$(git rev-parse HEAD)"
+          test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
+            echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
+            exit 1
+          }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
@@ -48,11 +60,239 @@ jobs:
             artifacts/*.json
             packaging/install.sh
 
+  zero-to-shadow-freshness-clock-e2e:
+    name: RUNTIME_ZERO_TO_SHADOW_FRESHNESS_CLOCK_E2E
+    needs: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact source checkout
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          actual_source_sha="$(git rev-parse HEAD)"
+          test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
+            echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
+            exit 1
+          }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+      - name: Initialize sanitized gate evidence
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          evidence_root="artifacts/zero-to-shadow-freshness-clock-e2e"
+          mkdir -p "$evidence_root/samples"
+          {
+            echo "gate=RUNTIME_ZERO_TO_SHADOW_FRESHNESS_CLOCK_E2E"
+            echo "source_sha=$EXPECTED_SOURCE_SHA"
+            echo "checked_out_sha=$(git rev-parse HEAD)"
+            echo "github_event_name=$GITHUB_EVENT_NAME"
+            echo "github_run_id=$GITHUB_RUN_ID"
+            echo "github_run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            echo "kernel=$(uname -srvmo)"
+            echo "command=node scripts/run-rlsok.cjs --test tests/setup/zeroToShadow.test.ts"
+            echo "serial_samples=20"
+            echo "parallel_rounds=10"
+            echo "parallel_samples_per_round=2"
+            echo "total_samples=40"
+          } > "$evidence_root/environment.txt"
+      - run: npm ci
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: distribution-proof
+          path: candidate
+      - name: Prove the test clock is absent from production and distributions
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_root="artifacts/zero-to-shadow-freshness-clock-e2e"
+          test_clock_pattern='sharedMonotonicClock|sharedMonotonicRos2Sidecar|RLSOK_TEST_SHARED_MONOTONIC|RLSOK_TEST_OBSERVATION_OFFSET_MS|test_clock_fixture_hardware_dispatch_forbidden|isolated-test-clock'
+
+          mapfile -t unexpected_source_refs < <(
+            git grep -l -E "$test_clock_pattern" -- . \
+              ':(exclude).github/**' \
+              ':(exclude)tests/**' || true
+          )
+          if (( ${#unexpected_source_refs[@]} != 0 )); then
+            printf '%s\n' "${unexpected_source_refs[@]}" \
+              | tee "$evidence_root/unexpected-production-source-references.txt"
+            echo "test clock referenced outside test-only paths" >&2
+            exit 1
+          fi
+          printf 'PASS: test clock references are confined to test-only paths\n' \
+            > "$evidence_root/production-source-boundary.txt"
+
+          npm run build
+          if grep -R -I -l -E "$test_clock_pattern" dist \
+            > "$evidence_root/unexpected-dist-references.txt"; then
+            cat "$evidence_root/unexpected-dist-references.txt"
+            echo "test clock found in dist" >&2
+            exit 1
+          fi
+          printf 'PASS: test clock absent from dist\n' \
+            > "$evidence_root/dist-boundary.txt"
+
+          shopt -s nullglob
+          npm_archives=(candidate/artifacts/*.tgz)
+          linux_archives=(candidate/artifacts/*linux-x64.tar.gz)
+          if (( ${#npm_archives[@]} != 1 || ${#linux_archives[@]} != 1 )); then
+            printf 'expected one npm archive and one Linux archive; found npm=%s linux=%s\n' \
+              "${#npm_archives[@]}" "${#linux_archives[@]}" >&2
+            find candidate -maxdepth 3 -type f -print | sort
+            exit 1
+          fi
+
+          extraction_root="$(mktemp -d)"
+          trap 'rm -rf "$extraction_root"' EXIT
+          for archive in "${npm_archives[@]}" "${linux_archives[@]}"; do
+            archive_name="$(basename "$archive")"
+            archive_id="${archive_name//[^A-Za-z0-9._-]/_}"
+            archive_root="$extraction_root/$archive_id"
+            mkdir -p "$archive_root"
+            tar -tzf "$archive" > "$evidence_root/$archive_id.contents.txt"
+            if grep -E -i "$test_clock_pattern" \
+              "$evidence_root/$archive_id.contents.txt"; then
+              echo "test clock path found in $archive_name" >&2
+              exit 1
+            fi
+            tar -xzf "$archive" -C "$archive_root"
+            if grep -R -I -l -E "$test_clock_pattern" "$archive_root" \
+              > "$evidence_root/$archive_id.unexpected-references.txt"; then
+              cat "$evidence_root/$archive_id.unexpected-references.txt"
+              echo "test clock content found in $archive_name" >&2
+              exit 1
+            fi
+            printf 'PASS: test clock absent from paths and contents\n' \
+              > "$evidence_root/$archive_id.boundary.txt"
+          done
+      - name: Collect 20 serial and 20 parallel deterministic samples
+        shell: bash
+        run: |
+          set +e
+          set -u
+          set -o pipefail
+          evidence_root="artifacts/zero-to-shadow-freshness-clock-e2e"
+          samples_root="$evidence_root/samples"
+          test_command=(
+            node
+            scripts/run-rlsok.cjs
+            --test
+            tests/setup/zeroToShadow.test.ts
+          )
+
+          run_sample() {
+            sample_id="$1"
+            sample_root="$samples_root/$sample_id"
+            mkdir -p "$sample_root"
+            date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "$sample_root/started-at.txt"
+            started_ms="$(date -u +%s%3N)"
+            "${test_command[@]}" \
+              > "$sample_root/stdout.log" \
+              2> "$sample_root/stderr.log"
+            exit_code=$?
+            ended_ms="$(date -u +%s%3N)"
+            date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "$sample_root/finished-at.txt"
+            printf '%s\n' "$exit_code" > "$sample_root/exit-code.txt"
+            printf '%s\n' "$((ended_ms - started_ms))" > "$sample_root/duration-ms.txt"
+          }
+
+          for serial_index in $(seq -w 1 20); do
+            run_sample "serial-$serial_index"
+          done
+
+          for parallel_round in $(seq -w 1 10); do
+            run_sample "parallel-$parallel_round-a" &
+            first_pid=$!
+            run_sample "parallel-$parallel_round-b" &
+            second_pid=$!
+            wait "$first_pid"
+            wait "$second_pid"
+          done
+
+          printf 'sample\texit_code\tnormal_marker\tfuture_marker\tstale_marker\tresult\n' \
+            > "$evidence_root/summary.tsv"
+          mapfile -t sample_roots < <(find "$samples_root" -mindepth 1 -maxdepth 1 -type d | sort)
+          gate_failures=0
+          if (( ${#sample_roots[@]} != 40 )); then
+            echo "expected 40 samples, found ${#sample_roots[@]}" >&2
+            gate_failures=$((gate_failures + 1))
+          fi
+          for sample_root in "${sample_roots[@]}"; do
+            sample_id="$(basename "$sample_root")"
+            exit_code="missing"
+            test ! -f "$sample_root/exit-code.txt" \
+              || exit_code="$(cat "$sample_root/exit-code.txt")"
+            normal_marker=0
+            future_marker=0
+            stale_marker=0
+            grep -Fqx 'ok - zero-to-shadow acceptance' "$sample_root/stdout.log" \
+              && normal_marker=1
+            grep -Fqx 'ok - zero-to-shadow future observation blocked before dispatch' \
+              "$sample_root/stdout.log" && future_marker=1
+            grep -Fqx 'ok - zero-to-shadow stale observation blocked before dispatch' \
+              "$sample_root/stdout.log" && stale_marker=1
+            sample_result=PASS
+            if [[ "$exit_code" != 0 \
+              || "$normal_marker" != 1 \
+              || "$future_marker" != 1 \
+              || "$stale_marker" != 1 ]]; then
+              sample_result=FAIL
+              gate_failures=$((gate_failures + 1))
+            fi
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "$sample_id" \
+              "$exit_code" \
+              "$normal_marker" \
+              "$future_marker" \
+              "$stale_marker" \
+              "$sample_result" \
+              >> "$evidence_root/summary.tsv"
+          done
+          printf 'samples_collected=%s\nfailures=%s\n' \
+            "${#sample_roots[@]}" "$gate_failures" \
+            > "$evidence_root/gate-result.txt"
+          cat "$evidence_root/summary.tsv"
+          cat "$evidence_root/gate-result.txt"
+          if (( gate_failures != 0 )); then
+            exit 1
+          fi
+      - name: Upload sanitized deterministic freshness evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sanitized-zero-to-shadow-freshness-clock-e2e
+          path: artifacts/zero-to-shadow-freshness-clock-e2e
+          if-no-files-found: error
+
   ros2-jazzy-dds:
     runs-on: ubuntu-24.04
     container: ros:jazzy-ros-base
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact source checkout
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          actual_source_sha="$(git rev-parse HEAD)"
+          test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
+            echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
+            exit 1
+          }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
@@ -119,6 +359,7 @@ jobs:
         with:
           name: official-ur5e-integration-proof
           path: artifacts/official-ur5e-integration.json
+          if-no-files-found: error
 
   first-user-installed-ur5e:
     needs: core
@@ -127,6 +368,18 @@ jobs:
     container: ros:jazzy-ros-base
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact source checkout
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          actual_source_sha="$(git rev-parse HEAD)"
+          test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
+            echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
+            exit 1
+          }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
@@ -232,7 +485,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      - name: Assert exact source checkout
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          actual_source_sha="$(git rev-parse HEAD)"
+          test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
+            echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
+            exit 1
+          }
       - name: Install pinned Gitleaks CLI
         run: go install github.com/zricethezav/gitleaks/v8@v8.28.0
       - run: |
@@ -243,6 +507,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact source checkout
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          actual_source_sha="$(git rev-parse HEAD)"
+          test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
+            echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
+            exit 1
+          }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
