@@ -18,7 +18,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          actual_source_sha="$(git rev-parse HEAD)"
+          actual_source_sha="$(git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD)"
           test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
             echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
             exit 1
@@ -74,7 +74,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          actual_source_sha="$(git rev-parse HEAD)"
+          actual_source_sha="$(git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD)"
           test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
             echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
             exit 1
@@ -288,7 +288,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          actual_source_sha="$(git rev-parse HEAD)"
+          actual_source_sha="$(git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD)"
           test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
             echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
             exit 1
@@ -375,7 +375,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          actual_source_sha="$(git rev-parse HEAD)"
+          actual_source_sha="$(git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD)"
           test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
             echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
             exit 1
@@ -492,7 +492,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          actual_source_sha="$(git rev-parse HEAD)"
+          actual_source_sha="$(git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD)"
           test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
             echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
             exit 1
@@ -514,7 +514,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          actual_source_sha="$(git rev-parse HEAD)"
+          actual_source_sha="$(git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD)"
           test "$actual_source_sha" = "$EXPECTED_SOURCE_SHA" || {
             echo "source checkout mismatch: expected=$EXPECTED_SOURCE_SHA actual=$actual_source_sha" >&2
             exit 1
