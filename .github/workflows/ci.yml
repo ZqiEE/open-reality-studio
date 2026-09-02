@@ -53,12 +53,15 @@ jobs:
         with:
           name: distribution-proof
           path: |
-            artifacts/*.tgz
-            artifacts/*linux-x64.tar.gz
-            artifacts/*linux-x64.tar.gz.sha256
-            artifacts/*.sha256
-            artifacts/*.json
+            artifacts/licenses.json
+            artifacts/realitywarden-rlsok-*.tgz
+            artifacts/realitywarden-rlsok-*.tgz.manifest.json
+            artifacts/realitywarden-rlsok-*.tgz.sha256
+            artifacts/rlsok-runtime-*-linux-x64.tar.gz
+            artifacts/rlsok-runtime-*-linux-x64.tar.gz.sha256
+            artifacts/rlsok.cdx.json
             packaging/install.sh
+          if-no-files-found: error
 
   zero-to-shadow-freshness-clock-e2e:
     name: RUNTIME_ZERO_TO_SHADOW_FRESHNESS_CLOCK_E2E
