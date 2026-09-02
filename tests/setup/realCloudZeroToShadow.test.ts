@@ -53,6 +53,7 @@ async function main(): Promise<void> {
   const administratorEmail = process.env.RLSOK_CLOUD_ADMIN_EMAIL;
   const administratorPassword = process.env.RLSOK_CLOUD_ADMIN_PASSWORD;
   const approverKey = process.env.RLSOK_CLOUD_APPROVER_KEY;
+  const cloudSourceCommit = process.env.RLSOK_CLOUD_SOURCE_COMMIT;
   for (const [name, value] of Object.entries({
     RLSOK_INSTALLED_CLI: cli,
     RLSOK_CLOUD_API_URL: apiUrl,
@@ -60,12 +61,19 @@ async function main(): Promise<void> {
     RLSOK_CLOUD_ADMIN_EMAIL: administratorEmail,
     RLSOK_CLOUD_ADMIN_PASSWORD: administratorPassword,
     RLSOK_CLOUD_APPROVER_KEY: approverKey,
+    RLSOK_CLOUD_SOURCE_COMMIT: cloudSourceCommit,
   })) {
     assert(value, `${name} is required`);
   }
+  assert.match(cloudSourceCommit!, /^[0-9a-f]{40}$/);
 
   const health = await jsonRequest(apiUrl!, "/healthz");
-  assert.deepEqual(health, { status: "ok", version: "1.3.0" });
+  assert.deepEqual(health, {
+    status: "ok",
+    version: "1.3.0",
+    sourceCommit: cloudSourceCommit,
+    executionPolicy: "reference-run-enabled",
+  });
   const login = await jsonRequest(apiUrl!, "/v1/auth/login", {
     body: {
       organization,
