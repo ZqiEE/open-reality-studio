@@ -91,7 +91,9 @@ function parseOptions(args: string[]): Options {
   for (let index = 0; index < args.length; index += 1) {
     const name = args[index];
     if (!name?.startsWith("--"))
-      throw new Error(`Unexpected argument ${name ?? ""}. Run rlsok setup --help.`);
+      throw new Error(
+        `Unexpected argument ${name ?? ""}. Run rlsok setup --help.`,
+      );
     const key = name.slice(2);
     if (key === "json") {
       throw new Error(
@@ -176,8 +178,7 @@ async function choose<T extends { name: string }>(
     return match;
   }
   if (values.length === 1) return values[0]!;
-  if (values.length === 0)
-    throw new Error(`No ${label} was detected.`);
+  if (values.length === 0) throw new Error(`No ${label} was detected.`);
   if (nonInteractive || !process.stdin.isTTY)
     throw new Error(
       `Multiple ${label} choices were detected. Re-run with the corresponding explicit option. Choices: ${values.map((value) => value.name).join(", ")}.`,
@@ -186,7 +187,10 @@ async function choose<T extends { name: string }>(
   values.forEach((value, index) =>
     process.stdout.write(`  ${index + 1}. ${value.name}\n`),
   );
-  const terminal = createInterface({ input: process.stdin, output: process.stdout });
+  const terminal = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
   try {
     const answer = await terminal.question(`Selection [1-${values.length}]: `);
     const index = Number(answer) - 1;
@@ -205,7 +209,10 @@ async function artifactInput(options: Options): Promise<string> {
     throw new Error(
       "RLSOK needs the policy artifact to bind. Re-run with --artifact /path/to/policy.",
     );
-  const terminal = createInterface({ input: process.stdin, output: process.stdout });
+  const terminal = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
   try {
     return resolve(
       await terminal.question("Policy artifact file to observe in Shadow: "),
@@ -240,7 +247,9 @@ function positionsInJointOrder(
   jointNames: string[],
 ): number[] {
   const positions = new Map(
-    source.jointNames.map((name, index) => [name, source.positions[index]!] as const),
+    source.jointNames.map(
+      (name, index) => [name, source.positions[index]!] as const,
+    ),
   );
   const ordered = jointNames.map((name) => positions.get(name));
   if (ordered.some((value) => value === undefined))
@@ -279,9 +288,14 @@ async function chooseOfficialIntegration(
       `  ${index + 1}. ${integration.vendor} ${integration.model} at ${integration.namespace}\n`,
     ),
   );
-  const terminal = createInterface({ input: process.stdin, output: process.stdout });
+  const terminal = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
   try {
-    const answer = await terminal.question(`Selection [1-${integrations.length}]: `);
+    const answer = await terminal.question(
+      `Selection [1-${integrations.length}]: `,
+    );
     const selected = integrations[Number(answer) - 1];
     if (!selected) throw new Error("Invalid selection. Run rlsok setup again.");
     return selected;
@@ -402,12 +416,16 @@ async function waitForApproval(
   while (Date.now() < deadline) {
     const release = await cloud.getRelease(releaseId);
     if (release.state === "revoked")
-      throw new Error("The onboarding release was revoked in Cloud. Start setup again with a new release name.");
+      throw new Error(
+        "The onboarding release was revoked in Cloud. Start setup again with a new release name.",
+      );
     if (release.state === "approved") {
       process.stdout.write(" approved.\n");
       const parsed = executablePolicySpecSchema.safeParse(release.execSpec);
       if (!parsed.success || parsed.data.evidence.status !== "approved")
-        throw new Error("Cloud approved the release but did not return a finalized ExecSpec. Contact RLSOK support with the release ID.");
+        throw new Error(
+          "Cloud approved the release but did not return a finalized ExecSpec. Contact RLSOK support with the release ID.",
+        );
       return parsed.data;
     }
     process.stdout.write(".");
@@ -443,7 +461,15 @@ export function presentSetupApproval(
   noBrowser: boolean,
   openBrowser: (url: string) => void = launchBrowser,
 ): void {
-  process.stdout.write(`  Approval: ${approvalUrl}\n`);
+  process.stdout.write(
+    `  Approval: PENDING — authenticated Workspace administrator required\n` +
+      `  Open: ${approvalUrl}\n`,
+  );
+  if (noBrowser) {
+    process.stdout.write(
+      "  Browser: SKIPPED — --no-browser; continue with the URL printed above.\n",
+    );
+  }
   if (!noBrowser) openBrowser(approvalUrl);
 }
 
@@ -463,7 +489,9 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     return 0;
   }
   assertSupportedPlatform();
-  process.stdout.write("RLSOK Zero-to-Shadow\n\n[1/6] Detecting the supported environment...\n");
+  process.stdout.write(
+    "RLSOK Zero-to-Shadow\n\n[1/6] Detecting the supported environment...\n",
+  );
   const report = discoverRos2Environment({
     fixturePath: process.env.RLSOK_SETUP_DISCOVERY_FIXTURE,
     timeoutMs: Number(option(options, "discovery-timeout-ms") ?? "30000"),
@@ -536,7 +564,10 @@ export async function runSetupCommand(args: string[]): Promise<number> {
   const jointNames = integration
     ? integration.jointNames
     : jointSource.sample!.jointNames;
-  const observedPositions = positionsInJointOrder(jointSource.sample!, jointNames);
+  const observedPositions = positionsInJointOrder(
+    jointSource.sample!,
+    jointNames,
+  );
   const integrationState: SetupState["integration"] = integration
     ? {
         supportLevel: "official",
@@ -551,7 +582,8 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     : {
         supportLevel: "generic",
         profileId: "generic-ros2-follow-joint-trajectory-v1",
-        displayName: "Generic ROS 2 protocol boundary (not an official robot integration)",
+        displayName:
+          "Generic ROS 2 protocol boundary (not an official robot integration)",
         vendor: null,
         model: null,
         namespace: "/",
@@ -559,17 +591,21 @@ export async function runSetupCommand(args: string[]): Promise<number> {
         physicalValidation: false,
       };
   process.stdout.write(
-    `  [ok] Ubuntu 24.04 x86_64\n  [ok] ROS 2 Jazzy\n  [ok] Fast DDS\n  [ok] ${integration ? `Official ${integration.vendor} ${integration.model} integration at ${integration.namespace}` : integrationState.displayName}\n  [ok] ${jointNames.length}-joint execution boundary verified\n`,
+    `  [PASS] Ubuntu 24.04 x86_64\n  [PASS] ROS 2 Jazzy\n  [PASS] Fast DDS\n  [PASS] ${integration ? `Official ${integration.vendor} ${integration.model} integration at ${integration.namespace}` : integrationState.displayName}\n  [PASS] ${jointNames.length}-joint execution boundary verified\n`,
   );
 
-  process.stdout.write("\n[2/6] Binding the policy artifact and ROS boundary...\n");
+  process.stdout.write(
+    "\n[2/6] Binding the policy artifact and ROS boundary...\n",
+  );
   const sourceArtifact = await artifactInput(options);
   if (!existsSync(sourceArtifact) || !lstatSync(sourceArtifact).isFile())
     throw new Error(`Policy artifact is not a regular file: ${sourceArtifact}`);
   const artifactSha256 = await hashFile(sourceArtifact);
   const artifactSize = lstatSync(sourceArtifact).size;
   if (artifactSize < 1)
-    throw new Error("The policy artifact is empty. Choose the actual policy file and retry.");
+    throw new Error(
+      "The policy artifact is empty. Choose the actual policy file and retry.",
+    );
   const deviceName =
     option(options, "device-name") ??
     (integration
@@ -593,7 +629,8 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     robotDescriptionSha256: integration?.robotDescriptionSha256 ?? null,
     controllerManagerService: integration?.controllerManagerService ?? null,
     controllerType:
-      integration?.controllerType ?? "control_msgs/action/FollowJointTrajectory",
+      integration?.controllerType ??
+      "control_msgs/action/FollowJointTrajectory",
   };
   const boundaryHash = sha256(canonicalJson(boundary));
   const deviceId = `${slug(deviceName)}-${boundaryHash.slice(0, 8)}`;
@@ -625,7 +662,8 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     releaseId,
     integrationProfileId: integrationState.profileId,
     controllerType:
-      integration?.controllerType ?? "control_msgs/action/FollowJointTrajectory",
+      integration?.controllerType ??
+      "control_msgs/action/FollowJointTrajectory",
     rosDistro: report.rosDistro!,
     rmwImplementation: report.rmwImplementation!,
     jointStateTopic: jointSource.name,
@@ -640,14 +678,16 @@ export async function runSetupCommand(args: string[]): Promise<number> {
   mkdirSync(dirname(artifactPath), { recursive: true, mode: 0o700 });
   if (!existsSync(artifactPath)) copyFileSync(sourceArtifact, artifactPath);
   if ((await hashFile(artifactPath)) !== artifactSha256)
-    throw new Error("The protected local artifact copy failed digest verification. Remove it and retry setup.");
+    throw new Error(
+      "The protected local artifact copy failed digest verification. Remove it and retry setup.",
+    );
   if (process.platform !== "win32") chmodSync(artifactPath, 0o400);
   const releasePath = join(root, "releases", `${releaseId}.yaml`);
   const proposalPath = join(root, "proposals", `${releaseId}.json`);
   const evidencePath = join(root, "evidence", `${releaseId}.json`);
   writeProtected(releasePath, dump(spec, { noRefs: true, lineWidth: 100 }));
   process.stdout.write(
-    `  ✓ SHA-256 ${artifactSha256}\n  ✓ Generated device and controller bindings\n  ✓ Saved inspectable release at ${releasePath}\n`,
+    `  [PASS] SHA-256 ${artifactSha256}\n  [PASS] Generated device and controller bindings\n  [PASS] Saved inspectable release at ${releasePath}\n`,
   );
 
   const apiUrl = option(options, "cloud") ?? "https://api.rlsok.com";
@@ -667,11 +707,13 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     if (options["no-browser"]) pairArgs.push("--no-browser");
     await runPairCommand(pairArgs);
   } else {
-    process.stdout.write("  ✓ Existing protected Cloud pairing found.\n");
+    process.stdout.write("  [PASS] Existing protected Cloud pairing found.\n");
   }
   const activeCredentials = readStoredCloudCredentials();
   if (!activeCredentials)
-    throw new Error("Cloud pairing completed without stored runtime credentials. Run 'rlsok pair' and retry.");
+    throw new Error(
+      "Cloud pairing completed without stored runtime credentials. Run 'rlsok pair' and retry.",
+    );
   const cloud = new RlsokCloudClient(
     loadCloudClientConfig({
       ...process.env,
@@ -703,19 +745,27 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     execSpec: spec,
   });
   process.stdout.write(
-    `  ✓ Draft ${draft.releaseId} created without uploading policy bytes.\n`,
+    `  [PASS] Draft ${draft.releaseId} created without uploading policy bytes.\n`,
   );
-  presentSetupApproval(
-    draft.approvalUrl,
-    Boolean(options["no-browser"]),
+  presentSetupApproval(draft.approvalUrl, Boolean(options["no-browser"]));
+  const approvalTimeout = Number(
+    option(options, "approval-timeout-minutes") ?? "30",
   );
-  const approvalTimeout = Number(option(options, "approval-timeout-minutes") ?? "30");
-  if (!Number.isFinite(approvalTimeout) || approvalTimeout <= 0 || approvalTimeout > 1440)
+  if (
+    !Number.isFinite(approvalTimeout) ||
+    approvalTimeout <= 0 ||
+    approvalTimeout > 1440
+  )
     throw new Error("Approval timeout must be between 1 and 1440 minutes.");
   const approvedSpec = await waitForApproval(cloud, releaseId, approvalTimeout);
-  writeProtected(releasePath, dump(approvedSpec, { noRefs: true, lineWidth: 100 }));
+  writeProtected(
+    releasePath,
+    dump(approvedSpec, { noRefs: true, lineWidth: 100 }),
+  );
 
-  process.stdout.write("\n[5/6] Running Shadow against the live ROS 2 boundary...\n");
+  process.stdout.write(
+    "\n[5/6] Running Shadow against the live ROS 2 boundary...\n",
+  );
   if ((await hashFile(artifactPath)) !== approvedSpec.model.sha256)
     throw new Error(
       "The local policy artifact changed after approval. RLSOK refused to run Shadow. Start setup again so the changed artifact receives a new identity and approval.",
@@ -768,7 +818,9 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     shadowArgs.push("--sidecar", option(options, "sidecar")!);
   const shadowExit = await runRos2Command(shadowArgs);
   if (shadowExit !== 0)
-    throw new Error("Shadow was blocked. Review the explanation above, correct the environment, and run rlsok setup again.");
+    throw new Error(
+      "Shadow was blocked. Review the explanation above, correct the environment, and run rlsok setup again.",
+    );
   const evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as {
     decision?: string;
     hardwareSignalSent?: boolean;
@@ -781,7 +833,11 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     evidence.controllerGoalsAttempted !== 0 ||
     evidence.evidenceVerified !== true
   )
-    throw new Error("Shadow returned an unexpected Evidence result. RLSOK kept dispatch disabled; run with RLSOK_DEBUG=1 and contact support.");
+    throw new Error(
+      "Shadow returned an unexpected Evidence result. RLSOK kept dispatch disabled; run with RLSOK_DEBUG=1 and contact support.",
+    );
+
+  const verificationTime = new Date().toISOString();
 
   const state: SetupState = {
     version: 2,
@@ -800,12 +856,24 @@ export async function runSetupCommand(args: string[]): Promise<number> {
     proposalPath,
     evidencePath,
     cloudApiUrl: apiUrl,
-    completedAt: new Date().toISOString(),
+    completedAt: verificationTime,
   };
   const statePath = join(configRoot(), "setup.json");
   writeProtected(statePath, `${JSON.stringify(state, null, 2)}\n`);
   process.stdout.write(
-    `\n[6/6] Zero-to-Shadow complete.\n  ✓ Live JointState observed\n  ✓ Exact approved release evaluated\n  ✓ Controller goals attempted: 0\n  ✓ Hardware signal sent: false\n  ✓ Evidence verified by hash\n  Evidence: ${evidencePath}\n  Configuration: ${statePath}\n\nStart continuous policy observation with 'rlsok observe'. Your policy can call 'from rlsok import propose; propose(action)' without ROS topic or action names. Shadow never sends a hardware signal; moving to canary remains a separate explicit release decision with independent safety controls.\n`,
+    `\n[6/6] Zero-to-Shadow complete.\n` +
+      `  Mode: SHADOW — OBSERVATION ONLY\n` +
+      `  Policy result: ALLOWED\n` +
+      `  Execution gate: BLOCKED — Shadow observation only\n` +
+      `  Hardware dispatch: NO\n` +
+      `  Controller goals attempted: 0\n` +
+      `  Evidence: RECORDED — ${evidencePath}\n` +
+      `  Evidence verification: EVIDENCE VERIFIED — receipt self-hash plus submit/retrieve identity, sequence, chain-link, time, release, Permit, decision, dispatch, and payload consistency at ${verificationTime}\n` +
+      `  Verifier: Runtime Cloud Evidence receipt verifier; not a signature, independent attestation, authorization result, physical validation, or safety claim\n` +
+      `  Configuration: ${statePath}\n\n` +
+      `Next safe action: start continuous policy observation with 'rlsok observe'. ` +
+      `Your policy can call 'from rlsok import propose; propose(action)' without ROS topic or action names. ` +
+      `Moving to canary remains a separate explicit release decision with independent safety controls.\n`,
   );
   return 0;
 }

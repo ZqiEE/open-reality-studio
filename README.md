@@ -22,9 +22,9 @@ source /opt/ros/jazzy/setup.bash
 rlsok setup
 ```
 
-The released runtime 1.4.5 bundle is self-contained. Normal users do not need
-Node.js, npm, a source checkout, API keys, Workspace IDs, hand-calculated
-hashes, or a blank ExecSpec.
+The packaged runtime bundle is self-contained. Normal users do not need Node.js,
+npm, a source checkout, API keys, Workspace IDs, hand-calculated hashes, or a
+blank ExecSpec.
 
 `rlsok setup` detects the supported platform and live ROS graph, asks for the
 policy artifact, automatically identifies a supported UR5e and its namespace,
