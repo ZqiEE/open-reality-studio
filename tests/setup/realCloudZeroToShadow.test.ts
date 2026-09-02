@@ -26,9 +26,7 @@ async function jsonRequest(
   const response = await fetch(`${apiUrl}${path}`, {
     method: options.method ?? (options.body === undefined ? "GET" : "POST"),
     headers: {
-      ...(options.token
-        ? { authorization: `Bearer ${options.token}` }
-        : {}),
+      ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
       ...(options.body === undefined
         ? {}
         : { "content-type": "application/json" }),
@@ -40,7 +38,11 @@ async function jsonRequest(
     signal: AbortSignal.timeout(10_000),
   });
   const body = (await response.json()) as Record<string, unknown>;
-  assert.equal(response.ok, true, `${path}: ${response.status} ${JSON.stringify(body)}`);
+  assert.equal(
+    response.ok,
+    true,
+    `${path}: ${response.status} ${JSON.stringify(body)}`,
+  );
   return body;
 }
 
@@ -182,8 +184,17 @@ async function main(): Promise<void> {
     assert(releaseId, "real Cloud draft was not observed");
     assert.match(stdout, /Zero-to-Shadow complete/);
     assert.match(stdout, /Controller goals attempted: 0/);
-    assert.match(stdout, /Hardware signal sent: false/);
-    assert.match(stdout, /Evidence verified by hash/);
+    assert.match(stdout, /Hardware dispatch: NO/);
+    assert.match(stdout, /Evidence: RECORDED/);
+    assert.match(
+      stdout,
+      /Evidence verification: EVIDENCE VERIFIED — receipt self-hash plus submit\/retrieve identity, sequence, chain-link, time, release, Permit, decision, dispatch, and payload consistency at \d{4}-\d{2}-\d{2}T/,
+    );
+    assert.match(stdout, /Verifier: Runtime Cloud Evidence receipt verifier/);
+    assert.match(
+      stdout,
+      /not a signature, independent attestation, authorization result, physical validation, or safety claim/,
+    );
 
     const setup = JSON.parse(
       readFileSync(join(config, "rlsok", "setup.json"), "utf8"),
@@ -234,7 +245,10 @@ async function main(): Promise<void> {
       evidence: { status: string; approvedBy: string };
     };
     assert.equal(approvedRelease.evidence.status, "approved");
-    assert.equal(approvedRelease.evidence.approvedBy, "phase2-independent-approver");
+    assert.equal(
+      approvedRelease.evidence.approvedBy,
+      "phase2-independent-approver",
+    );
 
     const proofPath = process.env.RLSOK_REAL_CLOUD_ACCEPTANCE_PROOF;
     if (proofPath) {
@@ -273,7 +287,9 @@ async function main(): Promise<void> {
       );
       process.stdout.write(`${readFileSync(proofPath, "utf8")}\n`);
     }
-    process.stdout.write("ok - actual isolated Cloud installed-bundle Zero-to-Shadow\n");
+    process.stdout.write(
+      "ok - actual isolated Cloud installed-bundle Zero-to-Shadow\n",
+    );
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }

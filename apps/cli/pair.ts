@@ -97,7 +97,10 @@ async function requestJson(
   if (body.error === "pairing_expired" || body.error === "pairing_revoked") {
     throw pairingError(body.error);
   }
-  if (phase === "poll" && (response.status === 404 || response.status === 410)) {
+  if (
+    phase === "poll" &&
+    (response.status === 404 || response.status === 410)
+  ) {
     throw pairingError("pairing_expired");
   }
   throw pairingError("pairing_server_failed");
@@ -172,9 +175,18 @@ export async function runPairCommand(
   }
   browserUrl.searchParams.set("code", userCode as string);
   process.stdout.write(
-    `Pairing code: ${userCode}\nOpen: ${browserUrl}\nWaiting for approval...\n`,
+    `PAIRING — MANUAL FALLBACK AVAILABLE\n` +
+      `Pairing code: ${userCode}\n` +
+      `Open: ${browserUrl}\n` +
+      `Approval: PENDING — authenticated Workspace administrator required\n`,
   );
-  if (shouldLaunchBrowser) openBrowser(browserUrl.toString());
+  if (shouldLaunchBrowser) {
+    openBrowser(browserUrl.toString());
+  } else {
+    process.stdout.write(
+      "Browser: SKIPPED — --no-browser; continue with the URL printed above.\n",
+    );
+  }
   const expiresAt = Date.parse(String(started.expiresAt));
   if (!Number.isFinite(expiresAt))
     throw pairingError("pairing_response_invalid");
@@ -196,11 +208,13 @@ export async function runPairCommand(
         apiKey: pairingToken as string,
       });
       process.stdout.write(
-        `Paired with Hosted RLSOK Cloud. Credentials stored at ${path}.\n`,
+        `PAIRING APPROVED\n` +
+          `Credential: STORED — ${path}\n` +
+          "Robot dispatch: NOT PART OF THIS OPERATION — pairing changes credentials only.\n",
       );
       if (existing)
         process.stdout.write(
-          "The previous runtime credential remains active until an administrator revokes it in Dashboard > Operations.\n",
+          "Previous credential: LOCAL COPY REPLACED — remote status was not checked; if the previous credential remains active, revoke it explicitly in Dashboard > Operations.\n",
         );
       return 0;
     }

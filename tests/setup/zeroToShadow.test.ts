@@ -75,7 +75,10 @@ async function main(): Promise<void> {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = chunks.length
-      ? (JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>)
+      ? (JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<
+          string,
+          unknown
+        >)
       : {};
     const path = request.url ?? "";
     let result: unknown;
@@ -126,7 +129,10 @@ async function main(): Promise<void> {
           approvedSpec.model.sha256,
         );
         chmodSync(protectedArtifact, 0o600);
-        writeFileSync(protectedArtifact, "changed-after-independent-approval\n");
+        writeFileSync(
+          protectedArtifact,
+          "changed-after-independent-approval\n",
+        );
         tamperArtifactAfterApproval = false;
       }
       result = {
@@ -174,7 +180,10 @@ async function main(): Promise<void> {
         evidenceHash: evidenceRecord.evidenceHash,
         createdAt: evidenceRecord.createdAt,
       };
-    } else if (request.method === "GET" && path === `/v1/evidence/${evidenceId}`) {
+    } else if (
+      request.method === "GET" &&
+      path === `/v1/evidence/${evidenceId}`
+    ) {
       assert(evidenceBody);
       assert(evidenceRecord);
       result = {
@@ -320,8 +329,14 @@ async function main(): Promise<void> {
     );
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")));
-    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
+    child.stdout.on(
+      "data",
+      (chunk: Buffer) => (stdout += chunk.toString("utf8")),
+    );
+    child.stderr.on(
+      "data",
+      (chunk: Buffer) => (stderr += chunk.toString("utf8")),
+    );
     const exitCode = await new Promise<number | null>((resolveExit, reject) => {
       child.on("error", reject);
       child.on("exit", resolveExit);
@@ -335,10 +350,43 @@ async function main(): Promise<void> {
     assert.equal(exitCode, 0, `${stderr}\n${stdout}`);
     assert.match(stdout, /Zero-to-Shadow complete/);
     assert.match(stdout, /Controller goals attempted: 0/);
-    assert.match(stdout, /Evidence verified by hash/);
+    assert.match(stdout, /Mode: SHADOW — OBSERVATION ONLY/);
+    assert.match(stdout, /Execution gate: BLOCKED — Shadow observation only/);
+    assert.match(stdout, /Hardware dispatch: NO/);
+    assert.match(stdout, /Evidence: RECORDED/);
+    assert.match(
+      stdout,
+      /Evidence verification: EVIDENCE VERIFIED — receipt self-hash plus submit\/retrieve identity, sequence, chain-link, time, release, Permit, decision, dispatch, and payload consistency at \d{4}-\d{2}-\d{2}T/,
+    );
+    assert.match(stdout, /Verifier: Runtime Cloud Evidence receipt verifier/);
+    assert.match(
+      stdout,
+      /not a signature, independent attestation, authorization result, physical validation, or safety claim/,
+    );
+    const machineLine = stdout
+      .split("\n")
+      .find(
+        (line) =>
+          line.startsWith('{"executionMode":"cloud-connected"') &&
+          line.includes('"decision":"'),
+      );
+    assert(machineLine, "Shadow machine-result JSON line was not preserved");
+    const machineResult = JSON.parse(machineLine) as {
+      decision: string;
+      evidenceVerified: boolean;
+      hardwareSignalSent: boolean;
+      controllerGoalsAttempted: number;
+    };
+    assert.equal(machineResult.decision, "allowed");
+    assert.equal(machineResult.hardwareSignalSent, false);
+    assert.equal(machineResult.controllerGoalsAttempted, 0);
+    assert.equal(machineResult.evidenceVerified, true);
     assert(draft);
     assert.equal(draft.execSpec.evidence.status, "tested");
-    assert.match(draft.execSpec.approvedConfigurationDigest ?? "", /^[a-f0-9]{64}$/);
+    assert.match(
+      draft.execSpec.approvedConfigurationDigest ?? "",
+      /^[a-f0-9]{64}$/,
+    );
     assert.equal(
       permitBody?.configurationDigest,
       draft.execSpec.approvedConfigurationDigest,
@@ -359,7 +407,10 @@ async function main(): Promise<void> {
         .cloudPermitConsumptionState,
       "consumed",
     );
-    assert.equal(readFileSync(setup.artifactPath, "utf8"), "exact-policy-bytes\n");
+    assert.equal(
+      readFileSync(setup.artifactPath, "utf8"),
+      "exact-policy-bytes\n",
+    );
     if (liveDiscovery) {
       const liveSetup = JSON.parse(
         readFileSync(join(config, "rlsok", "setup.json"), "utf8"),
@@ -455,8 +506,7 @@ async function main(): Promise<void> {
           freshnessCase.name,
         );
         const blockedDraft = draft as
-          | { execSpec: ExecutablePolicySpec }
-          | undefined;
+          { execSpec: ExecutablePolicySpec } | undefined;
         assert(blockedDraft, freshnessCase.name);
         assert.equal(
           blockedDraft.execSpec.runtimePolicy.maxStateAgeMs,
@@ -491,15 +541,31 @@ async function main(): Promise<void> {
           freshnessCase.name,
         );
         assert.equal(localEvidence.cloudPermitId, null, freshnessCase.name);
-        assert.equal(localEvidence.cloudPermitConsumed, false, freshnessCase.name);
+        assert.equal(
+          localEvidence.cloudPermitConsumed,
+          false,
+          freshnessCase.name,
+        );
         assert.equal(
           localEvidence.cloudPermitConsumptionState,
           "not_consumed",
           freshnessCase.name,
         );
-        assert.equal(localEvidence.localPermitConsumed, false, freshnessCase.name);
-        assert.equal(localEvidence.controllerGoalsAttempted, 0, freshnessCase.name);
-        assert.equal(localEvidence.hardwareSignalSent, false, freshnessCase.name);
+        assert.equal(
+          localEvidence.localPermitConsumed,
+          false,
+          freshnessCase.name,
+        );
+        assert.equal(
+          localEvidence.controllerGoalsAttempted,
+          0,
+          freshnessCase.name,
+        );
+        assert.equal(
+          localEvidence.hardwareSignalSent,
+          false,
+          freshnessCase.name,
+        );
         assert.equal(localEvidence.cloudEvidenceId, null, freshnessCase.name);
         assert.equal(localEvidence.evidenceVerified, false, freshnessCase.name);
         assert.equal(permitBody, undefined, freshnessCase.name);
@@ -517,7 +583,10 @@ async function main(): Promise<void> {
       const changedAfterApproval = await runSetup(discoveryPath);
       assert.equal(changedAfterApproval.exitCode, 2);
       const changedOutput = `${changedAfterApproval.stderr}\n${changedAfterApproval.stdout}`;
-      assert.match(changedOutput, /local policy artifact changed after approval/i);
+      assert.match(
+        changedOutput,
+        /local policy artifact changed after approval/i,
+      );
       assert.match(changedOutput, /FAILED[\s\S]*Observed:/);
       assert.match(changedOutput, /Reason:/);
       assert.match(changedOutput, /Hardware dispatch: NO/);
@@ -565,7 +634,10 @@ async function main(): Promise<void> {
       },
       {
         name: "wrong DDS implementation",
-        discovery: { ...baseDiscovery, rmwImplementation: "rmw_cyclonedds_cpp" },
+        discovery: {
+          ...baseDiscovery,
+          rmwImplementation: "rmw_cyclonedds_cpp",
+        },
         expected: /export RMW_IMPLEMENTATION=rmw_fastrtps_cpp/i,
       },
       {
@@ -606,7 +678,9 @@ async function main(): Promise<void> {
     }
     process.stdout.write("ok - zero-to-shadow acceptance\n");
   } finally {
-    await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    await new Promise<void>((resolveClose) =>
+      server.close(() => resolveClose()),
+    );
     rmSync(temporary, { recursive: true, force: true });
   }
 }

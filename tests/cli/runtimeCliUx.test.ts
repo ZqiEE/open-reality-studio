@@ -504,7 +504,7 @@ test("browser failure preserves printed pairing instructions and polling order",
     result.stdout,
     /Open: https:\/\/example\.invalid\/pair\?code=SAFE-CODE/,
   );
-  assert.match(result.stdout, /Waiting for approval/);
+  assert.match(result.stdout, /Approval: PENDING/);
   assert.doesNotMatch(result.stdout, /SECRET-PAIRING-TOKEN/);
   assert.equal(warnings.length, 1);
   assert.doesNotMatch(warnings[0]!, /SECRET|example\.invalid/);
@@ -530,6 +530,7 @@ test("--no-browser and setup manual approval paths perform zero launches", async
   assert.equal(pair.exitCode, 0);
   assert.equal(pairLaunches, 0);
   assert.match(pair.stdout, /Open:/);
+  assert.match(pair.stdout, /Browser: SKIPPED — --no-browser/);
 
   let setupLaunches = 0;
   const setup = await captureStdout(async () => {
@@ -539,7 +540,12 @@ test("--no-browser and setup manual approval paths perform zero launches", async
     return 0;
   });
   assert.equal(setupLaunches, 0);
-  assert.equal(setup.stdout, "  Approval: https://example.invalid/approval\n");
+  assert.equal(
+    setup.stdout,
+    "  Approval: PENDING — authenticated Workspace administrator required\n" +
+      "  Open: https://example.invalid/approval\n" +
+      "  Browser: SKIPPED — --no-browser; continue with the URL printed above.\n",
+  );
 
   let stdoutAtLaunch = "";
   let currentStdout = "";
@@ -557,8 +563,49 @@ test("--no-browser and setup manual approval paths perform zero launches", async
   }
   assert.equal(
     stdoutAtLaunch,
-    "  Approval: https://example.invalid/approval\n",
+    "  Approval: PENDING — authenticated Workspace administrator required\n" +
+      "  Open: https://example.invalid/approval\n",
   );
+});
+
+test("pair --replace reports only locally known previous-credential state", async () => {
+  const previousApiKey = `rlsok_${"O".repeat(43)}`;
+  let request = 0;
+  let storedApiKey = "";
+  const fetchRequest = (async () => {
+    request += 1;
+    return response(request === 1 ? startedPairing() : { status: "approved" });
+  }) as typeof fetch;
+
+  const result = await captureStdout(() =>
+    runPairCommand(
+      ["--cloud", "https://api.example.invalid", "--no-browser", "--replace"],
+      pairDependencies(fetchRequest, {
+        readCredentials: () => ({
+          apiUrl: "https://old.example.invalid",
+          apiKey: previousApiKey,
+        }),
+        writeCredentials: (credentials) => {
+          storedApiKey = credentials.apiKey;
+          return "/protected/replacement-credentials.json";
+        },
+      }),
+    ),
+  );
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(storedApiKey, "SECRET-PAIRING-TOKEN");
+  assert.match(
+    result.stdout,
+    /Previous credential: LOCAL COPY REPLACED — remote status was not checked/,
+  );
+  assert.match(
+    result.stdout,
+    /if the previous credential remains active, revoke it explicitly/,
+  );
+  assert.doesNotMatch(result.stdout, /Previous credential: ACTIVE/);
+  assert.doesNotMatch(result.stdout, /SECRET-PAIRING-TOKEN/);
+  assert.doesNotMatch(result.stdout, new RegExp(previousApiKey));
 });
 
 test("real CLI process pairs only after explicit loopback approval and preserves headless fallback", async () => {
@@ -577,10 +624,14 @@ test("real CLI process pairs only after explicit loopback approval and preserves
       scenario.result.stdout,
       /Open: http:\/\/127\.0\.0\.1:\d+\/verify-runtime\?code=LOCAL-PAIR-CODE/,
     );
-    assert.match(scenario.result.stdout, /Waiting for approval/);
+    assert.match(scenario.result.stdout, /Approval: PENDING/);
     assert.match(
       scenario.result.stdout,
-      /Paired with Hosted RLSOK Cloud\. Credentials stored at/,
+      /PAIRING APPROVED[\s\S]*Credential: STORED/,
+    );
+    assert.match(
+      scenario.result.stdout,
+      /Robot dispatch: NOT PART OF THIS OPERATION/,
     );
     assert.doesNotMatch(
       `${scenario.result.stdout}\n${scenario.result.stderr}`,
@@ -631,10 +682,10 @@ test("real CLI process keeps pending terminal failures nonzero and never invents
     assert(outcome.polls >= 2, `${terminal} did not pass through pending`);
     assert.equal(outcome.credentialsStored, false);
     assert.equal(outcome.browserSpawns, 0);
-    assert.match(outcome.result.stdout, /Waiting for approval/);
+    assert.match(outcome.result.stdout, /Approval: PENDING/);
     assert.doesNotMatch(
       outcome.result.stdout,
-      /Paired with Hosted RLSOK Cloud|signed[ -]?in|sign[ -]?in (?:complete|succeeded|successful)/i,
+      /PAIRING APPROVED|Credential: STORED|Paired with Hosted RLSOK Cloud|signed[ -]?in|sign[ -]?in (?:complete|succeeded|successful)/i,
     );
     assert.match(outcome.result.stderr, expectedGuidance[terminal]);
     assert.doesNotMatch(
