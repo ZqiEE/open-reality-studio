@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -12,6 +13,16 @@ import {
 import sourceIdentity from '../../scripts/source-identity.cjs';
 
 const { assertCleanGitStatus } = sourceIdentity;
+
+const distributionAssets = [
+  'artifacts/licenses.json',
+  'artifacts/realitywarden-rlsok-*.tgz',
+  'artifacts/realitywarden-rlsok-*.tgz.manifest.json',
+  'artifacts/realitywarden-rlsok-*.tgz.sha256',
+  'artifacts/rlsok-runtime-*-linux-x64.tar.gz',
+  'artifacts/rlsok-runtime-*-linux-x64.tar.gz.sha256',
+  'artifacts/rlsok.cdx.json',
+];
 
 const proof = () => ({
   health: { status: 'ok' },
@@ -40,6 +51,33 @@ test('future immutable release policy and published release must both be enforce
   assert.throws(() => assertPublishedImmutable({
     tag_name: 'v1.5.0', draft: false, immutable: false,
   }, 'v1.5.0'), /not_immutable/);
+});
+
+test('main CI uploads only the seven publishable distribution assets', async () => {
+  const workflow = await readFile('.github/workflows/ci.yml', 'utf8');
+  const distributionProof = workflow.match(
+    /name: distribution-proof\s+path: \|(?<paths>[\s\S]*?)\n\s+if-no-files-found: error/,
+  );
+  assert.ok(distributionProof?.groups?.paths, 'distribution-proof upload is missing');
+  const paths = distributionProof.groups.paths
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  assert.deepEqual(paths, [...distributionAssets, 'packaging/install.sh']);
+  assert.ok(!paths.includes('artifacts/*.json'));
+  assert.ok(!paths.includes('artifacts/first-user-recovery-matrix.json'));
+});
+
+test('public installer resolves release assets by runtime tag, not product version', async () => {
+  const [installer, packageText] = await Promise.all([
+    readFile('packaging/install.sh', 'utf8'),
+    readFile('package.json', 'utf8'),
+  ]);
+  const { version } = JSON.parse(packageText);
+  assert.match(installer, new RegExp(`RLSOK_RUNTIME_VERSION="${version}"`));
+  assert.match(installer, new RegExp(`RLSOK_RELEASE_TAG="v${version}"`));
+  assert.match(installer, /releases\/download\/\$\{RLSOK_RELEASE_TAG\}/);
+  assert.doesNotMatch(installer, /releases\/download\/v\$\{RLSOK_PRODUCT_VERSION\}/);
 });
 
 test('Cloud-first proof binds the exact runtime and production Shadow-only state', () => {
