@@ -3,10 +3,12 @@ import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { approveProfile, evaluateProfile, profileHash, profileSchema, type Profile } from '../../packages/composable-shadow';
 import { createFanucFixture, createFanucPublicFixture, fixtureCalibration, fixtureControllerState, fixtureUrdf } from '../../packages/composable-shadow/fixture';
+import { interfaceSchemas } from '../../packages/composable-shadow/json-schema';
 
 const help = `Composable ROS 2 Shadow profiles (local evaluation, zero dispatch)
   rlsok profile init --template fanuc-humble|fanucpy-public-humble|ros2-trajectory --output <new-directory>
   rlsok profile inspect --profile <profile.json>
+  rlsok profile schema --output <new-directory>
   rlsok profile approve --profile <profile.json> --actor <name> --expires-at <RFC3339> --output <new-approval.json>
   rlsok profile capture --profile <profile.json> --output <new-observation.json> [--python <python3>]
   rlsok profile describe-interface --type <package/action/Name> [--python <python3>]
@@ -105,6 +107,13 @@ export async function runProfileCommand(args: string[]): Promise<number> {
     process.stdout.write(`${JSON.stringify({ profileId: p.id, profileSha256: profileHash(p), mode: p.mode,
       paths: p.paths.map(a => ({ id: a.id, adapter: a.adapter, endpoint: a.endpoint, checks: a.checks })),
       scope: 'configuration validation only; use capture and shadow for observed state' }, null, 2)}\n`);
+    return 0;
+  }
+  if (command === 'schema') {
+    const o = options(rest, ['output'], ['output']);
+    const directory = newDirectory(o.output);
+    for (const [name, schema] of Object.entries(interfaceSchemas())) write(join(directory, name), schema);
+    process.stdout.write(`Interface schemas saved: ${directory}\nSee manifest.json for semantic checks enforced by the CLI.\n`);
     return 0;
   }
   if (command === 'approve') {

@@ -15,6 +15,11 @@ installed definitions and independently reviewed values before evaluating an
 actual isolated graph. Humble/Ubuntu 22.04 is the intended graph environment;
 the collector also uses the corresponding common ROS 2 graph APIs on Jazzy.
 
+For the complete first evaluation, supported schemas and Hosted data inventory,
+see [FANUC/Humble integration](fanuc-humble-integration.md). The isolated
+simulation can be completed with example data; private site files are only
+needed when moving to the operator's deployed graph.
+
 ## Try the complete synthetic example
 
 In this source version, install dependencies and build, then:
@@ -95,7 +100,8 @@ action clients and does not invoke fanucpy or control the robot.
 | Module | Inputs and behavior |
 | --- | --- |
 | `joint_trajectory` | JSON pointers to `joint_names` and `points`; checks exact joint order, finite vectors and increasing ROS durations. Requires FollowJointTrajectory. |
-| `cartesian_pose` | Pointers to a 3-number position, 4-number normalized quaternion and frame string; checks the approved frame. Custom bridge payloads may need local normalization into this envelope. |
+| `cartesian_pose` | Pointers to position, normalized quaternion and frame; accepts arrays or ROS `x/y/z` and `x/y/z/w` objects. Alternatively map each scalar component with ordered pointers. Absolute position is in meters. |
+| `cartesian_delta` | Ordered pointers to relative millimeter/WPR-degree offsets, positive mm/s velocity and frame; checks declared axis and velocity bounds. |
 | `tp_program` | Pointer to a program selector and a strict list of allowed program names. Produces a `program` contract with no physical units. |
 | Fact selection | Each path's `checks` selects shared facts. Missing, stale, future, wrong-source or changed facts block the dependent path. |
 | Definition binding | Endpoint, remote action type name, local recursive definition hash and one visible action-server node must match. RMW, domain and ROS distribution are approval-bearing. |

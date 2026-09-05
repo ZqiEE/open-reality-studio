@@ -1,0 +1,6 @@
+# Our isolated validation example. This is not Ureed's private interface.
+geometry_msgs/PoseStamped target
+---
+bool success
+---
+string state

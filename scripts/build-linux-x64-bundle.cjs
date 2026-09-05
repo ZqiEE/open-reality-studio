@@ -51,6 +51,10 @@ try {
     join(stage, "COMPOSABLE_SHADOW.md"),
   );
   copy(
+    join(root, "docs", "fanuc-humble-integration.md"),
+    join(stage, "fanuc-humble-integration.md"),
+  );
+  copy(
     join(root, "experimental", "ros2-reference-sidecar"),
     join(stage, "lib", "rlsok", "experimental", "ros2-reference-sidecar"),
   );
@@ -99,7 +103,7 @@ try {
   ]) {
     chmodSync(join(stage, "examples", "external-validation", helper), 0o755);
   }
-  for (const dependency of ["js-yaml", "argparse", "zod"]) {
+  for (const dependency of ["js-yaml", "argparse", "zod", "zod-to-json-schema"]) {
     copy(
       join(root, "node_modules", dependency),
       join(stage, "lib", "rlsok", "node_modules", dependency),
@@ -121,6 +125,7 @@ exec "$RLSOK_RUNTIME_ROOT/bin/node" "$RLSOK_RUNTIME_ROOT/lib/rlsok/dist/apps/cli
   if (versionOutput !== `rlsok runtime ${version} (product v1.3.0)`) {
     throw new Error(`bundle_version_mismatch:${versionOutput}`);
   }
+  execFileSync(join(stage, "bin", "rlsok"), ["profile", "schema", "--output", join(temporary, "profile-schemas")]);
   const husarionSelfTest = execFileSync(
     "python3",
     [

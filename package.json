@@ -58,7 +58,8 @@
   },
   "dependencies": {
     "js-yaml": "^4.3.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "3.24.6"
   },
   "devDependencies": {
     "@stryker-mutator/core": "9.6.1",

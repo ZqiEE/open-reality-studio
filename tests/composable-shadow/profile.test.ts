@@ -251,14 +251,53 @@ test('a TP program outside the approved allowlist is blocked', async () => {
   assertOnlyPathBlocked(await evaluate(input), path.id, 'program_not_allowlisted');
 });
 
+test('absolute PoseStamped JSON uses ROS x/y/z/w objects without a private normalizer', async () => {
+  const input = scenario();
+  const path = pathFor(input, 'cartesian_pose');
+  path.fields = { position: '/target/pose/position', orientation: '/target/pose/orientation',
+    frame: '/target/header/frame_id', expectedFrame: 'world' };
+  input.proposals.proposals.find(p => p.pathId === path.id)!.goal = { target: {
+    header: { stamp: { sec: 0, nanosec: 0 }, frame_id: 'world' },
+    pose: { position: { x: 0.1, y: -0.2, z: 0.3 }, orientation: { x: 0, y: 0, z: 0, w: 1 } }
+  } };
+  const report = await evaluate(input);
+  assert.equal(report.decision, 'WOULD_ALLOW');
+  verifyReport(report);
+  const goal = goalFor(input, path);
+  for (const invalid of [{ x: 0, y: 0 }, { x: 0, y: 0, z: '0' }, { x: 0, y: 0, z: 0, velocity: 5 }]) {
+    setGoalField(goal, '/target/pose/position', invalid);
+    assertOnlyPathBlocked(await evaluate(input), path.id, 'cartesian_pose_invalid');
+  }
+});
+
+test('scalar Cartesian fields compose through explicit ordered pointers and remain approval-bound', async () => {
+  const input = scenario();
+  const original = approve(input);
+  const path = pathFor(input, 'cartesian_pose');
+  path.fields = { position: ['/x', '/y', '/z'], orientation: ['/qx', '/qy', '/qz', '/qw'],
+    frame: '/frame_id', expectedFrame: 'world' };
+  input.proposals.proposals.find(p => p.pathId === path.id)!.goal = {
+    x: 0.1, y: 0.2, z: 0.3, qx: 0, qy: 0, qz: 0, qw: 1, frame_id: 'world'
+  };
+  assertAllBlocked(await evaluate(input, original), 'profile_changed_reapproval_required');
+  const approved = approve(input);
+  const report = await evaluate(input, approved);
+  assert.equal(report.decision, 'WOULD_ALLOW');
+  verifyReport(report);
+  delete goalFor(input, path).qw;
+  assertOnlyPathBlocked(await evaluate(input, approved), path.id, 'cartesian_pose_invalid');
+});
+
 for (const defect of ['frame', 'quaternion', 'position'] as const) {
   test(`invalid Cartesian ${defect} cannot pass configuration eligibility`, async () => {
     const input = scenario();
     const path = pathFor(input, 'cartesian_pose');
     const goal = goalFor(input, path);
+    assert.equal(typeof path.fields.position, 'string');
+    assert.equal(typeof path.fields.orientation, 'string');
     if (defect === 'frame') setGoalField(goal, path.fields.frame, `${path.fields.expectedFrame}_unapproved`);
-    else if (defect === 'quaternion') setGoalField(goal, path.fields.orientation, [0, 0, 0, 2]);
-    else setGoalField(goal, path.fields.position, [0, 0]);
+    else if (defect === 'quaternion') setGoalField(goal, path.fields.orientation as string, [0, 0, 0, 2]);
+    else setGoalField(goal, path.fields.position as string, [0, 0]);
     const reason = defect === 'frame' ? 'cartesian_frame_mismatch' : defect === 'quaternion' ? 'cartesian_quaternion_invalid' : 'cartesian_pose_invalid';
     assertOnlyPathBlocked(await evaluate(input), path.id, reason);
   });
@@ -302,7 +341,7 @@ test('different valid goals produce different bound Evidence without copying pri
   goal.operatorNote = privateMarker;
   const approval = approve(input);
   const first = await evaluate(input, approval);
-  setGoalField(goal, path.fields.position, [0.1, 0.2, 0.3]);
+  setGoalField(goal, path.fields.position as string, [0.1, 0.2, 0.3]);
   const second = await evaluate(input, approval);
   assert.equal(first.decision, 'WOULD_ALLOW');
   assert.equal(second.decision, 'WOULD_ALLOW');

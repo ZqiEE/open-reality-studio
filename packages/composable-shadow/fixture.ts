@@ -25,8 +25,8 @@ export function createFanucFixture(now = new Date()): { profile: Profile; observ
     paths: [
       { id: 'trajectory', adapter: 'joint_trajectory', endpoint: '/fanuc_arm_controller/follow_joint_trajectory', actionType: 'control_msgs/action/FollowJointTrajectory',
         interfaceSha256: hashObject('fixture-follow-joint-trajectory-definition'), fields: { jointNames: '/trajectory/joint_names', points: '/trajectory/points' }, checks: [...checks] },
-      { id: 'cartesian', adapter: 'cartesian_pose', endpoint: '/example_fanuc/absolute_cartesian', actionType: 'example_fanuc_interfaces/action/AbsoluteCartesian',
-        interfaceSha256: hashObject('fixture-custom-cartesian-definition'), fields: { position: '/position', orientation: '/orientation', frame: '/frame', expectedFrame: 'FIXTURE-frame-1' }, checks: [...checks] },
+      { id: 'cartesian', adapter: 'cartesian_pose', endpoint: '/rlsok_example/absolute_cartesian', actionType: 'rlsok_shadow_example_interfaces/action/AbsoluteCartesian',
+        interfaceSha256: hashObject('fixture-custom-cartesian-definition'), fields: { position: '/target/pose/position', orientation: '/target/pose/orientation', frame: '/target/header/frame_id', expectedFrame: 'FIXTURE-frame-1' }, checks: [...checks] },
       { id: 'tp_program', adapter: 'tp_program', endpoint: '/fanuc/run_program', actionType: 'fanucpy_ros2_interfaces/action/RunProgram',
         interfaceSha256: hashObject('fixture-custom-program-definition'), fields: { program: '/program_name', allowedPrograms: ['FIXTURE_PICK'] }, checks: [...checks] }
     ]
@@ -37,7 +37,10 @@ export function createFanucFixture(now = new Date()): { profile: Profile; observ
       paths: profile.paths.map(p => ({ id: p.id, endpoint: p.endpoint, actionType: p.actionType, interfaceSha256: p.interfaceSha256, serverCount: 1 })) },
     proposals: { schemaVersion: 1, proposals: [
       { id: 'fixture-trajectory', pathId: 'trajectory', goal: { trajectory: { joint_names: [...profile.jointOrder], points: [{ positions: [0, 0, 0, 0, 0, 0], time_from_start: { sec: 1, nanosec: 0 } }] } } },
-      { id: 'fixture-cartesian', pathId: 'cartesian', goal: { position: [0, 0, 0], orientation: [0, 0, 0, 1], frame: 'FIXTURE-frame-1' } },
+      { id: 'fixture-cartesian', pathId: 'cartesian', goal: { target: {
+        header: { stamp: { sec: 0, nanosec: 0 }, frame_id: 'FIXTURE-frame-1' },
+        pose: { position: { x: 0, y: 0, z: 0 }, orientation: { x: 0, y: 0, z: 0, w: 1 } }
+      } } },
       { id: 'fixture-program', pathId: 'tp_program', goal: { program_name: 'FIXTURE_PICK' } }
     ] }
   };

@@ -50,14 +50,25 @@ function configuration(p: Profile, path: Path, observation: Observation | undefi
 const finiteVector = (value: unknown, size: number): value is number[] =>
   Array.isArray(value) && value.length === size && value.every(n => typeof n === 'number' && Number.isFinite(n));
 
+function poseVector(goal: Record<string, unknown>, mapping: string | string[], keys: string[]): unknown {
+  if (Array.isArray(mapping)) return mapping.map(pointer => atPointer(goal, pointer));
+  const value = atPointer(goal, mapping);
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object' && Object.keys(value).length === keys.length &&
+      keys.every(key => Object.prototype.hasOwnProperty.call(value, key))) {
+    return keys.map(key => (value as Record<string, unknown>)[key]);
+  }
+  return undefined;
+}
+
 export function validateGoal(p: Profile, path: Path, goal: Record<string, unknown>): string | null {
   if (path.adapter === 'tp_program') {
     const program = atPointer(goal, path.fields.program);
     return typeof program === 'string' && path.fields.allowedPrograms.includes(program) ? null : 'program_not_allowlisted';
   }
   if (path.adapter === 'cartesian_pose') {
-    const position = atPointer(goal, path.fields.position);
-    const orientation = atPointer(goal, path.fields.orientation);
+    const position = poseVector(goal, path.fields.position, ['x', 'y', 'z']);
+    const orientation = poseVector(goal, path.fields.orientation, ['x', 'y', 'z', 'w']);
     if (!finiteVector(position, 3) || !finiteVector(orientation, 4)) return 'cartesian_pose_invalid';
     if (Math.abs(orientation.reduce((sum, v) => sum + v * v, 0) - 1) > 1e-6) return 'cartesian_quaternion_invalid';
     return atPointer(goal, path.fields.frame) === path.fields.expectedFrame ? null : 'cartesian_frame_mismatch';

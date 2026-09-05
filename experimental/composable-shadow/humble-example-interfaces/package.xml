@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rlsok_shadow_example_interfaces</name>
+  <version>0.0.1</version>
+  <description>RLSOK-owned simulated absolute Cartesian interface; not a customer or hardware driver interface.</description>
+  <maintainer email="maintainers@rlsok.com">RLSOK maintainers</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <build_depend>rosidl_default_generators</build_depend>
+  <depend>geometry_msgs</depend>
+  <depend>action_msgs</depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

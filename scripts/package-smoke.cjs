@@ -74,6 +74,12 @@ try {
   if (!profileHelp.includes('zero dispatch')) throw new Error('packaged_profile_help_unavailable');
   const profileDemo = run(process.execPath, [executable, 'profile', 'demo', '--output', resolve(temporary, 'profile-demo')], temporary);
   if (!profileDemo.includes('WOULD_ALLOW') || !profileDemo.includes('WOULD_BLOCK')) throw new Error('packaged_profile_demo_failed');
+  const schemasDirectory = resolve(temporary, 'profile-schemas');
+  run(process.execPath, [executable, 'profile', 'schema', '--output', schemasDirectory], temporary);
+  for (const name of ['profile', 'observation', 'approval', 'proposals']) {
+    const schema = JSON.parse(readFileSync(resolve(schemasDirectory, `${name}.schema.json`), 'utf8'));
+    if (!schema.$schema || !schema.definitions) throw new Error(`packaged_profile_schema_invalid:${name}`);
+  }
   const collectorHelp = run(python, ['-S', resolve(packageRoot, 'experimental', 'composable-shadow', 'collect.py'), '--help'], temporary);
   if (!collectorHelp.includes('--describe-interface')) throw new Error('packaged_profile_collector_missing');
   const husarionSidecar = resolve(
@@ -144,6 +150,8 @@ try {
     pairHelp: 'passed',
     check: 'passed',
     standaloneShadow: 'passed',
+    composableShadow: 'passed',
+    composableSchemas: 'passed',
     packagedRos2Sidecar: 'passed',
     packagedHusarionRosbotSidecar: 'passed',
     versionIdentity: 'passed',

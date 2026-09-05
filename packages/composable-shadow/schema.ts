@@ -19,7 +19,9 @@ export const pathSchema = z.discriminatedUnion('adapter', [
     jointNames: pointer, points: pointer
   }).strict() }).strict(),
   z.object({ ...commonPath, adapter: z.literal('cartesian_pose'), fields: z.object({
-    position: pointer, orientation: pointer, frame: pointer, expectedFrame: text
+    position: z.union([pointer, z.tuple([pointer, pointer, pointer])]),
+    orientation: z.union([pointer, z.tuple([pointer, pointer, pointer, pointer])]),
+    frame: pointer, expectedFrame: text
   }).strict() }).strict(),
   z.object({ ...commonPath, adapter: z.literal('cartesian_delta'), fields: z.object({
     translation: z.tuple([pointer, pointer, pointer]),

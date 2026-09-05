@@ -1,0 +1,32 @@
+# Build context: experimental/composable-shadow. No driver is built or started.
+ARG NODE_IMAGE=node:22-bullseye-slim
+ARG ROS_IMAGE=ros:humble-ros-base-jammy
+FROM ${NODE_IMAGE} AS node_runtime
+FROM ${ROS_IMAGE}
+SHELL ["/bin/bash", "-e", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git ca-certificates python3-colcon-common-extensions \
+    ros-humble-control-msgs ros-humble-rosidl-default-generators \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=node_runtime /usr/local /usr/local
+COPY npm/package.json npm/package-lock.json /opt/rlsok-dependencies/
+RUN cd /opt/rlsok-dependencies && npm ci --omit=dev --ignore-scripts
+ARG FANUC_COMMIT=ed04e2ca0eb7781168a08688c682fb314c85ba59
+LABEL rlsok.validation.fanuc.commit=ed04e2ca0eb7781168a08688c682fb314c85ba59
+RUN git init -q /opt/fanuc-source \
+    && git -C /opt/fanuc-source remote add origin https://github.com/Ureed-Hussain/fanucpy_ros2.git \
+    && git -C /opt/fanuc-source fetch --depth 1 origin "${FANUC_COMMIT}" \
+    && git -C /opt/fanuc-source checkout -q --detach "${FANUC_COMMIT}" \
+    && test "$(git -C /opt/fanuc-source rev-parse HEAD)" = "${FANUC_COMMIT}"
+COPY humble-example-interfaces /opt/rlsok-shadow-example-interfaces
+WORKDIR /opt/validation-interfaces
+ENV CMAKE_BUILD_PARALLEL_LEVEL=2
+RUN source /opt/ros/humble/setup.bash \
+    && colcon build --merge-install \
+      --base-paths /opt/fanuc-source/src/fanucpy_ros2_interfaces /opt/rlsok-shadow-example-interfaces \
+      --packages-select fanucpy_ros2_interfaces rlsok_shadow_example_interfaces \
+      --executor sequential --cmake-args -DBUILD_TESTING=OFF
+WORKDIR /artifacts
+ENV ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=217 HOME=/tmp/rlsok-home
+ENTRYPOINT ["/bin/bash", "-lc"]
