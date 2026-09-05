@@ -32,13 +32,15 @@ export const executablePolicySpecSchema = z.object({
       'joint_position',
       'joint_velocity',
       'cartesian_pose',
+      'cartesian_delta',
       'twist',
-      'trajectory'
+      'trajectory',
+      'program'
     ]),
     dimension: z.number().int().positive(),
     jointOrder: z.array(z.string().min(1)),
     units: z.object({
-      position: z.enum(['radian', 'degree', 'meter', 'millimeter']),
+      position: z.enum(['radian', 'degree', 'meter', 'millimeter', 'none']),
       velocity: z.string().min(1)
     }).strict(),
     normalizerSha256: hash,
@@ -75,6 +77,14 @@ export const executablePolicySpecSchema = z.object({
     expiresAt: timestamp
   }).strict()
 }).strict().superRefine((spec, context) => {
+  if (spec.actionContract.representation === 'program') {
+    if (spec.actionContract.dimension !== 1 || spec.actionContract.jointOrder.length !== 0
+      || spec.actionContract.units.position !== 'none' || spec.actionContract.units.velocity !== 'none') {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ['actionContract'], message: 'program contract requires one program selector, no joints and no physical units' });
+    }
+  } else if (spec.actionContract.units.position === 'none') {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['actionContract', 'units'], message: 'physical action contract requires physical position units' });
+  }
   if (
     spec.actionContract.representation.startsWith('joint_')
     && spec.actionContract.dimension !== spec.actionContract.jointOrder.length

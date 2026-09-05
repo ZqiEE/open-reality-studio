@@ -10,6 +10,11 @@ ROS 2 dispatch and writes verifiable Evidence.
 
 ## Zero-to-Shadow
 
+For configurable ROS 2 action graphs, `rlsok profile help` provides a separate
+local Shadow workflow with reusable trajectory, Cartesian and program modules.
+See [composable Shadow profiles](docs/composable-shadow.md) for the FANUC/Humble
+example, read-only capture, configuration-drift tests and current support scope.
+
 The official v1.3.0 robot integration is Universal Robots UR5e on Ubuntu 24.04
 x86_64, ROS 2 Jazzy, Fast DDS, and the official Universal Robots ROS 2 driver.
 It is validated in the driver's mock-hardware simulation; no physical-robot

@@ -43,6 +43,14 @@ try {
   chmodSync(join(stage, "bin", "node"), 0o755);
   copy(join(root, "dist"), join(stage, "lib", "rlsok", "dist"));
   copy(
+    join(root, "experimental", "composable-shadow", "collect.py"),
+    join(stage, "lib", "rlsok", "experimental", "composable-shadow", "collect.py"),
+  );
+  copy(
+    join(root, "docs", "composable-shadow.md"),
+    join(stage, "COMPOSABLE_SHADOW.md"),
+  );
+  copy(
     join(root, "experimental", "ros2-reference-sidecar"),
     join(stage, "lib", "rlsok", "experimental", "ros2-reference-sidecar"),
   );

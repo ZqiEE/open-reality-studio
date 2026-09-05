@@ -70,6 +70,12 @@ try {
     throw new Error(`packaged_ros2_sidecar_unavailable:${doctor.stderr}`);
   }
   const python = process.platform === 'win32' ? 'python' : 'python3';
+  const profileHelp = run(process.execPath, [executable, 'profile', 'help'], temporary);
+  if (!profileHelp.includes('zero dispatch')) throw new Error('packaged_profile_help_unavailable');
+  const profileDemo = run(process.execPath, [executable, 'profile', 'demo', '--output', resolve(temporary, 'profile-demo')], temporary);
+  if (!profileDemo.includes('WOULD_ALLOW') || !profileDemo.includes('WOULD_BLOCK')) throw new Error('packaged_profile_demo_failed');
+  const collectorHelp = run(python, ['-S', resolve(packageRoot, 'experimental', 'composable-shadow', 'collect.py'), '--help'], temporary);
+  if (!collectorHelp.includes('--describe-interface')) throw new Error('packaged_profile_collector_missing');
   const husarionSidecar = resolve(
     packageRoot,
     'experimental',
