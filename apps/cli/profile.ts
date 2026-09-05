@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { approveProfile, evaluateProfile, profileHash, profileSchema, type Profile } from '../../packages/composable-shadow';
+import { approveProfile, evaluateProfile, hashObject, profileHash, profileSchema, type Profile } from '../../packages/composable-shadow';
+import { executablePolicySpecSchema } from '../../packages/core/exec-spec';
 import { createFanucFixture, createFanucPublicFixture, fixtureCalibration, fixtureControllerState, fixtureUrdf } from '../../packages/composable-shadow/fixture';
 import { interfaceSchemas } from '../../packages/composable-shadow/json-schema';
 
@@ -12,6 +13,8 @@ const help = `Composable ROS 2 Shadow profiles (local evaluation, zero dispatch)
   rlsok profile approve --profile <profile.json> --actor <name> --expires-at <RFC3339> --output <new-approval.json>
   rlsok profile capture --profile <profile.json> --output <new-observation.json> [--python <python3>]
   rlsok profile describe-interface --type <package/action/Name> [--python <python3>]
+  rlsok profile fingerprint-controller --input <active-controller-export.json> --output <new-controller-state.json> [--python <python3>]
+  rlsok profile verify-assessment --assessment <path.assessment.json> --release <path.release.json>
   rlsok profile shadow --profile <profile.json> --approval <approval.json> --observation <observation.json> --proposals <proposals.json> --output <new-directory>
   rlsok profile demo --output <new-directory>
 Templates contain synthetic example values. Replace them before local ROS evaluation.
@@ -82,6 +85,7 @@ function initialize(output: string, template: string, now = new Date()) {
 function saveReport(directory: string, report: Awaited<ReturnType<typeof evaluateProfile>>): void {
   write(join(directory, 'report.json'), report);
   for (const result of report.results) {
+    write(join(directory, `${result.pathId}.assessment.json`), result.assessment);
     write(join(directory, `${result.pathId}.release.json`), result.release);
     write(join(directory, `${result.pathId}.evidence.json`), result.evidence);
   }
@@ -125,6 +129,19 @@ export async function runProfileCommand(args: string[]): Promise<number> {
   if (command === 'describe-interface') {
     const o = options(rest, ['type', 'python'], ['type']);
     return python(o, ['--describe-interface', o.type]);
+  }
+  if (command === 'fingerprint-controller') {
+    const o = options(rest, ['input', 'output', 'python'], ['input', 'output']);
+    if (existsSync(o.output)) throw new Error('output_already_exists');
+    return python(o, ['--fingerprint-controller', resolve(o.input), '--output', resolve(o.output)]);
+  }
+  if (command === 'verify-assessment') {
+    const o = options(rest, ['assessment', 'release'], ['assessment', 'release']);
+    const assessment = read(o.assessment);
+    const release = executablePolicySpecSchema.parse(read(o.release));
+    if (hashObject(assessment) !== release.evidence.testReportSha256) throw new Error('assessment_hash_mismatch');
+    process.stdout.write('Assessment hash matches the supplied release. Verify its Evidence separately; this does not authenticate the source.\n');
+    return 0;
   }
   if (command === 'capture') {
     const o = options(rest, ['profile', 'output', 'python'], ['profile', 'output']);

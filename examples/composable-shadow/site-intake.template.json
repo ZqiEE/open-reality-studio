@@ -1,0 +1,22 @@
+{
+  "status": "INCOMPLETE_OPERATOR_INPUT_REQUIRED",
+  "environment": { "ubuntuVersion": null, "architecture": null, "rosDistro": null, "rmwImplementation": null, "domainId": null },
+  "robot": { "model": null, "controller": null, "deviceId": null, "controllerSoftware": null },
+  "bridge": { "repository": null, "commitOrVersion": null, "differencesFromPublicRepository": null },
+  "interfaceWorkspace": { "repository": null, "commitOrVersion": null, "installedPackageVersions": null },
+  "jointOrder": [],
+  "actions": {
+    "trajectory": { "endpoint": null, "type": "control_msgs/action/FollowJointTrajectory", "interfaceExportFile": null, "redactedGoalFile": null },
+    "absoluteCartesian": { "endpoint": null, "type": null, "actionDefinitionFile": null, "interfaceExportFile": null, "redactedGoalFile": null, "absoluteSemanticsConfirmed": false, "positionUnits": null, "orientationRepresentationAndUnits": null, "frameConvention": null },
+    "tpProgram": { "endpoint": null, "type": null, "interfaceExportFile": null, "redactedGoalFile": null, "allowedProgramsAndDeployedVersions": [] }
+  },
+  "activeFacts": {
+    "toolAndFrameExportMethod": null,
+    "completeParametersAndUnitsIncluded": false,
+    "calibrationActiveSourceAndConsumer": null,
+    "urdfActiveSourceAndConsumer": null,
+    "readOnlyExportTimestampAndProvenance": null
+  },
+  "review": { "profileAuthor": null, "independentReviewer": null, "expectedValuesSource": null, "approvalExpiry": null },
+  "isolation": { "simulationOrIsolatedGraph": null, "hardwareConnectionAbsent": false, "goalCancelStopHoldTpCountersSource": null }
+}

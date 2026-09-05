@@ -461,10 +461,49 @@ def write_output(path: Path, observation: dict[str, Any]) -> None:
             output.write(content)
             output.flush()
             os.fsync(output.fileno())
-        os.replace(temporary, path)
+        # Atomic creation without replacing prior evidence, including a file
+        # another process created after the CLI's initial existence check.
+        os.link(temporary, path)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def fingerprint_controller(document: Any) -> dict[str, Any]:
+    """Normalize an operator's active-state export; never read a profile.
+
+    This validates an export's shape, not the truth/completeness of controller
+    observations. The exporter must bind selected IDs and all active parameters.
+    """
+    if not isinstance(document, dict) or document.get("schemaVersion") != 1:
+        raise CollectionError("controller export requires schemaVersion 1")
+    observed_at = require_timestamp(document.get("observedAt"))
+    software = require_text(document.get("controllerSoftware"), "controllerSoftware")
+    revision = require_text(document.get("stackRevision"), "stackRevision")
+    source = require_text(document.get("source"), "source")
+    if document.get("activeStateReadOnly") is not True:
+        raise CollectionError("exporter must declare activeStateReadOnly: true")
+
+    def fingerprint(name: str) -> str:
+        state = document.get(name)
+        if not isinstance(state, dict) or set(state) != {"selectedId", "parameters"}:
+            raise CollectionError(f"{name} requires selectedId and complete parameters")
+        selected = state["selectedId"]
+        if not ((type(selected) is int and selected >= 0) or isinstance(selected, str)):
+            raise CollectionError(f"{name}.selectedId must be a nonnegative integer or string")
+        if isinstance(selected, str):
+            require_text(selected, f"{name}.selectedId")
+        if not isinstance(state["parameters"], dict) or not state["parameters"]:
+            raise CollectionError(f"{name}.parameters must be a nonempty object including units/conventions")
+        encoded = json.dumps(state, sort_keys=True, separators=(",", ":"),
+                             ensure_ascii=True, allow_nan=False).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    return {"observedAt": observed_at, "controllerSoftware": software,
+            "stackRevision": revision, "source": source,
+            "fingerprintAlgorithm": "selected-state-python-json/v1",
+            "toolConfigurationSha256": fingerprint("tool"),
+            "frameConfigurationSha256": fingerprint("frame")}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -472,16 +511,22 @@ def main(argv: list[str] | None = None) -> int:
     operation = parser.add_mutually_exclusive_group(required=True)
     operation.add_argument("--profile", type=Path)
     operation.add_argument("--describe-interface", metavar="PACKAGE/ACTION/TYPE")
+    operation.add_argument("--fingerprint-controller", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--discovery-seconds", type=float, default=3.0)
     args = parser.parse_args(argv)
-    if args.profile is not None and args.output is None:
-        parser.error("--profile requires --output")
+    if (args.profile is not None or args.fingerprint_controller is not None) and args.output is None:
+        parser.error("--profile / --fingerprint-controller requires --output")
     if args.describe_interface and args.output is not None:
         parser.error("--describe-interface writes JSON to stdout; omit --output")
     try:
         if args.describe_interface:
             print(json.dumps(RosInterfaces().describe(args.describe_interface), indent=2, sort_keys=True))
+            return 0
+        if args.fingerprint_controller is not None:
+            source = args.fingerprint_controller.absolute()
+            document = decode_json(read_fact_bytes(source.parent, source.name))
+            write_output(args.output, fingerprint_controller(document))
             return 0
         profile_path = args.profile.resolve(strict=True)
         profile = validate_profile(decode_json(read_fact_bytes(

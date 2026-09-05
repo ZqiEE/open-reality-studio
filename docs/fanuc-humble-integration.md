@@ -10,13 +10,18 @@ calibration files are not prerequisites for this simulation. They become inputs
 when adapting the profile to an operator's deployed system. Do not confuse the
 example action below with a declaration of somebody else's private interface.
 
-## Validation status for this source change
+## Current evaluation delivery and validation scope
 
-The full runtime regression and 38 composable behavior tests passed locally.
-The collector also passed 30 Linux unit tests and two three-test ROS graph
-suites on Jazzy, including the pinned public FANUC interfaces, with zero goals,
-cancels or executions. The native ROS object adapter and schema export are
-included in the runtime regression.
+Install the [v1.5.0-shadow.1 evaluation release](https://github.com/realitywarden/rlsok/releases/tag/v1.5.0-shadow.1)
+and follow the [complete self-service path](fanuc-shadow-self-service.md).
+It includes Linux Node, compiled CLI, four exported schemas, material templates,
+controller-state fingerprinting, per-path assessments and source provenance.
+It was built and reviewed without local tests, GitHub Actions, installation or
+ROS acceptance runs. It is a prerelease for local Shadow evaluation.
+
+Historical development notes at `f715a6456130091e20cb2f47e5742bd7082db5eb`
+record runtime/composable tests and Linux collector/Jazzy graph checks. They
+are not validation results for this newer evaluation package.
 
 The Humble Docker runner and five-phase acceptance procedure are supplied but
 have **not completed a Humble run**. Local container startup failed before ROS

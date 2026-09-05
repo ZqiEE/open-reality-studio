@@ -22,7 +22,9 @@ needed when moving to the operator's deployed graph.
 
 ## Try the complete synthetic example
 
-In this source version, install dependencies and build, then:
+Install the [v1.5.0-shadow.1 evaluation package](fanuc-shadow-self-service.md)
+to start without Node/npm or a source build. Its bundled CLI can run
+`rlsok profile demo --output ./fanuc-demo`. For a source checkout:
 
 ```sh
 npm ci
@@ -135,6 +137,11 @@ and emits its release plus standard hash-chained Evidence. `report.json`
 contains path outcomes, failed checks, profile/configuration hashes, interface
 metadata, timestamps and the local input assessment bound by testReportSha256.
 It is an input-check assessment, not a certification or independent test result.
+Each path's `.assessment.json` is also exported separately. Use
+`rlsok profile verify-assessment --assessment <file> --release <release.json>`
+to compare its hash with that release's `testReportSha256`, then verify the
+Evidence/release pair. Exact failed checks such as `fact_mismatch:calibration`
+are retained in the assessment even when the gate reports a configuration mismatch.
 Raw goals are replaced by hashes in exported Evidence; raw observations and
 goals remain in your local input files. Identifiers, paths, joint names and
 reviewer names can still appear in reports. Verify each bundle, for example:

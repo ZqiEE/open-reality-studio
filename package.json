@@ -1,6 +1,6 @@
 {
   "name": "@realitywarden/rlsok",
-  "version": "1.4.5",
+  "version": "1.5.0-shadow.1",
   "private": false,
   "description": "Robot Software Execution Authorization for learned robot policies.",
   "engines": {
@@ -15,7 +15,7 @@
     "docs",
     "examples",
     "experimental/ros2-reference-sidecar",
-    "experimental/composable-shadow/collect.py",
+    "experimental/composable-shadow",
     "experimental/husarion-rosbot-gazebo",
     "sdk/python/rlsok",
     "sdk/python/pyproject.toml",
@@ -54,7 +54,8 @@
     "test:official-ur5e": "node scripts/run-rlsok.cjs --test tests/robot-integrations/officialUr5eGraph.test.ts",
     "test:python-sdk": "node scripts/test-python-sdk.cjs",
     "ros2:test": "node scripts/run-rlsok.cjs --test tests/ros2-reference/ros2Reference.test.ts",
-    "ros2:dds-test": "node scripts/run-rlsok.cjs --test tests/ros2-dds/ros2Dds.test.ts"
+    "ros2:dds-test": "node scripts/run-rlsok.cjs --test tests/ros2-dds/ros2Dds.test.ts",
+    "bundle:shadow-evaluation": "node scripts/build-shadow-evaluation.cjs"
   },
   "dependencies": {
     "js-yaml": "^4.3.0",

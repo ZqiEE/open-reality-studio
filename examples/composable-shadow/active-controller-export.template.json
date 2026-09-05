@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "observedAt": null,
+  "source": null,
+  "activeStateReadOnly": false,
+  "controllerSoftware": null,
+  "stackRevision": null,
+  "tool": { "selectedId": null, "parameters": {} },
+  "frame": { "selectedId": null, "parameters": {} }
+}
