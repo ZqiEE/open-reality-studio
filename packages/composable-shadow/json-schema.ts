@@ -1,10 +1,13 @@
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { approvalSchema, observationSchema, profileSchema, proposalBatchSchema } from './schema';
+import { catalogSchema, connectionSchema } from './onboarding';
 
 /** Derive the structural contracts from the same schemas consumed by the CLI.
  * Zod refinements remain runtime checks; never imply JSON Schema covers them. */
 export function interfaceSchemas(): Record<string, unknown> {
   return {
+    'catalog.schema.json': zodToJsonSchema(catalogSchema, { name: 'InterfaceCatalog', target: 'jsonSchema7' }),
+    'connection.schema.json': zodToJsonSchema(connectionSchema, { name: 'ShadowConnection', target: 'jsonSchema7' }),
     'profile.schema.json': zodToJsonSchema(profileSchema, { name: 'ShadowProfile', target: 'jsonSchema7' }),
     'observation.schema.json': zodToJsonSchema(observationSchema, { name: 'ShadowObservation', target: 'jsonSchema7' }),
     'approval.schema.json': zodToJsonSchema(approvalSchema, { name: 'LocalShadowApproval', target: 'jsonSchema7' }),
@@ -12,7 +15,7 @@ export function interfaceSchemas(): Record<string, unknown> {
     'manifest.json': {
       schemaVersion: 1, kind: 'ComposableShadowInterfaceSchemas', scope: 'local-shadow-only',
       structuralValidation: 'JSON Schema draft-07; generated from CLI Zod schemas',
-      authoritativeValidation: 'rlsok profile inspect / approve / shadow',
+      authoritativeValidation: 'rlsok profile inspect-connection / inspect / approve / shadow',
       additionalRuntimeChecks: [
         'Bounded strings must be trimmed and contain no control characters; IDs have a restricted alphabet.',
         'JSON pointers require valid RFC 6901 escapes; fact paths must be portable, relative and contained.',

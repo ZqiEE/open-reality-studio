@@ -1,6 +1,6 @@
 # FANUC / Humble: install, configure and evaluate three paths
 
-Evaluation release: **v1.5.0-shadow.1**. Target: Ubuntu 22.04 x86_64 with
+Evaluation release: **v1.5.0-shadow.2**. Target: Ubuntu 22.04 x86_64 with
 ROS 2 Humble and an isolated/simulated graph. This is a local, self-attested,
 zero-dispatch prerelease, with a bundled Node runtime. No account, Cloud
 upload, physical controller or global runtime upgrade is needed. This exact
@@ -9,7 +9,7 @@ definitions and physical FANUC operation have not been validated**. Prior
 Jazzy results do not establish validation of this release.
 
 The public stable installation remains runtime v1.4.5. Use the pinned
-[evaluation release](https://github.com/realitywarden/rlsok/releases/tag/v1.5.0-shadow.1)
+[evaluation release](https://github.com/realitywarden/rlsok/releases/tag/v1.5.0-shadow.2)
 for the composable functionality. RLSOK is not a certified functional-safety
 product. This evaluation checks declared inputs and configuration, not motion
 safety, kinematics, collisions or every controller command path.
@@ -20,12 +20,12 @@ Download the installer and its checksum into a new directory:
 
 ```sh
 mkdir rlsok-shadow-download && cd rlsok-shadow-download
-BASE=https://github.com/realitywarden/rlsok/releases/download/v1.5.0-shadow.1
+BASE=https://github.com/realitywarden/rlsok/releases/download/v1.5.0-shadow.2
 curl -fLO "$BASE/install-shadow.sh"
 curl -fLO "$BASE/install-shadow.sh.sha256"
 sha256sum -c install-shadow.sh.sha256
-sh install-shadow.sh "$HOME/rlsok-shadow-1.5.0-shadow.1"
-EVAL="$HOME/rlsok-shadow-1.5.0-shadow.1"
+sh install-shadow.sh "$HOME/rlsok-shadow-1.5.0-shadow.2"
+EVAL="$HOME/rlsok-shadow-1.5.0-shadow.2"
 rlsok() { "$EVAL/bin/rlsok" "$@"; }
 rlsok profile help
 ```
@@ -40,13 +40,22 @@ is involved. For offline transfer, download the archive and `.sha256` from
 the release, verify with `sha256sum -c`, and extract with `tar -xzf`.
 
 The release includes `evaluation-release.json`, checksums, SBOM, dependency
-licenses, the npm package and `rlsok-source-1.5.0-shadow.1.tar.gz`.
+licenses, the npm package and `rlsok-source-1.5.0-shadow.2.tar.gz`.
 `SOURCE_COMMIT` and `BUILD-MANIFEST.json` inside the Linux archive identify
 the source and packaging scope. GitHub's release asset digests provide another
 checksum comparison. The evaluation launcher exposes only profile operations,
 Evidence verification and version information.
 
-## 2. Learn the format; collect your installed interfaces
+## 2. Choose browser configuration or manual templates
+
+The [interface configuration wizard](https://rlsok.com/connect) can import a
+read-only catalog from `rlsok profile discover --output catalog.json`, map your
+fields and export a ready workspace containing your actual files. Follow
+[the interface onboarding guide](interface-onboarding.md) for that workflow.
+It uses the same profile and goal validation rules as the CLI. The template
+workflow below remains available for manual configuration.
+
+### Manual templates: learn the format and collect interfaces
 
 An optional offline example requires no ROS and uses visibly synthetic data:
 
@@ -279,4 +288,4 @@ metadata-only. No three-path Hosted upload adapter is required by this guide.
 These are source-level findings, not confirmation of a particular deployed
 revision, retention period or deletion SLA; those operational terms remain
 to be confirmed if Hosted evaluation is selected. See the inventory in
-[the integration guide](https://github.com/realitywarden/rlsok/blob/v1.5.0-shadow.1/docs/fanuc-humble-integration.md).
+[the integration guide](https://github.com/realitywarden/rlsok/blob/v1.5.0-shadow.2/docs/fanuc-humble-integration.md).

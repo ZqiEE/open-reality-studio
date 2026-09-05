@@ -10,8 +10,13 @@ ROS 2 dispatch and writes verifiable Evidence.
 
 ## Zero-to-Shadow
 
-For the new FANUC/Humble composable workflow, download the separate
-[v1.5.0-shadow.1 evaluation package](https://github.com/realitywarden/rlsok/releases/tag/v1.5.0-shadow.1)
+For reusable interface selection and field mapping, open the
+[browser configuration wizard](https://rlsok.com/connect) and follow
+[the interface onboarding guide](docs/interface-onboarding.md). Files are
+processed in the browser; exported workspaces are consumed by the local CLI.
+
+For the FANUC/Humble composable workflow, download the separate
+[v1.5.0-shadow.2 evaluation package](https://github.com/realitywarden/rlsok/releases/tag/v1.5.0-shadow.2)
 and follow the [installation-to-Evidence guide](docs/fanuc-shadow-self-service.md).
 This locally reviewed/built prerelease has not been validated on Humble or a
 physical FANUC. It does not change the stable Cloud or v1.4.5 installer below.

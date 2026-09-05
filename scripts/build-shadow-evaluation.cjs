@@ -78,6 +78,7 @@ const copy = (source, target) => {
     run('git', ['archive', '--format=tar.gz', `--prefix=rlsok-source-${version}/`, `--output=${path.join(output, `rlsok-source-${version}.tar.gz`)}`, sourceCommit]);
     copy(path.join(root, 'packaging/install-shadow.sh'), path.join(output, 'install-shadow.sh'));
     copy(path.join(root, 'docs/fanuc-shadow-self-service.md'), path.join(output, 'START-HERE.md'));
+    copy(path.join(root, 'docs/interface-onboarding.md'), path.join(output, 'INTERFACE-ONBOARDING.md'));
     run(process.execPath, [path.join(__dirname, 'generate-sbom.cjs')]);
     run(process.execPath, [path.join(__dirname, 'license-inventory.cjs')]);
     for (const name of ['rlsok.cdx.json', 'licenses.json']) copy(path.join(root, 'artifacts', name), path.join(output, name));

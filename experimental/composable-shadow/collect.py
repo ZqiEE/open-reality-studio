@@ -376,24 +376,28 @@ class RosGraphProvider:
         return {"rosDistro": distro, "rmwImplementation": require_text(
             self.rmw_identifier(), "actual RMW implementation"), "domainId": int(domain)}
 
-    def action_servers(self, endpoints: set[str]) -> dict[str, tuple[str, int]]:
+    def action_servers(self, endpoints: set[str] | None) -> dict[str, tuple[str, int]]:
         deadline = time.monotonic() + self.discovery_seconds
         while time.monotonic() < deadline:
             self.executor.spin_once(timeout_sec=min(0.1, max(0.0, deadline - time.monotonic())))
         nodes = self.node.get_node_names_and_namespaces()
         if len(nodes) > 4096 or len(set(nodes)) != len(nodes):
             raise CollectionError("ROS graph node identities are ambiguous or excessive")
-        servers: dict[str, list[str]] = {endpoint: [] for endpoint in endpoints}
+        servers: dict[str, list[str]] = {endpoint: [] for endpoint in endpoints or set()}
         for name, namespace in nodes:
             # Any per-node query failure fails collection rather than hiding a server.
             seen: set[str] = set()
             for endpoint, types in self.server_query(self.node, name, namespace):
-                if endpoint not in endpoints:
+                if endpoints is not None and endpoint not in endpoints:
                     continue
+                if not ENDPOINT.fullmatch(endpoint) or any(not ACTION_TYPE.fullmatch(value) for value in types):
+                    raise CollectionError("invalid action graph name or type")
                 if endpoint in seen or len(types) != 1:
                     raise CollectionError("action server graph has ambiguous types or entries")
                 seen.add(endpoint)
-                servers[endpoint].append(types[0])
+                servers.setdefault(endpoint, []).append(types[0])
+                if endpoints is None and len(servers) > 128:
+                    raise CollectionError("catalog exceeds 128 endpoints; use a smaller isolated ROS domain")
         result: dict[str, tuple[str, int]] = {}
         for endpoint, types in servers.items():
             if len(set(types)) > 1:
@@ -401,6 +405,34 @@ class RosGraphProvider:
             if types:
                 result[endpoint] = (types[0], len(types))
         return result
+
+
+def discover_interfaces(provider: Any) -> dict[str, Any]:
+    environment = provider.environment()
+    graph = provider.action_servers(None)
+    observed_at = utc_now()
+    descriptions: dict[str, dict[str, Any]] = {}
+    actions: list[dict[str, Any]] = []
+    for endpoint, (action_type, count) in sorted(graph.items()):
+        if action_type not in descriptions:
+            try:
+                description = provider.interfaces.describe(action_type)
+                descriptions[action_type] = {key: description[key] for key in ("interfaceSha256", "typeTree")}
+            except Exception:
+                # A missing installed definition is visible but cannot be selected.
+                # Do not expose exception details that could contain local paths.
+                descriptions[action_type] = {"unavailable": "Installed action definition could not be read. Source its interface workspace and rediscover."}
+        actions.append({"endpoint": endpoint, "actionType": action_type,
+                        "serverCount": count, **descriptions[action_type]})
+    catalog = {"schemaVersion": 1, "kind": "RlsokInterfaceCatalog", "collector": "ros2-read-only/v1",
+               "observedAt": observed_at, "environment": environment, "actions": actions,
+               "limitations": ["Local graph metadata only; not hardware identity or remote implementation attestation.",
+                               "Counts visible server nodes; same-name servers inside one node cannot be distinguished.",
+                               "No action client, command publisher or service request is created.",
+                               "Installed definitions do not establish units, command semantics or physical compatibility."]}
+    if len(json.dumps(catalog, indent=2, ensure_ascii=True).encode("utf-8")) > 1024 * 1024:
+        raise CollectionError("catalog exceeds 1 MiB; reduce the isolated graph/interface size")
+    return catalog
 
 
 def validate_profile(profile: Any) -> dict[str, Any]:
@@ -512,14 +544,20 @@ def main(argv: list[str] | None = None) -> int:
     operation.add_argument("--profile", type=Path)
     operation.add_argument("--describe-interface", metavar="PACKAGE/ACTION/TYPE")
     operation.add_argument("--fingerprint-controller", type=Path)
+    operation.add_argument("--discover", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--discovery-seconds", type=float, default=3.0)
     args = parser.parse_args(argv)
-    if (args.profile is not None or args.fingerprint_controller is not None) and args.output is None:
-        parser.error("--profile / --fingerprint-controller requires --output")
+    if (args.profile is not None or args.fingerprint_controller is not None or args.discover) and args.output is None:
+        parser.error("--profile / --fingerprint-controller / --discover requires --output")
     if args.describe_interface and args.output is not None:
         parser.error("--describe-interface writes JSON to stdout; omit --output")
     try:
+        if args.discover:
+            with RosGraphProvider(args.discovery_seconds) as provider:
+                catalog = discover_interfaces(provider)
+            write_output(args.output, catalog)
+            return 0
         if args.describe_interface:
             print(json.dumps(RosInterfaces().describe(args.describe_interface), indent=2, sort_keys=True))
             return 0

@@ -5,10 +5,14 @@ import { approveProfile, evaluateProfile, hashObject, profileHash, profileSchema
 import { executablePolicySpecSchema } from '../../packages/core/exec-spec';
 import { createFanucFixture, createFanucPublicFixture, fixtureCalibration, fixtureControllerState, fixtureUrdf } from '../../packages/composable-shadow/fixture';
 import { interfaceSchemas } from '../../packages/composable-shadow/json-schema';
+import { readConnection } from '../../packages/composable-shadow/onboarding';
 
 const help = `Composable ROS 2 Shadow profiles (local evaluation, zero dispatch)
   rlsok profile init --template fanuc-humble|fanucpy-public-humble|ros2-trajectory --output <new-directory>
   rlsok profile inspect --profile <profile.json>
+  rlsok profile discover --output <new-catalog.json> [--python <python3>]
+  rlsok profile configure --input <connection.json> --output <new-directory>
+  rlsok profile inspect-connection --input <connection.json>
   rlsok profile schema --output <new-directory>
   rlsok profile approve --profile <profile.json> --actor <name> --expires-at <RFC3339> --output <new-approval.json>
   rlsok profile capture --profile <profile.json> --output <new-observation.json> [--python <python3>]
@@ -99,6 +103,26 @@ function printReport(directory: string, report: Awaited<ReturnType<typeof evalua
 export async function runProfileCommand(args: string[]): Promise<number> {
   const [command, ...rest] = args;
   if (!command || ['help', '--help', '-h'].includes(command)) { process.stdout.write(help); return 0; }
+  if (command === 'discover') {
+    const o = options(rest, ['output', 'python'], ['output']);
+    if (existsSync(o.output)) throw new Error('output_already_exists');
+    return python(o, ['--discover', '--output', resolve(o.output)]);
+  }
+  if (command === 'configure' || command === 'inspect-connection') {
+    const o = options(rest, command === 'configure' ? ['input', 'output'] : ['input'], command === 'configure' ? ['input', 'output'] : ['input']);
+    const connection = await readConnection(read(o.input));
+    if (command === 'configure') {
+      const directory = newDirectory(o.output);
+      write(join(directory, 'profile.json'), connection.profile);
+      write(join(directory, 'proposals.json'), connection.proposals);
+      write(join(directory, 'catalog.json'), connection.catalog);
+      write(join(directory, 'connection.json'), connection);
+      writeFileSync(join(directory, 'REQUIRED-FILES.txt'), connection.profile.facts.map(fact => `${fact.path}\n`).join(''), { flag: 'wx', mode: 0o600 });
+      process.stdout.write(`Configuration saved: ${directory}\nCopy your actual fact files into the relative locations in REQUIRED-FILES.txt. No controller state or approvals were generated.\n`);
+    }
+    process.stdout.write(`Configuration and mapped example goals are valid for ${connection.profile.paths.length} declared paths.\nCatalog is a local snapshot, not a fresh observation or compatibility certificate. Continue with local approve, capture and shadow.\n`);
+    return 0;
+  }
   if (command === 'init') {
     const o = options(rest, ['template', 'output'], ['template', 'output']);
     const fixture = initialize(o.output, o.template);
