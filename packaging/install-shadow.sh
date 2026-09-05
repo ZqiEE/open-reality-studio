@@ -2,9 +2,9 @@
 # Install a versioned local evaluation directory; no sudo or global registration.
 set -eu
 umask 077
-VERSION='1.5.0-shadow.1'
-ARCHIVE="rlsok-shadow-evaluation-${VERSION}-linux-x64.tar.gz"
-BASE="https://github.com/realitywarden/rlsok/releases/download/v${VERSION}"
+RLSOK_SHADOW_VERSION='1.5.0-shadow.1'
+ARCHIVE="rlsok-shadow-evaluation-${RLSOK_SHADOW_VERSION}-linux-x64.tar.gz"
+BASE="https://github.com/realitywarden/rlsok/releases/download/v${RLSOK_SHADOW_VERSION}"
 fail() { echo "RLSOK Shadow install: $1" >&2; exit 1; }
 [ "$(uname -s)" = Linux ] && [ "$(uname -m)" = x86_64 ] || fail 'Linux x86_64 is required.'
 [ -r /etc/os-release ] || fail '/etc/os-release is required.'
@@ -26,8 +26,8 @@ curl -fL --proto '=https' --tlsv1.2 "$BASE/$ARCHIVE.sha256" -o "$TEMP_DIR/$ARCHI
 mkdir "$TEMP_DIR/unpacked"
 tar -xzf "$TEMP_DIR/$ARCHIVE" -C "$TEMP_DIR/unpacked"
 # -T treats DESTINATION as the new directory, never as an existing container.
-mv -T -n -- "$TEMP_DIR/unpacked/rlsok-shadow-evaluation-$VERSION" "$DESTINATION"
-[ ! -d "$TEMP_DIR/unpacked/rlsok-shadow-evaluation-$VERSION" ] || fail 'Destination appeared during installation; nothing was replaced.'
+mv -T -n -- "$TEMP_DIR/unpacked/rlsok-shadow-evaluation-$RLSOK_SHADOW_VERSION" "$DESTINATION"
+[ ! -d "$TEMP_DIR/unpacked/rlsok-shadow-evaluation-$RLSOK_SHADOW_VERSION" ] || fail 'Destination appeared during installation; nothing was replaced.'
 printf 'Installed local Shadow evaluation: %s\n' "$DESTINATION"
 printf 'Start here: %s/docs/fanuc-shadow-self-service.md\n' "$DESTINATION"
 printf 'CLI: %s/bin/rlsok profile help\n' "$DESTINATION"

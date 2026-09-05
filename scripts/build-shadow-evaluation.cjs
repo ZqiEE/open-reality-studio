@@ -94,6 +94,8 @@ const copy = (source, target) => {
       fs.writeFileSync(path.join(output, `${name}.sha256`), `${digest}  ${name}\n`);
     }
     fs.writeFileSync(path.join(output, 'SHA256SUMS'), fs.readdirSync(output).filter(name => !name.endsWith('.sha256')).sort().map(name => `${hash(fs.readFileSync(path.join(output, name)))}  ${name}\n`).join(''));
+    assertCleanGitStatus(run('git', ['status', '--porcelain', '--untracked-files=all']));
+    if (run('git', ['rev-parse', 'HEAD']).trim() !== sourceCommit) throw new Error('source_changed_during_packaging');
     process.stdout.write(JSON.stringify({ output, sourceCommit, archive: archiveName, validation: build.validation }) + '\n');
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
